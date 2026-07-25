@@ -491,7 +491,7 @@ def test_classify_coach_path_parses_out_of_scope_route():
                 "What should I eat at Trader Joe's?",
                 {"first_name": "Alex", "age": 14},
             )
-    assert route == {"path": "out_of_scope", "recipe_category": None, "restaurant_name": None}
+    assert route == {"path": "out_of_scope", "recipe_category": None, "restaurant_name": None, "location_text": None}
 
 
 def test_coach_routes_out_of_scope_without_retrieval():
@@ -518,7 +518,7 @@ def test_classify_coach_path_parses_recipe_route():
                 "Make me something for after the game",
                 {"first_name": "Alex", "age": 14},
             )
-    assert route == {"path": "recipe", "recipe_category": "post_game", "restaurant_name": None}
+    assert route == {"path": "recipe", "recipe_category": "post_game", "restaurant_name": None, "location_text": None}
 
 
 def test_classify_coach_path_parses_restaurant_route():
@@ -533,7 +533,7 @@ def test_classify_coach_path_parses_restaurant_route():
                 "I am heading to Panda Express for lunch, what should I get?",
                 {"first_name": "Alex", "age": 14},
             )
-    assert route == {"path": "restaurant", "recipe_category": None, "restaurant_name": "Panda Express"}
+    assert route == {"path": "restaurant", "recipe_category": None, "restaurant_name": "Panda Express", "location_text": None}
 
 
 def test_classify_coach_path_restaurant_without_name_falls_back_to_out_of_scope():
@@ -548,7 +548,7 @@ def test_classify_coach_path_restaurant_without_name_falls_back_to_out_of_scope(
                 "What should I get for lunch?",
                 {"first_name": "Alex", "age": 14},
             )
-    assert route == {"path": "out_of_scope", "recipe_category": None, "restaurant_name": None}
+    assert route == {"path": "out_of_scope", "recipe_category": None, "restaurant_name": None, "location_text": None}
 
 
 def test_classify_coach_path_defaults_to_knowledge_on_bad_json():
@@ -560,7 +560,7 @@ def test_classify_coach_path_defaults_to_knowledge_on_bad_json():
                 "How much iron do I need?",
                 {"first_name": "Alex", "age": 14},
             )
-    assert route == {"path": "knowledge", "recipe_category": None, "restaurant_name": None}
+    assert route == {"path": "knowledge", "recipe_category": None, "restaurant_name": None, "location_text": None}
 
 
 def test_coach_routes_recipe_requests():
@@ -1062,7 +1062,7 @@ def test_classify_coach_path_parses_restaurant_nearby_route():
                 "What are some healthy restaurants near me?",
                 {"first_name": "Alex", "age": 14},
             )
-    assert route == {"path": "restaurant_nearby", "recipe_category": None, "restaurant_name": None}
+    assert route == {"path": "restaurant_nearby", "recipe_category": None, "restaurant_name": None, "location_text": None}
 
 
 def test_coach_routes_nearby_restaurant_requests():
@@ -1145,6 +1145,115 @@ def test_coach_nearby_restaurant_falls_back_when_none_found():
 
     assert result["intent"] == "restaurant_nearby"
     assert "couldn't find" in result["answer"].lower()
+
+
+def test_classify_coach_path_parses_location_text_for_restaurant_nearby():
+    from api.services.knowledge.answer import _classify_coach_path
+
+    with patch("api.services.knowledge.answer.is_configured", return_value=True):
+        with patch(
+            "api.services.knowledge.answer.converse_text",
+            return_value='{"path": "restaurant_nearby", "recipe_category": null, "restaurant_name": null, "location_text": "65006"}',
+        ):
+            route = _classify_coach_path(
+                "Give me some more healthy food restaurant options in 65006 area code",
+                {"first_name": "Alex", "age": 14},
+            )
+    assert route == {
+        "path": "restaurant_nearby", "recipe_category": None, "restaurant_name": None, "location_text": "65006",
+    }
+
+
+def test_coach_geocodes_explicit_location_text_for_nearby_restaurants():
+    """A new zip/city given mid-conversation must drive a FRESH search at
+    that location, not reuse device GPS or an earlier answer — the bug this
+    fix addresses: 'in 65006 area code' was being paraphrased from history
+    instead of triggering a real nearby-search."""
+    from api.services.knowledge.answer import answer_with_knowledge
+    from api.services.places.nearby_search import PlaceCandidate
+
+    mock_candidates = [
+        PlaceCandidate(
+            place_id="p1", name="Golden Bamboo", distance_m=500, address="1 Main St, Ashland, MO",
+            category="Vegetarian", rating=8.9, review_count=50, price_level=2,
+            open_now=True, website=None, maps_url="https://foursquare.com/v/golden-bamboo",
+        )
+    ]
+
+    with patch(
+        "api.services.knowledge.answer._classify_coach_path",
+        return_value={
+            "path": "restaurant_nearby", "recipe_category": None, "restaurant_name": None,
+            "location_text": "65006",
+        },
+    ):
+        with patch("api.services.knowledge.answer.is_configured", return_value=True):
+            with patch(
+                "api.services.weather.geocode_location", return_value=(38.7778, -92.2626),
+            ) as mock_geocode:
+                with patch(
+                    "api.services.places.nearby_search.search_nearby_restaurants",
+                    return_value=mock_candidates,
+                ) as mock_search:
+                    with patch(
+                        "api.services.knowledge.answer.converse_text",
+                        return_value="**Golden Bamboo** is a solid pick near 65006.",
+                    ):
+                        result = answer_with_knowledge(
+                            "Give me some more healthy food restaurant options in 65006 area code",
+                            {"id": 1, "first_name": "Alex", "age": 14},
+                            history=[
+                                {"role": "user", "content": "Any healthy restaurants near me?"},
+                                {"role": "coach", "content": "Sure, here are a few options near your area..."},
+                            ],
+                            latitude=37.33,  # stale device GPS — must NOT be what gets searched
+                            longitude=-121.89,
+                        )
+
+    mock_geocode.assert_called_once_with("65006")
+    mock_search.assert_called_once_with(38.7778, -92.2626, 1)
+    assert result["intent"] == "restaurant_nearby"
+    assert result["nearby_sources"][0]["name"] == "Golden Bamboo"
+
+
+def test_coach_falls_back_to_device_location_when_geocode_fails():
+    from api.services.knowledge.answer import answer_with_knowledge
+    from api.services.places.nearby_search import PlaceCandidate
+
+    mock_candidates = [
+        PlaceCandidate(
+            place_id="p1", name="Green Bowl", distance_m=800, address="123 Main St",
+            category="Salad", rating=8.7, review_count=210, price_level=2,
+            open_now=True, website=None, maps_url="https://foursquare.com/v/green-bowl",
+        )
+    ]
+
+    with patch(
+        "api.services.knowledge.answer._classify_coach_path",
+        return_value={
+            "path": "restaurant_nearby", "recipe_category": None, "restaurant_name": None,
+            "location_text": "Nonexistent Zzz Place",
+        },
+    ):
+        with patch("api.services.knowledge.answer.is_configured", return_value=True):
+            with patch("api.services.weather.geocode_location", return_value=None):
+                with patch(
+                    "api.services.places.nearby_search.search_nearby_restaurants",
+                    return_value=mock_candidates,
+                ) as mock_search:
+                    with patch(
+                        "api.services.knowledge.answer.converse_text",
+                        return_value="**Green Bowl** is a solid pick.",
+                    ):
+                        result = answer_with_knowledge(
+                            "Restaurants near Nonexistent Zzz Place",
+                            {"id": 1, "first_name": "Alex", "age": 14},
+                            latitude=37.33,
+                            longitude=-121.89,
+                        )
+
+    mock_search.assert_called_once_with(37.33, -121.89, 1)
+    assert result["intent"] == "restaurant_nearby"
 
 
 def test_nearby_restaurant_prompt_forbids_menu_claims():

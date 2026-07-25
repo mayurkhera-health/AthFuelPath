@@ -63,9 +63,10 @@ Choose exactly ONE path. Deciding question for recipe vs knowledge: did the user
   NOT restaurant if it's a grocery/general store (Trader Joe's, Costco, Walmart) — those have no single fixed "menu" to look up → out_of_scope instead.
   NOT restaurant if the user already lists the specific items/options themselves → knowledge (evaluate what they gave you).
 
-- "restaurant_nearby" — The user wants restaurant SUGGESTIONS/ideas near their current location, and does NOT name one specific restaurant. Signals: "near me", "nearby", "close by", "around here", "in the area", "what's around here". Often paired with a meal-context word (healthy, post-practice, pre-game, recovery) — that's fine, still restaurant_nearby.
+- "restaurant_nearby" — The user wants restaurant SUGGESTIONS/ideas near a location, and does NOT name one specific restaurant. Signals: "near me", "nearby", "close by", "around here", "in the area", "what's around here" — OR an explicit location instead of "near me": a zip code, a city/neighborhood name, "in the 65006 area", "around downtown Ashland". Often paired with a meal-context word (healthy, post-practice, pre-game, recovery) — that's fine, still restaurant_nearby.
   NOT restaurant_nearby if a specific restaurant is named → restaurant instead.
   NOT restaurant_nearby if they're not asking about eating out anywhere → knowledge or out_of_scope per the other rules.
+  IMPORTANT — a new/explicit zip, city, or place name given in THIS message is restaurant_nearby EVEN IF the prior conversation already discussed restaurants or a different location. A new location always means "search again there," never "repeat what you told me before." Extract that zip/city/place text into location_text (verbatim, e.g. "65006" or "downtown Ashland"). If the user just says "near me"/"nearby" with no explicit place named, location_text is null (their device location will be used).
 
 - "out_of_scope" — The question cannot be answered by knowledge, recipe selection, or a restaurant lookup. Route here when:
   • Asking what to buy/eat at a specific GROCERY/general store WITHOUT listing what's available ("what should I get at Trader Joe's", "healthy stuff at Costco")
@@ -105,17 +106,19 @@ restaurant (specific restaurant, fixed menu, nothing listed yet):
 - "What should I order at Chipotle before my game?" → restaurant, restaurant_name: "Chipotle"
 
 restaurant_nearby (wants ideas, nothing named, near their location):
-- "What are some healthy restaurants near me?" → restaurant_nearby
-- "Where can I get a good post-practice meal nearby?" → restaurant_nearby
-- "Find a restaurant close to me with good recovery meal options" → restaurant_nearby
-- "What's around here for lunch?" → restaurant_nearby
+- "What are some healthy restaurants near me?" → restaurant_nearby, location_text: null
+- "Where can I get a good post-practice meal nearby?" → restaurant_nearby, location_text: null
+- "Find a restaurant close to me with good recovery meal options" → restaurant_nearby, location_text: null
+- "What's around here for lunch?" → restaurant_nearby, location_text: null
+- "Give me some more healthy food restaurant options in 65006 area code" → restaurant_nearby, location_text: "65006" (a NEW zip given now — search fresh there, even though the conversation already had a restaurant list)
+- "Any good places to eat in downtown Ashland?" → restaurant_nearby, location_text: "downtown Ashland"
 
 out_of_scope (grocery/general store, real-time data, non-nutrition, medical/weight):
 - "What can I eat at Trader Joe's?" → out_of_scope
 - "What's healthy at Costco?" → out_of_scope
 
 Return ONLY valid JSON, no markdown:
-{{"path": "knowledge" | "recipe" | "restaurant" | "restaurant_nearby" | "out_of_scope", "recipe_category": null | "category_key", "restaurant_name": null | "restaurant name"}}"""
+{{"path": "knowledge" | "recipe" | "restaurant" | "restaurant_nearby" | "out_of_scope", "recipe_category": null | "category_key", "restaurant_name": null | "restaurant name", "location_text": null | "zip/city/place from THIS message, only for restaurant_nearby"}}"""
 
 _OUT_OF_SCOPE_SYSTEM = f"""You are FuelUp's Nutrition Coach for youth soccer athletes ages 9-17.
 
@@ -176,10 +179,14 @@ def _classify_coach_path(question: str, athlete: dict) -> dict:
     LLM router: choose knowledge RAG vs recipe library selection vs restaurant
     menu lookup vs nearby-restaurant discovery vs out-of-scope redirect.
     Returns {"path": "knowledge"|"recipe"|"restaurant"|"restaurant_nearby"|"out_of_scope",
-             "recipe_category": str|None, "restaurant_name": str|None}.
+             "recipe_category": str|None, "restaurant_name": str|None,
+             "location_text": str|None}. `location_text` is only ever set for
+             "restaurant_nearby" — an explicit zip/city/place the athlete gave
+             in THIS message, which must drive a fresh search and override any
+             restaurant list from earlier in the conversation.
     """
     if not is_configured():
-        return {"path": "knowledge", "recipe_category": None, "restaurant_name": None}
+        return {"path": "knowledge", "recipe_category": None, "restaurant_name": None, "location_text": None}
 
     first = athlete.get("first_name", "athlete")
     age = athlete.get("age", "unknown")
@@ -195,35 +202,44 @@ def _classify_coach_path(question: str, athlete: dict) -> dict:
         parsed = parse_json_from_llm(text)
     except Exception:
         logger.exception("Coach path classification failed for question=%r", question[:80])
-        return {"path": "knowledge", "recipe_category": None, "restaurant_name": None}
+        return {"path": "knowledge", "recipe_category": None, "restaurant_name": None, "location_text": None}
 
     path = parsed.get("path", "knowledge")
     if path not in ("knowledge", "recipe", "restaurant", "restaurant_nearby", "out_of_scope"):
         path = "knowledge"
 
     if path == "out_of_scope":
-        return {"path": "out_of_scope", "recipe_category": None, "restaurant_name": None}
+        return {"path": "out_of_scope", "recipe_category": None, "restaurant_name": None, "location_text": None}
 
     if path == "restaurant_nearby":
-        return {"path": "restaurant_nearby", "recipe_category": None, "restaurant_name": None}
+        location_text = (parsed.get("location_text") or "").strip() or None
+        return {
+            "path": "restaurant_nearby", "recipe_category": None, "restaurant_name": None,
+            "location_text": location_text,
+        }
 
     if path == "restaurant":
         restaurant_name = (parsed.get("restaurant_name") or "").strip()
         if not restaurant_name:
-            return {"path": "out_of_scope", "recipe_category": None, "restaurant_name": None}
-        return {"path": "restaurant", "recipe_category": None, "restaurant_name": restaurant_name}
+            return {"path": "out_of_scope", "recipe_category": None, "restaurant_name": None, "location_text": None}
+        return {
+            "path": "restaurant", "recipe_category": None, "restaurant_name": restaurant_name,
+            "location_text": None,
+        }
 
     category = parsed.get("recipe_category")
     if path != "recipe":
-        return {"path": "knowledge", "recipe_category": None, "restaurant_name": None}
+        return {"path": "knowledge", "recipe_category": None, "restaurant_name": None, "location_text": None}
 
     from api.services.recipe_categories import resolve_category
 
     try:
         resolved = resolve_category(category or "snack")
-        return {"path": "recipe", "recipe_category": resolved["key"], "restaurant_name": None}
+        return {
+            "path": "recipe", "recipe_category": resolved["key"], "restaurant_name": None, "location_text": None,
+        }
     except ValueError:
-        return {"path": "recipe", "recipe_category": "snack", "restaurant_name": None}
+        return {"path": "recipe", "recipe_category": "snack", "restaurant_name": None, "location_text": None}
 
 
 def _answer_out_of_scope(question: str, athlete: dict, persona: str | None = None) -> dict:
@@ -775,7 +791,8 @@ STRICT RULES — follow these exactly:
 7. NEVER provide medical diagnosis, treatment advice, or supplement dosing.
 8. Never recommend supplements for athletes under 18.
 9. For ANY of these situations — injury, fainting, chest pain, eating disorder, severe dehydration, signs of anorexia or bulimia, extreme restriction, unintentional weight loss — respond with: "This sounds like something important to discuss with a doctor or qualified sports dietitian. Please reach out to a professional right away."
-10. Format your answer as **Markdown**:
+10. If the athlete's CURRENT question gives a new or different detail than PRIOR CONVERSATION (a different location, restaurant, food item, or specific ask), answer fresh from the current question and the knowledge excerpts below. NEVER just repeat, rephrase, or reuse an earlier turn's answer/list as if it already covers the new detail — PRIOR CONVERSATION is background only, not a cache to answer from.
+11. Format your answer as **Markdown**:
    - Use **bold** for the main takeaway or action step
    - Use bullet lists (`- item`) when giving 2–4 practical tips
    - Keep paragraphs short (2–3 sentences max)
@@ -905,8 +922,19 @@ def answer_with_knowledge(
         )
 
     if route["path"] == "restaurant_nearby":
+        resolved_lat, resolved_lon = latitude, longitude
+        location_text = route.get("location_text")
+        if location_text:
+            from api.services.weather import geocode_location
+            try:
+                geocoded = geocode_location(location_text)
+            except Exception:
+                logger.exception("Forward geocode failed for %r", location_text)
+                geocoded = None
+            if geocoded:
+                resolved_lat, resolved_lon = geocoded
         return _answer_with_nearby_restaurants(
-            contextual_question, athlete, latitude, longitude,
+            contextual_question, athlete, resolved_lat, resolved_lon,
             meal_period=_derive_meal_period(now), persona=persona,
         )
 

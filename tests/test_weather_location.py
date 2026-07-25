@@ -133,6 +133,82 @@ def test_reverse_geocode_empty_response_returns_none(monkeypatch):
     assert weather.reverse_geocode_city(0.0, 0.0) is None
 
 
+def test_geocode_location_zip_uses_zip_endpoint(monkeypatch):
+    weather._forward_geocode_cache.clear()
+    monkeypatch.setenv("OPENWEATHERMAP_API_KEY", "test-key")
+    captured = {}
+
+    def fake_get(url, params=None, timeout=None):
+        captured["url"] = url
+        captured["params"] = params
+        return _FakeGeoResp(200, {"zip": "65006", "name": "Ashland", "lat": 38.7778, "lon": -92.2626, "country": "US"})
+
+    monkeypatch.setattr(weather.requests, "get", fake_get)
+    assert weather.geocode_location("65006") == (38.7778, -92.2626)
+    assert captured["url"].endswith("/geo/1.0/zip")
+    assert captured["params"]["zip"] == "65006,US"
+
+
+def test_geocode_location_city_uses_direct_endpoint(monkeypatch):
+    weather._forward_geocode_cache.clear()
+    monkeypatch.setenv("OPENWEATHERMAP_API_KEY", "test-key")
+    captured = {}
+
+    def fake_get(url, params=None, timeout=None):
+        captured["url"] = url
+        captured["params"] = params
+        return _FakeGeoResp(200, [{"name": "San Jose", "lat": 37.33, "lon": -121.89, "country": "US", "state": "CA"}])
+
+    monkeypatch.setattr(weather.requests, "get", fake_get)
+    assert weather.geocode_location("San Jose, CA") == (37.33, -121.89)
+    assert captured["url"].endswith("/geo/1.0/direct")
+    assert captured["params"]["q"] == "San Jose, CA"
+
+
+def test_geocode_location_no_api_key_returns_none(monkeypatch):
+    weather._forward_geocode_cache.clear()
+    monkeypatch.delenv("OPENWEATHERMAP_API_KEY", raising=False)
+
+    def boom(*a, **k):
+        raise AssertionError("must not call the API with no key configured")
+
+    monkeypatch.setattr(weather.requests, "get", boom)
+    assert weather.geocode_location("65006") is None
+
+
+def test_geocode_location_empty_response_returns_none(monkeypatch):
+    weather._forward_geocode_cache.clear()
+    monkeypatch.setenv("OPENWEATHERMAP_API_KEY", "test-key")
+    monkeypatch.setattr(weather.requests, "get", lambda url, params=None, timeout=None: _FakeGeoResp(200, []))
+    assert weather.geocode_location("Nonexistent Place Zzz") is None
+
+
+def test_geocode_location_blank_text_returns_none(monkeypatch):
+    weather._forward_geocode_cache.clear()
+    monkeypatch.setenv("OPENWEATHERMAP_API_KEY", "test-key")
+
+    def boom(*a, **k):
+        raise AssertionError("must not call the API for blank input")
+
+    monkeypatch.setattr(weather.requests, "get", boom)
+    assert weather.geocode_location("   ") is None
+
+
+def test_geocode_location_caches_result(monkeypatch):
+    weather._forward_geocode_cache.clear()
+    monkeypatch.setenv("OPENWEATHERMAP_API_KEY", "test-key")
+    calls = {"n": 0}
+
+    def fake_get(url, params=None, timeout=None):
+        calls["n"] += 1
+        return _FakeGeoResp(200, {"zip": "65006", "name": "Ashland", "lat": 38.7778, "lon": -92.2626, "country": "US"})
+
+    monkeypatch.setattr(weather.requests, "get", fake_get)
+    weather.geocode_location("65006")
+    weather.geocode_location("65006")
+    assert calls["n"] == 1
+
+
 def test_compute_heat_flag_thresholds():
     assert weather.compute_heat_flag(70, 40) == (False, "none")
     assert weather.compute_heat_flag(80, 40) == (True, "warm")

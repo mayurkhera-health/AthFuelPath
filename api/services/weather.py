@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import time
 
 import requests
@@ -202,6 +203,54 @@ def reverse_geocode_city(lat: float, lon: float) -> str | None:
         return city
     except Exception:
         _geocode_cache[key] = (_now(), None)
+        return None
+
+
+_forward_geocode_cache: dict[str, tuple[float, tuple[float, float] | None]] = {}
+_ZIP_RE = re.compile(r"^\d{5}$")
+
+
+def geocode_location(text: str) -> tuple[float, float] | None:
+    """Free-text location (US zip code or city/place name) -> (lat, lon).
+    Forward counterpart to reverse_geocode_city — same OPENWEATHERMAP_API_KEY,
+    same free geocoding API, same graceful-degrade-on-failure contract (never
+    raises; callers fall back to whatever location they already had). A bare
+    5-digit string is treated as a US zip (the dedicated /geo/1.0/zip endpoint
+    is more reliable than /direct for zips); anything else goes through
+    /geo/1.0/direct as a city/place query."""
+    text = (text or "").strip()
+    if not text:
+        return None
+
+    api_key = os.getenv("OPENWEATHERMAP_API_KEY")
+    if not api_key:
+        return None
+
+    key = text.lower()
+    cached = _forward_geocode_cache.get(key)
+    if cached and (_now() - cached[0]) < _GEOCODE_TTL_SECONDS:
+        return cached[1]
+
+    is_zip = bool(_ZIP_RE.match(text))
+    url = "http://api.openweathermap.org/geo/1.0/zip" if is_zip else "http://api.openweathermap.org/geo/1.0/direct"
+    params = {"zip": f"{text},US", "appid": api_key} if is_zip else {"q": text, "limit": 1, "appid": api_key}
+
+    try:
+        resp = requests.get(url, params=params, timeout=3)
+        data = resp.json()
+        if resp.status_code != 200 or not data:
+            _forward_geocode_cache[key] = (_now(), None)
+            return None
+        place = data if is_zip else data[0]
+        lat, lon = place.get("lat"), place.get("lon")
+        if lat is None or lon is None:
+            _forward_geocode_cache[key] = (_now(), None)
+            return None
+        result = (float(lat), float(lon))
+        _forward_geocode_cache[key] = (_now(), result)
+        return result
+    except Exception:
+        _forward_geocode_cache[key] = (_now(), None)
         return None
 
 
