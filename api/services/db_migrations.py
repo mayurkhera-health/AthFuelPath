@@ -49,6 +49,7 @@ def run_all():
         _create_fueliq_daily_challenge_tables(conn)
         _add_push_sent_to_daily_challenges(conn)
         _create_fueliq_notification_prefs(conn)
+        _create_notification_prefs(conn)
         _create_fueliq_push_events(conn)
         _drop_fueliq_lessons_drop_week(conn)
         _add_phone_to_athletes(conn)
@@ -855,6 +856,31 @@ def _add_push_sent_to_daily_challenges(conn):
     cols = [r[1] for r in conn.execute("PRAGMA table_info(fueliq_daily_challenges)").fetchall()]
     if "push_sent_at" not in cols:
         conn.execute("ALTER TABLE fueliq_daily_challenges ADD COLUMN push_sent_at TEXT")
+
+
+def _create_notification_prefs(conn):
+    """Per-profile fuel-window notification controls (Training/Game Day
+    toggles + Quiet Hours from Settings). One row per (profile_type,
+    profile_id) — an athlete and their parent set these independently,
+    since each is silencing their OWN phone. Defaults match
+    DEFAULT_NOTIF_PREFS on the mobile side (both day types on, quiet
+    hours 22:00-07:00) so a profile that's never opened Settings gets
+    the same behavior as today's hardcoded-everyone-gets-reminders
+    system. UPSERTED by PATCH /api/notifications/prefs."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS notification_prefs (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile_type         TEXT    NOT NULL,
+            profile_id           INTEGER NOT NULL,
+            training_days        INTEGER NOT NULL DEFAULT 1,
+            game_days            INTEGER NOT NULL DEFAULT 1,
+            quiet_hours_enabled  INTEGER NOT NULL DEFAULT 1,
+            quiet_start          TEXT    NOT NULL DEFAULT '22:00',
+            quiet_end            TEXT    NOT NULL DEFAULT '07:00',
+            updated_at           TEXT    NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(profile_type, profile_id)
+        )
+    """)
 
 
 def _create_fueliq_notification_prefs(conn):

@@ -1,5 +1,5 @@
 import os
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from api.database import get_conn
@@ -93,6 +93,53 @@ def update_fueliq_notif_prefs(data: FuelIQNotifPrefs):
                pregame_enabled = excluded.pregame_enabled,
                updated_at      = datetime('now')""",
             (data.athlete_id, int(data.morning_enabled), int(data.pregame_enabled)),
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+class NotificationPrefsUpdate(BaseModel):
+    profile_type:        str   # "athlete" | "parent"
+    profile_id:          int
+    training_days:       bool = True
+    game_days:           bool = True
+    quiet_hours_enabled: bool = True
+    quiet_start:         str = "22:00"  # "HH:MM"
+    quiet_end:           str = "07:00"  # "HH:MM"
+
+
+@router.patch("/prefs")
+def update_notification_prefs(data: NotificationPrefsUpdate):
+    """Upsert per-profile Training/Game Day + Quiet Hours prefs (Settings →
+    Notifications / Quiet Hours). An athlete and their parent each set their
+    own row — they're silencing their own phone independently. Read by
+    notification_service.py's per-recipient gating in _notify_athlete."""
+    if data.profile_type not in ("athlete", "parent"):
+        raise HTTPException(400, "profile_type must be 'athlete' or 'parent'.")
+    conn = get_conn()
+    try:
+        table = "athletes" if data.profile_type == "athlete" else "parents"
+        exists = conn.execute(
+            f"SELECT 1 FROM {table} WHERE id = ?", (data.profile_id,)
+        ).fetchone()
+        if not exists:
+            raise HTTPException(404, f"{data.profile_type.capitalize()} not found.")
+        conn.execute(
+            """INSERT INTO notification_prefs
+                   (profile_type, profile_id, training_days, game_days,
+                    quiet_hours_enabled, quiet_start, quiet_end)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(profile_type, profile_id) DO UPDATE SET
+                   training_days       = excluded.training_days,
+                   game_days           = excluded.game_days,
+                   quiet_hours_enabled = excluded.quiet_hours_enabled,
+                   quiet_start         = excluded.quiet_start,
+                   quiet_end           = excluded.quiet_end,
+                   updated_at          = datetime('now')""",
+            (data.profile_type, data.profile_id, int(data.training_days), int(data.game_days),
+             int(data.quiet_hours_enabled), data.quiet_start, data.quiet_end),
         )
         conn.commit()
         return {"ok": True}

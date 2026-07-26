@@ -376,3 +376,126 @@ class TestSendExpoPush:
         assert r1 is True
         assert r2 is True
         assert len(sent) == 2
+
+
+# ─── in_quiet_window ────────────────────────────────────────────────────────────
+
+class TestInQuietWindow:
+    def test_normal_range_inside(self):
+        from api.services.notification_service import in_quiet_window
+        assert in_quiet_window("13:00", "12:00", "14:00") is True
+
+    def test_normal_range_outside(self):
+        from api.services.notification_service import in_quiet_window
+        assert in_quiet_window("15:00", "12:00", "14:00") is False
+
+    def test_overnight_wraparound_late_night(self):
+        from api.services.notification_service import in_quiet_window
+        assert in_quiet_window("23:00", "22:00", "07:00") is True
+
+    def test_overnight_wraparound_early_morning(self):
+        from api.services.notification_service import in_quiet_window
+        assert in_quiet_window("05:00", "22:00", "07:00") is True
+
+    def test_overnight_wraparound_daytime_not_quiet(self):
+        from api.services.notification_service import in_quiet_window
+        assert in_quiet_window("13:00", "22:00", "07:00") is False
+
+    def test_boundary_start_is_inclusive(self):
+        from api.services.notification_service import in_quiet_window
+        assert in_quiet_window("22:00", "22:00", "07:00") is True
+
+    def test_boundary_end_is_exclusive(self):
+        from api.services.notification_service import in_quiet_window
+        assert in_quiet_window("07:00", "22:00", "07:00") is False
+
+
+# ─── should_notify_recipient ────────────────────────────────────────────────────
+
+class TestShouldNotifyRecipient:
+    def _prefs(self, **overrides):
+        from api.services.notification_service import _DEFAULT_NOTIFICATION_PREFS
+        return {**_DEFAULT_NOTIFICATION_PREFS, **overrides}
+
+    def test_all_defaults_allows_send(self):
+        from api.services.notification_service import should_notify_recipient
+        assert should_notify_recipient(self._prefs(), is_game=False, local_time="09:00") is True
+
+    def test_quiet_hours_blocks_regardless_of_day_type(self):
+        from api.services.notification_service import should_notify_recipient
+        assert should_notify_recipient(self._prefs(), is_game=True, local_time="23:30") is False
+
+    def test_quiet_hours_disabled_allows_send_at_night(self):
+        from api.services.notification_service import should_notify_recipient
+        prefs = self._prefs(quiet_hours_enabled=False)
+        assert should_notify_recipient(prefs, is_game=False, local_time="23:30") is True
+
+    def test_game_days_off_blocks_game_day(self):
+        from api.services.notification_service import should_notify_recipient
+        prefs = self._prefs(game_days=False)
+        assert should_notify_recipient(prefs, is_game=True, local_time="09:00") is False
+
+    def test_game_days_off_does_not_block_training_day(self):
+        from api.services.notification_service import should_notify_recipient
+        prefs = self._prefs(game_days=False)
+        assert should_notify_recipient(prefs, is_game=False, local_time="09:00") is True
+
+    def test_training_days_off_blocks_training_day(self):
+        from api.services.notification_service import should_notify_recipient
+        prefs = self._prefs(training_days=False)
+        assert should_notify_recipient(prefs, is_game=False, local_time="09:00") is False
+
+
+# ─── get_notification_prefs ─────────────────────────────────────────────────────
+
+@pytest.fixture
+def prefs_conn():
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript("""
+        CREATE TABLE notification_prefs (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile_type        TEXT NOT NULL,
+            profile_id          INTEGER NOT NULL,
+            training_days       INTEGER NOT NULL DEFAULT 1,
+            game_days           INTEGER NOT NULL DEFAULT 1,
+            quiet_hours_enabled INTEGER NOT NULL DEFAULT 1,
+            quiet_start         TEXT NOT NULL DEFAULT '22:00',
+            quiet_end           TEXT NOT NULL DEFAULT '07:00',
+            updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(profile_type, profile_id)
+        );
+    """)
+    yield conn
+    conn.close()
+
+
+class TestGetNotificationPrefs:
+    def test_no_row_returns_defaults(self, prefs_conn):
+        from api.services.notification_service import get_notification_prefs, _DEFAULT_NOTIFICATION_PREFS
+        assert get_notification_prefs("athlete", 999, prefs_conn) == _DEFAULT_NOTIFICATION_PREFS
+
+    def test_existing_row_overrides_defaults(self, prefs_conn):
+        from api.services.notification_service import get_notification_prefs
+        prefs_conn.execute(
+            "INSERT INTO notification_prefs (profile_type, profile_id, training_days, game_days, "
+            "quiet_hours_enabled, quiet_start, quiet_end) VALUES ('athlete', 1, 0, 1, 1, '21:00', '06:30')"
+        )
+        prefs_conn.commit()
+        result = get_notification_prefs("athlete", 1, prefs_conn)
+        assert result == {
+            "training_days": False, "game_days": True,
+            "quiet_hours_enabled": True, "quiet_start": "21:00", "quiet_end": "06:30",
+        }
+
+    def test_athlete_and_parent_rows_are_independent(self, prefs_conn):
+        from api.services.notification_service import get_notification_prefs
+        prefs_conn.execute(
+            "INSERT INTO notification_prefs (profile_type, profile_id, quiet_hours_enabled) "
+            "VALUES ('athlete', 1, 0)"
+        )
+        prefs_conn.commit()
+        athlete_prefs = get_notification_prefs("athlete", 1, prefs_conn)
+        parent_prefs = get_notification_prefs("parent", 1, prefs_conn)
+        assert athlete_prefs["quiet_hours_enabled"] is False
+        assert parent_prefs["quiet_hours_enabled"] is True  # untouched, still default

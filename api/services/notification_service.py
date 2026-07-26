@@ -64,6 +64,53 @@ def in_quiet_hours(open_time: str) -> bool:
     return open_time < "06:30" or open_time >= "22:00"
 
 
+_DEFAULT_NOTIFICATION_PREFS = {
+    "training_days": True, "game_days": True,
+    "quiet_hours_enabled": True, "quiet_start": "22:00", "quiet_end": "07:00",
+}
+
+
+def get_notification_prefs(profile_type: str, profile_id: int, conn) -> dict:
+    """A profile that's never opened Settings has no row — default to
+    DEFAULT_NOTIF_PREFS on the mobile side (both day types on, quiet hours
+    22:00-07:00), matching today's actual behavior for existing users."""
+    row = conn.execute(
+        "SELECT training_days, game_days, quiet_hours_enabled, quiet_start, quiet_end "
+        "FROM notification_prefs WHERE profile_type = ? AND profile_id = ?",
+        (profile_type, profile_id),
+    ).fetchone()
+    if not row:
+        return dict(_DEFAULT_NOTIFICATION_PREFS)
+    return {
+        "training_days": bool(row["training_days"]),
+        "game_days": bool(row["game_days"]),
+        "quiet_hours_enabled": bool(row["quiet_hours_enabled"]),
+        "quiet_start": row["quiet_start"],
+        "quiet_end": row["quiet_end"],
+    }
+
+
+def in_quiet_window(local_time: str, start: str, end: str) -> bool:
+    """HH:MM string comparison. Handles overnight wraparound (e.g. 22:00
+    start, 07:00 end) — the common case, since quiet hours span midnight."""
+    if start <= end:
+        return start <= local_time < end
+    return local_time >= start or local_time < end
+
+
+def should_notify_recipient(prefs: dict, is_game: bool, local_time: str) -> bool:
+    """A single recipient's (athlete's or parent's) own Training/Game Day +
+    Quiet Hours prefs gate their OWN stream independently — one person
+    silencing their phone never affects the other's."""
+    if prefs["quiet_hours_enabled"] and in_quiet_window(local_time, prefs["quiet_start"], prefs["quiet_end"]):
+        return False
+    if is_game and not prefs["game_days"]:
+        return False
+    if not is_game and not prefs["training_days"]:
+        return False
+    return True
+
+
 def rank_for_notification(w: dict) -> int:
     """Lower rank = higher priority. Rank 99 = skip entirely."""
     if w["priority"]:
@@ -364,6 +411,16 @@ def _notify_athlete(athlete_id: int, conn) -> None:
             ).fetchall()
         ]
 
+    # Each recipient's own Training/Game Day + Quiet Hours prefs gate their
+    # own stream — computed once per tick, not per-window (day-type and the
+    # current clock time don't change window-to-window within one tick).
+    athlete_ok = should_notify_recipient(
+        get_notification_prefs("athlete", athlete_id, conn), is_game, local_time
+    )
+    parent_ok = bool(parent_id) and should_notify_recipient(
+        get_notification_prefs("parent", parent_id, conn), is_game, local_time
+    )
+
     for w in selected:
         window_key = w["window_key"]
 
@@ -373,15 +430,16 @@ def _notify_athlete(athlete_id: int, conn) -> None:
             continue
 
         # Athlete stream
-        a_title, a_body = _athlete_copy(window_key, is_game, event_name, start_time_display)
-        send_notification_guarded(
-            athlete_id, window_key, local_date, "athlete",
-            athlete_tokens, a_title, a_body, conn,
-        )
+        if athlete_ok:
+            a_title, a_body = _athlete_copy(window_key, is_game, event_name, start_time_display)
+            send_notification_guarded(
+                athlete_id, window_key, local_date, "athlete",
+                athlete_tokens, a_title, a_body, conn,
+            )
 
         # Parent stream
         p_copy = _parent_copy(window_key, is_game, event_name, first_name)
-        if p_copy and parent_tokens:
+        if parent_ok and p_copy and parent_tokens:
             p_title, p_body = p_copy
             send_notification_guarded(
                 athlete_id, window_key, local_date, "parent",
