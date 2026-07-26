@@ -933,8 +933,17 @@ def answer_with_knowledge(
                 geocoded = None
             if geocoded:
                 resolved_lat, resolved_lon = geocoded
+        # Use the bare `question`, not `contextual_question` — the latter
+        # prefixes prior-conversation turns, and _answer_with_nearby_restaurants
+        # feeds this straight to the LLM as its user message alongside a FRESH
+        # candidates_text for resolved_lat/resolved_lon. Passing the history
+        # blob here caused the model to blend a prior search's restaurant
+        # names/city into the new answer (e.g. re-describing a previous zip's
+        # results while guessing at the new zip's city), rather than treating
+        # this as a clean, self-contained search — candidates_text alone
+        # already provides all the grounding this answer needs.
         return _answer_with_nearby_restaurants(
-            contextual_question, athlete, resolved_lat, resolved_lon,
+            question, athlete, resolved_lat, resolved_lon,
             meal_period=_derive_meal_period(now), persona=persona,
         )
 

@@ -1256,6 +1256,61 @@ def test_coach_falls_back_to_device_location_when_geocode_fails():
     assert result["intent"] == "restaurant_nearby"
 
 
+def test_nearby_restaurant_answer_generation_ignores_prior_conversation():
+    """Regression test: a new zip's answer-generation call must receive the
+    bare current question as its LLM user turn, not the history-prefixed
+    contextual_question. Previously, prior turns (e.g. a restaurant list for
+    an earlier zip) leaked into the user message alongside the FRESH
+    candidates_text for the new zip, and the model blended the two —
+    describing the new zip's real candidates as if uncertain they existed,
+    and guessing at a city name from the old conversation instead of the
+    new, correctly-geocoded location."""
+    from api.services.knowledge.answer import answer_with_knowledge
+    from api.services.places.nearby_search import PlaceCandidate
+
+    mock_candidates = [
+        PlaceCandidate(
+            place_id="p1", name="Panda Express", distance_m=2200, address="1 Main St, Springfield, MO",
+            category="Chinese", rating=8.2, review_count=300, price_level=1,
+            open_now=True, website=None, maps_url="https://foursquare.com/v/panda-express",
+        )
+    ]
+
+    with patch(
+        "api.services.knowledge.answer._classify_coach_path",
+        return_value={
+            "path": "restaurant_nearby", "recipe_category": None, "restaurant_name": None,
+            "location_text": "65907",
+        },
+    ):
+        with patch("api.services.knowledge.answer.is_configured", return_value=True):
+            with patch("api.services.weather.geocode_location", return_value=(37.15, -93.29)):
+                with patch(
+                    "api.services.places.nearby_search.search_nearby_restaurants",
+                    return_value=mock_candidates,
+                ):
+                    with patch(
+                        "api.services.knowledge.answer.converse_text",
+                        return_value="**Panda Express** is a solid pick near 65907.",
+                    ) as mock_converse:
+                        answer_with_knowledge(
+                            "Give me restaurant options in 65907",
+                            {"id": 1, "first_name": "Alex", "age": 14},
+                            history=[
+                                {"role": "user", "content": "Give me restaurant options in 95148"},
+                                {"role": "coach", "content": "Sure — Golden Bamboo Vegetarian Restaurant is nearby..."},
+                            ],
+                            latitude=37.33,
+                            longitude=-121.89,
+                        )
+
+    user_arg = mock_converse.call_args.kwargs["user"]
+    assert user_arg == "Give me restaurant options in 65907"
+    assert "PRIOR CONVERSATION" not in user_arg
+    assert "95148" not in user_arg
+    assert "Golden Bamboo" not in user_arg
+
+
 def test_nearby_restaurant_prompt_forbids_menu_claims():
     """Places data has no menu contents — the prompt must forbid naming
     specific dishes, the same discipline already enforced for the
