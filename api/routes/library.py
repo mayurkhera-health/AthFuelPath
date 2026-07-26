@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
 from api.database import get_conn
 from api.services.nutrition_analysis import get_week_start
+from api.services.library_service import generate_weekly_picks
 
 router = APIRouter()
 
@@ -66,9 +67,28 @@ def get_articles(category: str = None, search: str = None, audience: str = None)
 
 
 @router.get("/picks/{athlete_id}")
-def get_athlete_picks(athlete_id: int):
+def get_athlete_picks(athlete_id: int, parent_id: int):
+    """`parent_id` is required and must match this athlete's own parent —
+    otherwise anyone who can guess an athlete_id could read another
+    family's child's personalized nutrient-gap inference. Also lazily
+    generates this week's picks if they don't exist yet: generate_weekly_picks
+    is idempotent (no-ops if a row already exists for the current week) and
+    does no LLM/AI call, so it's safe and cheap to call on every read —
+    nothing else in the app ever called it, which is why this section never
+    appeared for a real athlete before."""
     conn = get_conn()
     try:
+        athlete = conn.execute(
+            "SELECT parent_id FROM athletes WHERE id = ?", (athlete_id,)
+        ).fetchone()
+        if not athlete:
+            raise HTTPException(status_code=404, detail="Athlete not found.")
+        if athlete["parent_id"] != parent_id:
+            raise HTTPException(status_code=403, detail="Not authorized for this athlete.")
+
+        generate_weekly_picks(athlete_id, conn)
+        conn.commit()
+
         week_start = get_week_start()
         rows = conn.execute("""
             SELECT a.*, p.alex_reason
@@ -151,7 +171,6 @@ def generate_picks(athlete_id: int, x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
     conn = get_conn()
     try:
-        from api.services.library_service import generate_weekly_picks
         generate_weekly_picks(athlete_id, conn)
         conn.commit()
         return {"status": "ok"}
