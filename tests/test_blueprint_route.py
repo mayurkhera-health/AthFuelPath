@@ -59,7 +59,7 @@ def test_blueprint_get_does_not_500_for_age_ge_14(client):
 
 def test_blueprint_get_lazy_generates_when_null(client):
     """A never-generated athlete (background task was killed) self-heals on view."""
-    aid = _make_athlete(client, age=12, gender="boy")  # age<14 → isolates from Task 1
+    aid = _make_athlete(client, age=13, gender="boy")  # age<14 → isolates from Task 1
     conn = get_conn()
     conn.execute("UPDATE athletes SET blueprint_json=NULL WHERE id=?", (aid,))
     conn.commit()

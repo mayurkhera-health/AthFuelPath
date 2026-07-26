@@ -21,8 +21,8 @@ def complete_onboarding(data: OnboardingComplete, background_tasks: BackgroundTa
     a = data.athlete
     if not p.consent_confirmed:
         raise HTTPException(400, "Parental consent must be confirmed before creating an account.")
-    if not (9 <= a.age <= 17):
-        raise HTTPException(400, "Fueling2Win is designed for athletes ages 9-17.")
+    if not (13 <= a.age <= 17):
+        raise HTTPException(400, "FuelUp Youth is designed for athletes ages 13-17.")
 
     conn = get_conn()
     try:

@@ -179,7 +179,7 @@ def test_badges_lists_all_defined_badges_locked_until_earned(client, monkeypatch
 def test_hub_includes_percentile_block(client, monkeypatch):
     monkeypatch.setenv("FUELIQ_ENABLED", "true")
     # Unique age (other tests in this file all use the default 14; valid
-    # range is 9-17) so this athlete's cohort is guaranteed to be just
+    # range is 13-17) so this athlete's cohort is guaranteed to be just
     # themself, regardless of test execution order in the shared in-memory DB.
     aid = _make_athlete(client, age=17)
     body = client.get(f"/api/athletes/{aid}/hub").json()
