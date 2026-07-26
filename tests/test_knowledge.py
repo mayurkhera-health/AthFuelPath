@@ -1217,6 +1217,12 @@ def test_coach_geocodes_explicit_location_text_for_nearby_restaurants():
 
 
 def test_coach_falls_back_to_device_location_when_geocode_fails():
+    """A real but unrecognized location (e.g. a valid zip OpenWeatherMap's
+    geocoder has no record of — this happens for real US zips, not just
+    typos) still falls back to device location for a useful answer, but
+    the LLM must be told this happened via a LOCATION NOTE in its system
+    prompt — silently substituting the athlete's actual location without
+    disclosure reads as wrong information, not a graceful fallback."""
     from api.services.knowledge.answer import answer_with_knowledge
     from api.services.places.nearby_search import PlaceCandidate
 
@@ -1232,7 +1238,7 @@ def test_coach_falls_back_to_device_location_when_geocode_fails():
         "api.services.knowledge.answer._classify_coach_path",
         return_value={
             "path": "restaurant_nearby", "recipe_category": None, "restaurant_name": None,
-            "location_text": "Nonexistent Zzz Place",
+            "location_text": "65907",
         },
     ):
         with patch("api.services.knowledge.answer.is_configured", return_value=True):
@@ -1244,9 +1250,9 @@ def test_coach_falls_back_to_device_location_when_geocode_fails():
                     with patch(
                         "api.services.knowledge.answer.converse_text",
                         return_value="**Green Bowl** is a solid pick.",
-                    ):
+                    ) as mock_converse:
                         result = answer_with_knowledge(
-                            "Restaurants near Nonexistent Zzz Place",
+                            "Restaurants near 65907",
                             {"id": 1, "first_name": "Alex", "age": 14},
                             latitude=37.33,
                             longitude=-121.89,
@@ -1254,6 +1260,9 @@ def test_coach_falls_back_to_device_location_when_geocode_fails():
 
     mock_search.assert_called_once_with(37.33, -121.89, 1)
     assert result["intent"] == "restaurant_nearby"
+    system_arg = mock_converse.call_args.kwargs["system"]
+    assert "LOCATION NOTE" in system_arg
+    assert "65907" in system_arg
 
 
 def test_nearby_restaurant_answer_generation_ignores_prior_conversation():
@@ -1318,7 +1327,7 @@ def test_nearby_restaurant_prompt_forbids_menu_claims():
     from api.services.knowledge.answer import _NEARBY_RESTAURANT_SYSTEM_TEMPLATE
 
     prompt = _NEARBY_RESTAURANT_SYSTEM_TEMPLATE.format(
-        timing_block="", candidates_text="[1] Green Bowl — Salad", allergy_block="None",
+        location_note="", timing_block="", candidates_text="[1] Green Bowl — Salad", allergy_block="None",
     )
     assert "never name a specific dish" in prompt.lower()
     assert "only recommend restaurants that appear in the candidates" in prompt.lower()

@@ -585,7 +585,7 @@ def _answer_with_restaurant(
 _NEARBY_RESTAURANT_SYSTEM_TEMPLATE = """You are FuelUp's Nutrition Coach for youth soccer athletes ages 9-17.
 
 The athlete/parent wants restaurant ideas near their current location. Below are real nearby restaurants from a live restaurant-search provider — this is DISCOVERY DATA ONLY (name, distance, rating, hours, price). You do NOT have menu contents for any of these — no dish names, no ingredients, no calorie/macro data.
-{timing_block}
+{location_note}{timing_block}
 NEARBY CANDIDATES:
 {candidates_text}
 
@@ -598,7 +598,8 @@ STRICT RULES — follow these exactly:
 6. NEVER recommend supplements for athletes under 18.
 7. Be transparent this is a restaurant-search result, not menu-verified — one brief phrase is enough. If they want specific menu picks for one of these, invite them to ask about that restaurant by name next.
 8. Educational food guidance only — never medical advice, never diagnose.
-9. Format as **Markdown**: 2-5 short recommendations, bold the restaurant names. No headings, tables, or code blocks."""
+9. If a LOCATION NOTE appears above, open your answer with one brief, honest sentence saying you couldn't find that specific place and these options are near their current location instead — never silently substitute the location without saying so.
+10. Format as **Markdown**: 2-5 short recommendations, bold the restaurant names. No headings, tables, or code blocks."""
 
 
 def _derive_meal_period(now: str | None) -> str | None:
@@ -621,6 +622,7 @@ def _answer_with_nearby_restaurants(
     longitude: float | None,
     meal_period: str | None = None,
     persona: str | None = None,
+    unresolved_location_text: str | None = None,
 ) -> dict:
     first_name = athlete.get("first_name", "there")
 
@@ -690,7 +692,15 @@ def _answer_with_nearby_restaurants(
             f"(a fuller meal for lunch/dinner, something quicker and lighter for a snack window).\n"
         )
 
+    location_note = ""
+    if unresolved_location_text:
+        location_note = (
+            f'\nLOCATION NOTE: The athlete asked for "{unresolved_location_text}", but that location '
+            "could not be found — the candidates below are near their current device location instead.\n"
+        )
+
     system_prompt = _NEARBY_RESTAURANT_SYSTEM_TEMPLATE.format(
+        location_note=location_note,
         timing_block=timing_block,
         candidates_text=candidates_text,
         allergy_block=allergy_block,
@@ -924,6 +934,7 @@ def answer_with_knowledge(
     if route["path"] == "restaurant_nearby":
         resolved_lat, resolved_lon = latitude, longitude
         location_text = route.get("location_text")
+        unresolved_location_text = None
         if location_text:
             from api.services.weather import geocode_location
             try:
@@ -933,6 +944,15 @@ def answer_with_knowledge(
                 geocoded = None
             if geocoded:
                 resolved_lat, resolved_lon = geocoded
+            else:
+                # A real place OpenWeatherMap's geocoder doesn't recognize
+                # (e.g. a valid but obscure zip not in its database) must
+                # never silently become a search near the athlete's actual
+                # device location without saying so — that reads as wrong
+                # information, not a graceful fallback. Falling back is
+                # still the right call (a useful answer beats a dead end),
+                # but the athlete has to be told it happened.
+                unresolved_location_text = location_text
         # Use the bare `question`, not `contextual_question` — the latter
         # prefixes prior-conversation turns, and _answer_with_nearby_restaurants
         # feeds this straight to the LLM as its user message alongside a FRESH
@@ -945,6 +965,7 @@ def answer_with_knowledge(
         return _answer_with_nearby_restaurants(
             question, athlete, resolved_lat, resolved_lon,
             meal_period=_derive_meal_period(now), persona=persona,
+            unresolved_location_text=unresolved_location_text,
         )
 
     category_for_recipe = None
