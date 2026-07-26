@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
 from typing import Optional
 import json
@@ -8,6 +8,7 @@ from api.database import get_conn
 from api.services.knowledge.ingest import ingest_file, ingest_all
 from api.services.knowledge.answer import answer_with_knowledge
 from api.services.knowledge.approved_sources import list_sources
+from api.services.session_auth import require_session, assert_owns_athlete
 
 router = APIRouter()
 
@@ -105,10 +106,11 @@ def coach_health():
 
 
 @router.post("/ask")
-def ask_knowledge(body: AskRequest):
+def ask_knowledge(body: AskRequest, identity=Depends(require_session)):
     """Nutrition Coach — answers from approved sports nutrition sources with citations."""
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, body.athlete_id, conn)
         athlete = conn.execute(
             "SELECT * FROM athletes WHERE id = ?", (body.athlete_id,)
         ).fetchone()

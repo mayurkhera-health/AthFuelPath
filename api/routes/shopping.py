@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from api.database import get_conn
 from api.models import ShoppingItemCreate, ShoppingItemPatch, ShoppingPref, PersonalFood, FoodSubmission
 from api.services.shopping_service import build_essentials, build_share_text, CATEGORY_ORDER, CATEGORY_LABELS
+from api.services.session_auth import require_session, assert_owns_athlete
 
 router = APIRouter()
 
@@ -20,9 +21,12 @@ def _get_or_create_list(athlete_id: int, week_start: str, conn) -> int:
 
 
 @router.get("/essentials")
-def get_essentials(athlete_id: int = Query(...), week_start: str = Query(...)):
+def get_essentials(
+    athlete_id: int = Query(...), week_start: str = Query(...), identity=Depends(require_session),
+):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         if not conn.execute("SELECT id FROM athletes WHERE id = ?", (athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
         return build_essentials(athlete_id, week_start, conn)
@@ -31,9 +35,10 @@ def get_essentials(athlete_id: int = Query(...), week_start: str = Query(...)):
 
 
 @router.get("/list")
-def get_list(athlete_id: int = Query(...), week_start: str = Query(...)):
+def get_list(athlete_id: int = Query(...), week_start: str = Query(...), identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         if not conn.execute("SELECT id FROM athletes WHERE id = ?", (athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
         list_id = _get_or_create_list(athlete_id, week_start, conn)
@@ -66,9 +71,10 @@ def get_list(athlete_id: int = Query(...), week_start: str = Query(...)):
 
 
 @router.post("/list/items", status_code=201)
-def add_item(data: ShoppingItemCreate):
+def add_item(data: ShoppingItemCreate, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, data.athlete_id, conn)
         if not conn.execute("SELECT id FROM athletes WHERE id = ?", (data.athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
         list_id = _get_or_create_list(data.athlete_id, data.week_start, conn)
@@ -92,11 +98,17 @@ def add_item(data: ShoppingItemCreate):
 
 
 @router.patch("/list/items/{item_id}")
-def patch_item(item_id: int, data: ShoppingItemPatch):
+def patch_item(item_id: int, data: ShoppingItemPatch, identity=Depends(require_session)):
     conn = get_conn()
     try:
-        if not conn.execute("SELECT id FROM shopping_list_items WHERE id = ?", (item_id,)).fetchone():
+        owner_row = conn.execute(
+            "SELECT sl.athlete_id FROM shopping_list_items sli "
+            "JOIN shopping_lists sl ON sl.id = sli.list_id WHERE sli.id = ?",
+            (item_id,),
+        ).fetchone()
+        if not owner_row:
             raise HTTPException(404, "Item not found.")
+        assert_owns_athlete(identity, dict(owner_row)["athlete_id"], conn)
         conn.execute(
             "UPDATE shopping_list_items SET checked = ? WHERE id = ?",
             (int(data.checked), item_id),
@@ -113,11 +125,17 @@ def patch_item(item_id: int, data: ShoppingItemPatch):
 
 
 @router.delete("/list/items/{item_id}")
-def delete_item(item_id: int):
+def delete_item(item_id: int, identity=Depends(require_session)):
     conn = get_conn()
     try:
-        if not conn.execute("SELECT id FROM shopping_list_items WHERE id = ?", (item_id,)).fetchone():
+        owner_row = conn.execute(
+            "SELECT sl.athlete_id FROM shopping_list_items sli "
+            "JOIN shopping_lists sl ON sl.id = sli.list_id WHERE sli.id = ?",
+            (item_id,),
+        ).fetchone()
+        if not owner_row:
             raise HTTPException(404, "Item not found.")
+        assert_owns_athlete(identity, dict(owner_row)["athlete_id"], conn)
         conn.execute("DELETE FROM shopping_list_items WHERE id = ?", (item_id,))
         conn.commit()
         return {"deleted": True, "id": item_id}
@@ -126,9 +144,10 @@ def delete_item(item_id: int):
 
 
 @router.post("/prefs")
-def set_pref(data: ShoppingPref):
+def set_pref(data: ShoppingPref, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, data.athlete_id, conn)
         if not conn.execute("SELECT id FROM athletes WHERE id = ?", (data.athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
         conn.execute(
@@ -146,9 +165,10 @@ def set_pref(data: ShoppingPref):
 
 
 @router.post("/my-foods", status_code=201)
-def save_personal_food(data: PersonalFood):
+def save_personal_food(data: PersonalFood, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, data.athlete_id, conn)
         if not conn.execute("SELECT id FROM athletes WHERE id = ?", (data.athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
         conn.execute(

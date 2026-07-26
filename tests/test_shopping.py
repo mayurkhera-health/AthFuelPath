@@ -308,6 +308,7 @@ def test_share_text_unknown_category_is_silently_dropped():
 
 from fastapi.testclient import TestClient
 from api.main import app
+from tests.conftest import auth_headers
 
 
 @pytest.fixture
@@ -342,7 +343,10 @@ def _make_athlete_route(client, suffix="r") -> int:
 
 def test_get_essentials_rest_week(client):
     aid = _make_athlete_route(client, "re1")
-    resp = client.get(f"/api/shopping/essentials?athlete_id={aid}&week_start=2026-06-16")
+    resp = client.get(
+        f"/api/shopping/essentials?athlete_id={aid}&week_start=2026-06-16",
+        headers=auth_headers("athlete", athlete_id=aid),
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert "groups" in data
@@ -364,7 +368,10 @@ def test_get_essentials_header_matches_events(client):
         "VALUES (?, 'Game', 'game', '2026-06-21', '10:00', 1.5)", (aid,)
     )
     c.commit(); c.close()
-    resp = client.get(f"/api/shopping/essentials?athlete_id={aid}&week_start=2026-06-16")
+    resp = client.get(
+        f"/api/shopping/essentials?athlete_id={aid}&week_start=2026-06-16",
+        headers=auth_headers("athlete", athlete_id=aid),
+    )
     data = resp.json()
     assert data["header"]["practice_count"] == 1
     assert data["header"]["game_count"] == 1
@@ -374,13 +381,14 @@ def test_get_essentials_header_matches_events(client):
 
 def test_add_item_and_get_list(client):
     aid = _make_athlete_route(client, "re3")
+    headers = auth_headers("athlete", athlete_id=aid)
     resp = client.post("/api/shopping/list/items", json={
         "athlete_id": aid, "week_start": "2026-06-16",
         "name": "Bananas", "category": "pre_fuel", "source": "suggested",
-    })
+    }, headers=headers)
     assert resp.status_code == 201
     item_id = resp.json()["id"]
-    resp2 = client.get(f"/api/shopping/list?athlete_id={aid}&week_start=2026-06-16")
+    resp2 = client.get(f"/api/shopping/list?athlete_id={aid}&week_start=2026-06-16", headers=headers)
     assert resp2.status_code == 200
     items = [i for g in resp2.json()["groups"] for i in g["items"]]
     assert any(i["id"] == item_id and i["name"] == "Bananas" for i in items)
@@ -388,48 +396,52 @@ def test_add_item_and_get_list(client):
 
 def test_add_item_idempotent(client):
     aid = _make_athlete_route(client, "re4")
+    headers = auth_headers("athlete", athlete_id=aid)
     payload = {"athlete_id": aid, "week_start": "2026-06-16",
                "name": "Bananas", "category": "pre_fuel", "source": "suggested"}
-    client.post("/api/shopping/list/items", json=payload)
-    client.post("/api/shopping/list/items", json=payload)
-    resp = client.get(f"/api/shopping/list?athlete_id={aid}&week_start=2026-06-16")
+    client.post("/api/shopping/list/items", json=payload, headers=headers)
+    client.post("/api/shopping/list/items", json=payload, headers=headers)
+    resp = client.get(f"/api/shopping/list?athlete_id={aid}&week_start=2026-06-16", headers=headers)
     items = [i for g in resp.json()["groups"] for i in g["items"] if i["name"] == "Bananas"]
     assert len(items) == 1
 
 
 def test_check_uncheck_item(client):
     aid = _make_athlete_route(client, "re5")
+    headers = auth_headers("athlete", athlete_id=aid)
     resp = client.post("/api/shopping/list/items", json={
         "athlete_id": aid, "week_start": "2026-06-16",
         "name": "Bananas", "category": "pre_fuel", "source": "suggested",
-    })
+    }, headers=headers)
     item_id = resp.json()["id"]
-    patch = client.patch(f"/api/shopping/list/items/{item_id}", json={"checked": True})
+    patch = client.patch(f"/api/shopping/list/items/{item_id}", json={"checked": True}, headers=headers)
     assert patch.status_code == 200
     assert patch.json()["checked"] is True
-    patch2 = client.patch(f"/api/shopping/list/items/{item_id}", json={"checked": False})
+    patch2 = client.patch(f"/api/shopping/list/items/{item_id}", json={"checked": False}, headers=headers)
     assert patch2.json()["checked"] is False
 
 
 def test_delete_item(client):
     aid = _make_athlete_route(client, "re6")
+    headers = auth_headers("athlete", athlete_id=aid)
     resp = client.post("/api/shopping/list/items", json={
         "athlete_id": aid, "week_start": "2026-06-16",
         "name": "Bananas", "category": "pre_fuel", "source": "suggested",
-    })
+    }, headers=headers)
     item_id = resp.json()["id"]
-    del_resp = client.delete(f"/api/shopping/list/items/{item_id}")
+    del_resp = client.delete(f"/api/shopping/list/items/{item_id}", headers=headers)
     assert del_resp.status_code == 200
-    resp2 = client.get(f"/api/shopping/list?athlete_id={aid}&week_start=2026-06-16")
+    resp2 = client.get(f"/api/shopping/list?athlete_id={aid}&week_start=2026-06-16", headers=headers)
     items = [i for g in resp2.json()["groups"] for i in g["items"]]
     assert not any(i["id"] == item_id for i in items)
 
 
 def test_set_pref_disliked_removes_from_essentials(client):
     aid = _make_athlete_route(client, "re7")
+    headers = auth_headers("athlete", athlete_id=aid)
     client.post("/api/shopping/prefs", json={
         "athlete_id": aid, "food_name": "Bananas", "preference": "disliked"
-    })
+    }, headers=headers)
     from api.database import get_conn as _gc
     c = _gc()
     c.execute(
@@ -437,14 +449,17 @@ def test_set_pref_disliked_removes_from_essentials(client):
         "VALUES (?, 'Prac', 'practice', '2026-06-16', '16:00', 1.5)", (aid,)
     )
     c.commit(); c.close()
-    ess = client.get(f"/api/shopping/essentials?athlete_id={aid}&week_start=2026-06-16")
+    ess = client.get(f"/api/shopping/essentials?athlete_id={aid}&week_start=2026-06-16", headers=headers)
     all_names = [f["name"] for g in ess.json()["groups"] for f in g["foods"]]
     assert "Bananas" not in all_names
 
 
 def test_game_day_has_game_flag(client):
     aid_no_game = _make_athlete_route(client, "re8")
-    resp = client.get(f"/api/shopping/essentials?athlete_id={aid_no_game}&week_start=2026-06-16")
+    resp = client.get(
+        f"/api/shopping/essentials?athlete_id={aid_no_game}&week_start=2026-06-16",
+        headers=auth_headers("athlete", athlete_id=aid_no_game),
+    )
     assert resp.json()["header"]["has_game"] is False
 
     aid_game = _make_athlete_route(client, "re9")
@@ -455,15 +470,19 @@ def test_game_day_has_game_flag(client):
         "VALUES (?, 'Game', 'game', '2026-06-21', '10:00', 1.5)", (aid_game,)
     )
     c.commit(); c.close()
-    resp2 = client.get(f"/api/shopping/essentials?athlete_id={aid_game}&week_start=2026-06-16")
+    resp2 = client.get(
+        f"/api/shopping/essentials?athlete_id={aid_game}&week_start=2026-06-16",
+        headers=auth_headers("athlete", athlete_id=aid_game),
+    )
     assert resp2.json()["header"]["has_game"] is True
 
 
 def test_my_foods_appears_in_suggestions(client):
     aid = _make_athlete_route(client, "re10")
+    headers = auth_headers("athlete", athlete_id=aid)
     client.post("/api/shopping/my-foods", json={
         "athlete_id": aid, "name": "Homemade energy balls", "category": "pre_fuel"
-    })
+    }, headers=headers)
     from api.database import get_conn as _gc
     c = _gc()
     c.execute(
@@ -471,7 +490,7 @@ def test_my_foods_appears_in_suggestions(client):
         "VALUES (?, 'Prac', 'practice', '2026-06-16', '16:00', 1.5)", (aid,)
     )
     c.commit(); c.close()
-    ess = client.get(f"/api/shopping/essentials?athlete_id={aid}&week_start=2026-06-16")
+    ess = client.get(f"/api/shopping/essentials?athlete_id={aid}&week_start=2026-06-16", headers=headers)
     all_names = [f["name"] for g in ess.json()["groups"] for f in g["foods"]]
     assert "Homemade energy balls" in all_names
 
@@ -483,7 +502,10 @@ def test_suggest_food_lands_as_pending(client):
     })
     assert resp.status_code == 201
     aid2 = _make_athlete_route(client, "re12")
-    ess = client.get(f"/api/shopping/essentials?athlete_id={aid2}&week_start=2026-06-16")
+    ess = client.get(
+        f"/api/shopping/essentials?athlete_id={aid2}&week_start=2026-06-16",
+        headers=auth_headers("athlete", athlete_id=aid2),
+    )
     all_names = [f["name"] for g in ess.json()["groups"] for f in g["foods"]]
     assert "Fancy new bar" not in all_names
 

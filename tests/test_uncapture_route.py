@@ -7,6 +7,7 @@ changes the window engine and would break the legacy-engine tests if it leaked.
 
 import pytest
 from fastapi.testclient import TestClient
+from tests.conftest import auth_headers
 
 TODAY = "2026-06-23"
 _n = {"i": 0}
@@ -55,17 +56,18 @@ def _tappable_slot(view):
 
 def test_delete_endpoint_unconfirms_and_returns_refreshed_today(client):
     aid = _athlete_with_game(client)
-    view = client.get(f"/api/athletes/{aid}/today", params={"date": TODAY}).json()
+    headers = auth_headers("athlete", athlete_id=aid)
+    view = client.get(f"/api/athletes/{aid}/today", params={"date": TODAY}, headers=headers).json()
     slot = _tappable_slot(view)
 
     # confirm via capture
     r = client.post(f"/api/athletes/{aid}/windows/{slot}/capture",
-                    data={"method": "text", "text": "x", "log_date": TODAY})
+                    data={"method": "text", "text": "x", "log_date": TODAY}, headers=headers)
     assert r.status_code == 200
     assert {w["slot_name"]: w["logged"] for w in r.json()["windows"]}[slot] is True
 
     # un-confirm via DELETE → returns refreshed Today with the window reversed
-    d = client.delete(f"/api/athletes/{aid}/windows/{slot}/capture", params={"log_date": TODAY})
+    d = client.delete(f"/api/athletes/{aid}/windows/{slot}/capture", params={"log_date": TODAY}, headers=headers)
     assert d.status_code == 200
     body = d.json()
     assert {w["slot_name"]: w["logged"] for w in body["windows"]}[slot] is False
@@ -76,7 +78,7 @@ def test_delete_endpoint_unconfirms_and_returns_refreshed_today(client):
 def test_delete_is_idempotent_on_unconfirmed_window(client):
     aid = _athlete_with_game(client)
     d = client.delete(f"/api/athletes/{aid}/windows/everyday_breakfast/capture",
-                      params={"log_date": TODAY})
+                      params={"log_date": TODAY}, headers=auth_headers("athlete", athlete_id=aid))
     assert d.status_code == 200  # no-op, not an error
 
 
@@ -84,21 +86,22 @@ def test_confirm_tap_drives_gauge_and_delete_decrements(client):
     """End-to-end: the LIVE confirm endpoint (POST /confirmations) fills the gauge,
     and the existing DELETE /confirmations decrements it (Option A union)."""
     aid = _athlete_with_game(client)
-    view = client.get(f"/api/athletes/{aid}/today", params={"date": TODAY}).json()
+    headers = auth_headers("athlete", athlete_id=aid)
+    view = client.get(f"/api/athletes/{aid}/today", params={"date": TODAY}, headers=headers).json()
     slot = _tappable_slot(view)
 
     # confirm via the live Today endpoint (the button the app already uses)
     r = client.post(f"/api/athletes/{aid}/confirmations",
-                    json={"window_key": slot, "window_type": "pre_fuel", "log_date": TODAY})
+                    json={"window_key": slot, "window_type": "pre_fuel", "log_date": TODAY}, headers=headers)
     assert r.status_code == 200, r.text
-    after_confirm = client.get(f"/api/athletes/{aid}/today", params={"date": TODAY}).json()
+    after_confirm = client.get(f"/api/athletes/{aid}/today", params={"date": TODAY}, headers=headers).json()
     assert {w["slot_name"]: w["confirmed"]
             for w in after_confirm["fuel_targets"]["windows"]}[slot] is True
 
     # un-confirm via the existing DELETE /confirmations (no new endpoint needed)
     d = client.delete(f"/api/athletes/{aid}/confirmations",
-                      params={"window_key": slot, "log_date": TODAY})
+                      params={"window_key": slot, "log_date": TODAY}, headers=headers)
     assert d.status_code == 200
-    after_delete = client.get(f"/api/athletes/{aid}/today", params={"date": TODAY}).json()
+    after_delete = client.get(f"/api/athletes/{aid}/today", params={"date": TODAY}, headers=headers).json()
     assert {w["slot_name"]: w["confirmed"]
             for w in after_delete["fuel_targets"]["windows"]}[slot] is False

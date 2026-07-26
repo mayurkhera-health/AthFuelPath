@@ -4,8 +4,9 @@ import uuid
 import base64
 from datetime import date as dt_date, timedelta
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from api.database import get_conn
+from api.services.session_auth import require_session, assert_owns_athlete
 from api.services import nutrition_calc
 from api.services.today_service import (
     compute_logged_totals,
@@ -67,11 +68,12 @@ async def _store_meal_audio(audio: UploadFile, athlete_id: int, slot_name: str) 
 
 
 @router.get("/{athlete_id}/meal-plan")
-def get_day_timeline(athlete_id: int, date: str = None, v2: bool = False):
+def get_day_timeline(athlete_id: int, date: str = None, v2: bool = False, identity=Depends(require_session)):
     """Day Timeline for the Meal Plan tab. Single engine: wraps compute_meal_slots."""
     plan_date = date or str(dt_date.today())
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         if not conn.execute("SELECT id FROM athletes WHERE id = ?", (athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found")
 
@@ -107,9 +109,13 @@ def get_day_timeline(athlete_id: int, date: str = None, v2: bool = False):
 
 
 @router.get("/{athlete_id}/today")
-def get_today_view(athlete_id: int, date: str = Query(None), v2: bool = False, now: str = Query(None)):
+def get_today_view(
+    athlete_id: int, date: str = Query(None), v2: bool = False, now: str = Query(None),
+    identity=Depends(require_session),
+):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         from datetime import datetime as _dt
         client_now = None
         if now:
@@ -134,6 +140,7 @@ async def capture_window(
     photo: UploadFile | None = File(None),
     audio: UploadFile | None = File(None),
     log_date: str | None = Form(None),
+    identity=Depends(require_session),
 ):
     """
     Completes a fuel window — photo, voice, or text.
@@ -141,6 +148,7 @@ async def capture_window(
     """
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         photo_url = thumb_url = audio_url = None
         if method == "photo" and photo is not None:
             photo_url, thumb_url = await _store_meal_photo(photo, athlete_id, slot_name)
@@ -173,6 +181,7 @@ def uncapture_window(
     athlete_id: int,
     slot_name: str,
     log_date: str | None = Query(None),
+    identity=Depends(require_session),
 ):
     """Un-confirm a fuel window (reverse a mis-tap). Mirrors the capture endpoint:
     removes the confirmation for (athlete, slot, local date) and returns the
@@ -180,6 +189,7 @@ def uncapture_window(
     un-confirming an already-unconfirmed window is a no-op, not an error."""
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         remove_window_capture(
             athlete_id=athlete_id,
             window_id=slot_name,
@@ -195,9 +205,10 @@ def uncapture_window(
 
 
 @router.get("/{athlete_id}/daily-summary")
-def get_daily_summary(athlete_id: int, date: str = None):
+def get_daily_summary(athlete_id: int, date: str = None, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
@@ -306,9 +317,10 @@ def get_daily_summary(athlete_id: int, date: str = None):
 
 
 @router.get("/{athlete_id}/weekly-summary")
-def get_weekly_summary(athlete_id: int, week_start: str = None):
+def get_weekly_summary(athlete_id: int, week_start: str = None, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")

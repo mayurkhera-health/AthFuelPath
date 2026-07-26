@@ -1,12 +1,13 @@
 from datetime import date as _date, timedelta
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from api.models import RecipeSwapRequest, RecipeGenerateRequest
 from api.services import recipe_db, claude_ai, recipe_generator
 from api.services.recipe_db import PROFILE_TO_DB_CATEGORIES
 from api.database import get_conn
 from api.utils.week import get_week_start as _get_week_start
+from api.services.session_auth import require_session, assert_owns_athlete
 
 router = APIRouter()
 
@@ -182,11 +183,14 @@ def generate_recipe(req: RecipeGenerateRequest):
 # Must be registered before /{recipe_id} — FastAPI matches in order and /for-window
 # is a single-segment path that would otherwise be caught by the parameterised route.
 @router.get("/for-window")
-def get_recipes_for_window(athlete_id: int = Query(...), window_key: str = Query(...)):
+def get_recipes_for_window(
+    athlete_id: int = Query(...), window_key: str = Query(...), identity=Depends(require_session),
+):
     if window_key not in PROFILE_TO_DB_CATEGORIES:
         raise HTTPException(400, f"Unrecognised window_key '{window_key}'.")
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
@@ -199,9 +203,12 @@ def get_recipes_for_window(athlete_id: int = Query(...), window_key: str = Query
 
 
 @router.get("/selections/week")
-def get_week_selections(athlete_id: int = Query(...), week_start: str = Query(...)):
+def get_week_selections(
+    athlete_id: int = Query(...), week_start: str = Query(...), identity=Depends(require_session),
+):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         rows = conn.execute(
             "SELECT * FROM recipe_selections WHERE athlete_id = ? AND week_start = ?"
             " ORDER BY selection_date, fueling_window_key",
@@ -226,9 +233,10 @@ class _SelectionCreate(BaseModel):
 
 
 @router.post("/selections", status_code=201)
-def create_selection(data: _SelectionCreate):
+def create_selection(data: _SelectionCreate, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, data.athlete_id, conn)
         if not conn.execute("SELECT id FROM athletes WHERE id = ?", (data.athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
         if not recipe_db.get_recipe_by_id(data.recipe_id.upper()):
@@ -254,9 +262,10 @@ def create_selection(data: _SelectionCreate):
 
 
 @router.delete("/selections/{selection_id}")
-def delete_selection(selection_id: int, athlete_id: int = Query(...)):
+def delete_selection(selection_id: int, athlete_id: int = Query(...), identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         row = conn.execute(
             "SELECT id FROM recipe_selections WHERE id = ? AND athlete_id = ?",
             (selection_id, athlete_id),
@@ -276,9 +285,10 @@ class _SyncGroceryList(BaseModel):
 
 
 @router.post("/selections/sync-grocery-list")
-def sync_grocery_list(data: _SyncGroceryList):
+def sync_grocery_list(data: _SyncGroceryList, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, data.athlete_id, conn)
         rows = conn.execute(
             "SELECT * FROM recipe_selections WHERE athlete_id = ? AND week_start = ?",
             (data.athlete_id, data.week_start),
@@ -371,10 +381,13 @@ _CATEGORY_ICONS = {
 
 
 @router.get("/grocery-list")
-def get_grocery_list(athlete_id: int = Query(...), week_start: str = Query(...)):
+def get_grocery_list(
+    athlete_id: int = Query(...), week_start: str = Query(...), identity=Depends(require_session),
+):
     from collections import defaultdict
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         list_row = conn.execute(
             "SELECT id FROM recipe_lists WHERE athlete_id = ? AND week_start = ?",
             (athlete_id, week_start),
@@ -439,13 +452,17 @@ class _ToggleItem(BaseModel):
 
 
 @router.patch("/grocery-list/items/{item_id}")
-def toggle_grocery_list_item(item_id: int, data: _ToggleItem):
+def toggle_grocery_list_item(item_id: int, data: _ToggleItem, identity=Depends(require_session)):
     conn = get_conn()
     try:
-        if not conn.execute(
-            "SELECT id FROM recipe_list_items WHERE id = ?", (item_id,)
-        ).fetchone():
+        owner_row = conn.execute(
+            "SELECT rl.athlete_id FROM recipe_list_items rli "
+            "JOIN recipe_lists rl ON rl.id = rli.list_id WHERE rli.id = ?",
+            (item_id,),
+        ).fetchone()
+        if not owner_row:
             raise HTTPException(404, f"Item {item_id} not found.")
+        assert_owns_athlete(identity, dict(owner_row)["athlete_id"], conn)
         conn.execute(
             "UPDATE recipe_list_items SET checked = ? WHERE id = ?",
             (int(data.checked), item_id),

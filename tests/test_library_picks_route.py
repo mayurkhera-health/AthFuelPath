@@ -1,7 +1,8 @@
 """Integration tests for GET /api/library/picks/{athlete_id} — "Alex's Picks
 For You". Covers the two fixes: (1) picks are now generated lazily on read
 instead of requiring a manual admin-key curl per athlete per week, and
-(2) the caller must prove they know the athlete's real parent_id."""
+(2) the caller must prove ownership via a session token — a client-supplied
+parent_id query param is spoofable and is no longer trusted at all."""
 
 import os
 os.environ["DB_PATH"] = ":memory:"
@@ -13,6 +14,7 @@ from db.setup import init_db
 from api.services.db_migrations import run_all
 from api.database import get_conn
 from api.main import app
+from tests.conftest import auth_headers
 
 
 @pytest.fixture
@@ -58,7 +60,7 @@ def test_picks_generate_lazily_on_first_read(client):
     athlete_id, parent_id = _make_athlete(client)
     _seed_article()
 
-    r = client.get(f"/api/library/picks/{athlete_id}", params={"parent_id": parent_id})
+    r = client.get(f"/api/library/picks/{athlete_id}", headers=auth_headers("parent", parent_id=parent_id))
     assert r.status_code == 200, r.text
     assert len(r.json()) == 1
     assert r.json()[0]["alex_reason"]
@@ -67,30 +69,40 @@ def test_picks_generate_lazily_on_first_read(client):
 def test_picks_are_idempotent_across_repeated_reads(client):
     athlete_id, parent_id = _make_athlete(client)
     _seed_article()
+    headers = auth_headers("parent", parent_id=parent_id)
 
-    first = client.get(f"/api/library/picks/{athlete_id}", params={"parent_id": parent_id}).json()
-    second = client.get(f"/api/library/picks/{athlete_id}", params={"parent_id": parent_id}).json()
+    first = client.get(f"/api/library/picks/{athlete_id}", headers=headers).json()
+    second = client.get(f"/api/library/picks/{athlete_id}", headers=headers).json()
     assert first == second
     assert len(second) == 1  # not duplicated on the second read
 
 
-def test_wrong_parent_id_403s(client):
+def test_athlete_token_can_read_own_picks(client):
+    athlete_id, _ = _make_athlete(client)
+    _seed_article()
+
+    r = client.get(f"/api/library/picks/{athlete_id}", headers=auth_headers("athlete", athlete_id=athlete_id))
+    assert r.status_code == 200, r.text
+
+
+def test_unrelated_parent_token_403s(client):
     athlete_id, real_parent_id = _make_athlete(client)
     _, other_parent_id = _make_athlete(client)
     _seed_article()
 
-    r = client.get(f"/api/library/picks/{athlete_id}", params={"parent_id": other_parent_id})
+    r = client.get(f"/api/library/picks/{athlete_id}", headers=auth_headers("parent", parent_id=other_parent_id))
     assert r.status_code == 403
 
 
-def test_missing_parent_id_422s(client):
+def test_missing_session_401s(client):
     athlete_id, _ = _make_athlete(client)
     r = client.get(f"/api/library/picks/{athlete_id}")
-    assert r.status_code == 422
+    assert r.status_code == 401
 
 
 def test_unknown_athlete_id_404s(client):
-    r = client.get("/api/library/picks/999999", params={"parent_id": 1})
+    _, parent_id = _make_athlete(client)
+    r = client.get("/api/library/picks/999999", headers=auth_headers("parent", parent_id=parent_id))
     assert r.status_code == 404
 
 
