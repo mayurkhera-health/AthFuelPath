@@ -8,6 +8,7 @@ from db.setup import init_db
 from api.services.db_migrations import run_all
 from api.database import get_conn
 from api.main import app
+from tests.conftest import auth_headers
 
 
 @pytest.fixture
@@ -62,7 +63,10 @@ def test_patch_tags_activity_type(client):
         "athlete_id": aid, "event_name": "Mystery", "event_type": "practice",
         "event_date": "2026-06-27", "start_time": "15:00", "duration_hours": 1.0,
     }).json()
-    r = client.patch(f"/api/events/{ev['id']}/activity-type", json={"activity_type": "game"})
+    r = client.patch(
+        f"/api/events/{ev['id']}/activity-type", json={"activity_type": "game"},
+        headers=auth_headers("athlete", athlete_id=aid),
+    )
     assert r.status_code == 200, r.text
     assert r.json()["activity_type"] == "game"
 
@@ -73,11 +77,17 @@ def test_patch_rejects_invalid_activity_type(client):
         "athlete_id": aid, "event_name": "X", "event_type": "practice",
         "event_date": "2026-06-27", "start_time": "15:00", "duration_hours": 1.0,
     }).json()
-    r = client.patch(f"/api/events/{ev['id']}/activity-type", json={"activity_type": "bogus"})
+    r = client.patch(
+        f"/api/events/{ev['id']}/activity-type", json={"activity_type": "bogus"},
+        headers=auth_headers("athlete", athlete_id=aid),
+    )
     assert r.status_code == 422
 
 
 def test_patch_unknown_event_returns_404(client):
-    _make_parent_and_athlete(client)
-    r = client.patch("/api/events/99999/activity-type", json={"activity_type": "game"})
+    aid = _make_parent_and_athlete(client)
+    r = client.patch(
+        "/api/events/99999/activity-type", json={"activity_type": "game"},
+        headers=auth_headers("athlete", athlete_id=aid),
+    )
     assert r.status_code == 404

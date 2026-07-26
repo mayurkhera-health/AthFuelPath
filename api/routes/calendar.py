@@ -5,18 +5,19 @@ Stores the subscription URL on the athlete row; the recurring job in
 api/services/ics_sync.py does the actual fetch+reconcile every 6 hours. Saving a
 URL also runs one immediate sync so the athlete's schedule fills in right away.
 
-No auth headers — identity-by-ID like the rest of the API (athlete_id in path).
 Mounted at prefix /api/athletes, so the routes are /{athlete_id}/calendar/...
+Every route requires a session token that owns athlete_id (see session_auth.py).
 """
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 
 from api.database import get_conn
 from api.services import ics_sync
+from api.services.session_auth import require_session, assert_owns_athlete
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -55,11 +56,12 @@ def _require_athlete(conn, athlete_id: int):
 
 
 @router.post("/{athlete_id}/calendar/sync-url")
-def save_sync_url(athlete_id: int, body: CalendarSyncRequest):
+def save_sync_url(athlete_id: int, body: CalendarSyncRequest, identity=Depends(require_session)):
     """Validate the feed (fetch + parse), store the URL, and run one immediate sync.
     A feed that can't be fetched/parsed is rejected 400 so a bad link isn't saved."""
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         athlete = _require_athlete(conn, athlete_id)
 
         # Validate by actually fetching + parsing — same path the job uses.
@@ -112,11 +114,12 @@ def save_sync_url(athlete_id: int, body: CalendarSyncRequest):
 
 
 @router.get("/{athlete_id}/calendar/sync-status")
-def sync_status(athlete_id: int):
+def sync_status(athlete_id: int, identity=Depends(require_session)):
     """Per-platform connection state + synced-event count + last sync time (derived
     from the most recent synced_at across that platform's events)."""
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         athlete = conn.execute(
             "SELECT byga_ics_url, playmetrics_ics_url FROM athletes WHERE id = ?",
             (athlete_id,),
@@ -143,13 +146,14 @@ def sync_status(athlete_id: int):
 
 
 @router.delete("/{athlete_id}/calendar/sync-url")
-def remove_sync_url(athlete_id: int, platform: str):
+def remove_sync_url(athlete_id: int, platform: str, identity=Depends(require_session)):
     """Disconnect a feed: clears the stored URL so syncing stops. Already-synced
     events are KEPT (removing a link shouldn't wipe the athlete's schedule)."""
     if platform not in _PLATFORMS:
         raise HTTPException(400, "platform must be 'byga' or 'playmetrics'")
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         _require_athlete(conn, athlete_id)
         conn.execute(
             f"UPDATE athletes SET {_COLUMN[platform]} = NULL WHERE id = ?", (athlete_id,)

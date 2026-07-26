@@ -1,11 +1,12 @@
 import sqlite3
 import urllib.request
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from typing import List
 from api.models import EventCreate, EventUpdate, EventResponse, ActivityTypePatch
 from api.database import get_conn
 from api.services.window_templates import on_event_added_or_changed
 from api.services.nutrition_calc import derive_intensity
+from api.services.session_auth import require_session, assert_owns_athlete
 
 router = APIRouter()
 
@@ -72,13 +73,14 @@ def create_event(data: EventCreate):
 
 
 @router.put("/{event_id}", response_model=EventResponse)
-def update_event(event_id: int, data: EventUpdate):
+def update_event(event_id: int, data: EventUpdate, identity=Depends(require_session)):
     conn = get_conn()
     try:
         row = conn.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Event not found.")
         existing = dict(row)
+        assert_owns_athlete(identity, existing["athlete_id"], conn)
 
         # Synced events are read-only — the club calendar is the source of truth, and
         # the 6-hourly sync would overwrite any local edit anyway. Manual events (the
@@ -128,12 +130,13 @@ def update_event(event_id: int, data: EventUpdate):
 
 
 @router.patch("/{event_id}/activity-type", response_model=EventResponse)
-def tag_activity_type(event_id: int, data: ActivityTypePatch):
+def tag_activity_type(event_id: int, data: ActivityTypePatch, identity=Depends(require_session)):
     conn = get_conn()
     try:
         row = conn.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Event not found.")
+        assert_owns_athlete(identity, dict(row)["athlete_id"], conn)
         conn.execute(
             "UPDATE events SET activity_type = ? WHERE id = ?",
             (data.activity_type, event_id),
@@ -147,9 +150,10 @@ def tag_activity_type(event_id: int, data: ActivityTypePatch):
 
 
 @router.get("/athlete/{athlete_id}", response_model=List[EventResponse])
-def get_athlete_events(athlete_id: int, date: str = None):
+def get_athlete_events(athlete_id: int, date: str = None, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         if date:
             rows = conn.execute(
                 "SELECT * FROM events WHERE athlete_id = ? AND event_date = ? ORDER BY start_time",
@@ -166,25 +170,27 @@ def get_athlete_events(athlete_id: int, date: str = None):
 
 
 @router.get("/{event_id}", response_model=EventResponse)
-def get_event(event_id: int):
+def get_event(event_id: int, identity=Depends(require_session)):
     conn = get_conn()
     try:
         row = conn.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Event not found.")
+        assert_owns_athlete(identity, dict(row)["athlete_id"], conn)
         return dict(row)
     finally:
         conn.close()
 
 
 @router.delete("/{event_id}")
-def delete_event(event_id: int):
+def delete_event(event_id: int, identity=Depends(require_session)):
     conn = get_conn()
     try:
         row = conn.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Event not found.")
         ev = dict(row)
+        assert_owns_athlete(identity, ev["athlete_id"], conn)
         # Synced events are read-only (see update_event) — deleting locally would just
         # let the next sync re-insert the event. Manual events remain deletable.
         if (ev.get("source") or "manual") != "manual":

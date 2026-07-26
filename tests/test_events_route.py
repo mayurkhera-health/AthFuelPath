@@ -10,6 +10,7 @@ from db.setup import init_db
 from api.services.db_migrations import run_all
 from api.database import get_conn
 from api.main import app
+from tests.conftest import auth_headers
 
 
 @pytest.fixture
@@ -74,7 +75,10 @@ def test_venue_location_round_trips(client):
     assert body["latitude"] == 37.78 and body["longitude"] == -121.98
 
     # Update only the coordinates; venue_name must be preserved (partial update).
-    u = client.put(f"/api/events/{body['id']}", json={"latitude": 38.0, "longitude": -122.0})
+    u = client.put(
+        f"/api/events/{body['id']}", json={"latitude": 38.0, "longitude": -122.0},
+        headers=auth_headers("athlete", athlete_id=aid),
+    )
     assert u.status_code == 200, u.text
     assert u.json()["latitude"] == 38.0
     assert u.json()["venue_name"] == "Mustang Soccer Complex"
@@ -106,20 +110,22 @@ def _insert_synced_event(aid, source, uid):
 def test_cannot_edit_synced_event(client):
     aid = _make_athlete(client, "Recreational")
     eid = _insert_synced_event(aid, "byga", "byga-123")
-    r = client.put(f"/api/events/{eid}", json={"event_name": "Hacked"})
+    headers = auth_headers("athlete", athlete_id=aid)
+    r = client.put(f"/api/events/{eid}", json={"event_name": "Hacked"}, headers=headers)
     assert r.status_code == 409, r.text
     assert "Cannot edit" in r.json()["detail"]
     # Unchanged in the DB.
-    assert client.get(f"/api/events/{eid}").json()["event_name"] == "Synced Game"
+    assert client.get(f"/api/events/{eid}", headers=headers).json()["event_name"] == "Synced Game"
 
 
 def test_cannot_delete_synced_event(client):
     aid = _make_athlete(client, "Recreational")
     eid = _insert_synced_event(aid, "playmetrics", "pm-456")
-    r = client.delete(f"/api/events/{eid}")
+    headers = auth_headers("athlete", athlete_id=aid)
+    r = client.delete(f"/api/events/{eid}", headers=headers)
     assert r.status_code == 409, r.text
     assert "Cannot delete" in r.json()["detail"]
-    assert client.get(f"/api/events/{eid}").status_code == 200  # still there
+    assert client.get(f"/api/events/{eid}", headers=headers).status_code == 200  # still there
 
 
 def test_can_edit_manual_event(client):
@@ -130,7 +136,10 @@ def test_can_edit_manual_event(client):
     })
     assert created.status_code == 201, created.text
     eid = created.json()["id"]
-    r = client.put(f"/api/events/{eid}", json={"event_name": "Private Coaching (moved)"})
+    r = client.put(
+        f"/api/events/{eid}", json={"event_name": "Private Coaching (moved)"},
+        headers=auth_headers("athlete", athlete_id=aid),
+    )
     assert r.status_code == 200, r.text
     assert r.json()["event_name"] == "Private Coaching (moved)"
 
@@ -143,7 +152,9 @@ def test_can_delete_manual_event(client):
     })
     assert created.status_code == 201, created.text
     eid = created.json()["id"]
-    assert client.delete(f"/api/events/{eid}").status_code == 200
+    assert client.delete(
+        f"/api/events/{eid}", headers=auth_headers("athlete", athlete_id=aid)
+    ).status_code == 200
 
 
 def test_targets_reflect_event_intensity(client):

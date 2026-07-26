@@ -1,8 +1,9 @@
 import json
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator, model_validator
 from api.database import get_conn
+from api.services.session_auth import require_session, assert_owns_athlete
 
 router = APIRouter()
 
@@ -42,10 +43,11 @@ class ItemIn(BaseModel):
 
 
 @router.post("/windows/{window_key}/items", status_code=201)
-def add_item(window_key: str, body: ItemIn):
+def add_item(window_key: str, body: ItemIn, identity=Depends(require_session)):
     recipe_json = json.dumps(body.recipe) if body.recipe is not None else None
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, body.athlete_id, conn)
         conn.execute(
             "INSERT INTO meal_plan_selections "
             "(athlete_id, plan_date, window_key, item_text, recipe_json, added_by) "
@@ -70,13 +72,15 @@ def add_item(window_key: str, body: ItemIn):
 
 
 @router.delete("/windows/{window_key}/items/{item_id}", status_code=204)
-def remove_item(window_key: str, item_id: int):
+def remove_item(window_key: str, item_id: int, identity=Depends(require_session)):
     conn = get_conn()
     try:
-        if not conn.execute(
-            "SELECT id FROM meal_plan_selections WHERE id = ?", (item_id,)
-        ).fetchone():
+        row = conn.execute(
+            "SELECT id, athlete_id FROM meal_plan_selections WHERE id = ?", (item_id,)
+        ).fetchone()
+        if not row:
             raise HTTPException(404, "Item not found")
+        assert_owns_athlete(identity, dict(row)["athlete_id"], conn)
         conn.execute("DELETE FROM meal_plan_selections WHERE id = ?", (item_id,))
         conn.commit()
         return None
