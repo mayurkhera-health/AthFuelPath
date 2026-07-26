@@ -11,6 +11,7 @@ from api.services.db_migrations import run_all
 from api.services import fueliq_service as fq
 from api.database import get_conn
 from api.main import app
+from tests.conftest import auth_headers
 
 
 @pytest.fixture
@@ -67,7 +68,7 @@ def _seed_question(conn, lesson_id, correct_option="b"):
 def test_hub_returns_disabled_when_flag_off(client, monkeypatch):
     monkeypatch.setenv("FUELIQ_ENABLED", "false")
     aid = _make_athlete(client)
-    r = client.get(f"/api/athletes/{aid}/hub")
+    r = client.get(f"/api/athletes/{aid}/hub", headers=auth_headers("athlete", athlete_id=aid))
     assert r.status_code == 200
     assert r.json() == {"enabled": False}
 
@@ -75,7 +76,7 @@ def test_hub_returns_disabled_when_flag_off(client, monkeypatch):
 def test_hub_returns_baseline_progress_when_enabled(client, monkeypatch):
     monkeypatch.setenv("FUELIQ_ENABLED", "true")
     aid = _make_athlete(client)
-    r = client.get(f"/api/athletes/{aid}/hub")
+    r = client.get(f"/api/athletes/{aid}/hub", headers=auth_headers("athlete", athlete_id=aid))
     assert r.status_code == 200
     body = r.json()
     assert body["enabled"] is True
@@ -93,7 +94,7 @@ def test_hub_returns_baseline_progress_when_enabled(client, monkeypatch):
 def test_lesson_detail_404_for_unknown_lesson(client, monkeypatch):
     monkeypatch.setenv("FUELIQ_ENABLED", "true")
     aid = _make_athlete(client)
-    r = client.get(f"/api/athletes/{aid}/lessons/999999")
+    r = client.get(f"/api/athletes/{aid}/lessons/999999", headers=auth_headers("athlete", athlete_id=aid))
     assert r.status_code == 404
     # Must be the business-logic 404 ("no such lesson"), not a generic
     # unmatched-route 404 — those are indistinguishable by status code alone.
@@ -106,7 +107,7 @@ def test_lesson_detail_403_when_level_locked(client, monkeypatch):
     conn = get_conn()
     lesson_id = _seed_lesson(conn, level=2)
     conn.close()
-    r = client.get(f"/api/athletes/{aid}/lessons/{lesson_id}")
+    r = client.get(f"/api/athletes/{aid}/lessons/{lesson_id}", headers=auth_headers("athlete", athlete_id=aid))
     assert r.status_code == 403
 
 
@@ -117,7 +118,7 @@ def test_lesson_detail_hides_correct_answers(client, monkeypatch):
     lesson_id = _seed_lesson(conn, level=1)
     _seed_question(conn, lesson_id)
     conn.close()
-    r = client.get(f"/api/athletes/{aid}/lessons/{lesson_id}")
+    r = client.get(f"/api/athletes/{aid}/lessons/{lesson_id}", headers=auth_headers("athlete", athlete_id=aid))
     assert r.status_code == 200
     body = r.json()
     assert body["title"] == "Test Lesson"
@@ -133,13 +134,14 @@ def test_complete_lesson_then_hub_reflects_new_score(client, monkeypatch):
     lesson_id = _seed_lesson(conn, level=1, points=10)
     conn.close()
 
-    r = client.post(f"/api/athletes/{aid}/lessons/{lesson_id}/complete", json={"perfect_quiz": True})
+    headers = auth_headers("athlete", athlete_id=aid)
+    r = client.post(f"/api/athletes/{aid}/lessons/{lesson_id}/complete", json={"perfect_quiz": True}, headers=headers)
     assert r.status_code == 200
     body = r.json()
     assert body["points_earned"] == 15
     assert body["already_completed"] is False
 
-    hub = client.get(f"/api/athletes/{aid}/hub").json()
+    hub = client.get(f"/api/athletes/{aid}/hub", headers=headers).json()
     assert hub["score"] == 65
 
 
@@ -151,7 +153,10 @@ def test_answer_question_returns_correctness_and_explanation(client, monkeypatch
     question_id = _seed_question(conn, lesson_id, correct_option="b")
     conn.close()
 
-    r = client.post(f"/api/athletes/{aid}/questions/{question_id}/answer", json={"selected_option": "a"})
+    r = client.post(
+        f"/api/athletes/{aid}/questions/{question_id}/answer", json={"selected_option": "a"},
+        headers=auth_headers("athlete", athlete_id=aid),
+    )
     assert r.status_code == 200
     body = r.json()
     assert body["correct"] is False
@@ -165,13 +170,14 @@ def test_badges_lists_all_defined_badges_locked_until_earned(client, monkeypatch
     lesson_id = _seed_lesson(conn)
     conn.close()
 
-    before = client.get(f"/api/athletes/{aid}/badges").json()
+    headers = auth_headers("athlete", athlete_id=aid)
+    before = client.get(f"/api/athletes/{aid}/badges", headers=headers).json()
     assert len(before["badges"]) == 8
     assert all(b["earned"] is False for b in before["badges"])
 
-    client.post(f"/api/athletes/{aid}/lessons/{lesson_id}/complete", json={"perfect_quiz": False})
+    client.post(f"/api/athletes/{aid}/lessons/{lesson_id}/complete", json={"perfect_quiz": False}, headers=headers)
 
-    after = client.get(f"/api/athletes/{aid}/badges").json()
+    after = client.get(f"/api/athletes/{aid}/badges", headers=headers).json()
     first_whistle = next(b for b in after["badges"] if b["key"] == "first_whistle")
     assert first_whistle["earned"] is True
 
@@ -182,7 +188,7 @@ def test_hub_includes_percentile_block(client, monkeypatch):
     # range is 13-17) so this athlete's cohort is guaranteed to be just
     # themself, regardless of test execution order in the shared in-memory DB.
     aid = _make_athlete(client, age=17)
-    body = client.get(f"/api/athletes/{aid}/hub").json()
+    body = client.get(f"/api/athletes/{aid}/hub", headers=auth_headers("athlete", athlete_id=aid)).json()
     # A lone test athlete is a cohort of 1 — must report insufficient data,
     # never a fabricated percentile.
     assert body["percentile"]["insufficient_data"] is True

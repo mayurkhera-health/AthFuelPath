@@ -1,15 +1,17 @@
 from datetime import date as dt_date
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from api.database import get_conn
 from api.services import claude_ai
+from api.services.session_auth import require_session, assert_owns_athlete
 
 router = APIRouter()
 
 
 @router.get("/{athlete_id}")
-def get_gap_analysis(athlete_id: int, date: str = None):
+def get_gap_analysis(athlete_id: int, date: str = None, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")

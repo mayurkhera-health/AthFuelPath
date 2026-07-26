@@ -11,6 +11,7 @@ from db.setup import init_db
 from api.services.db_migrations import run_all
 from api.database import get_conn
 from api.main import app
+from tests.conftest import auth_headers
 
 
 def _wipe(conn):
@@ -64,7 +65,7 @@ def _seed_challenge(conn, challenge_date, title="T1", verdict="myth"):
 def test_daily_challenge_returns_disabled_when_flag_off(client, monkeypatch):
     monkeypatch.setenv("FUELIQ_ENABLED", "false")
     aid = _make_athlete(client)
-    r = client.get(f"/api/athletes/{aid}/daily-challenge")
+    r = client.get(f"/api/athletes/{aid}/daily-challenge", headers=auth_headers("athlete", athlete_id=aid))
     assert r.status_code == 200
     assert r.json() == {"enabled": False}
 
@@ -72,7 +73,7 @@ def test_daily_challenge_returns_disabled_when_flag_off(client, monkeypatch):
 def test_daily_challenge_get_returns_null_challenge_when_nothing_scheduled(client, monkeypatch):
     monkeypatch.setenv("FUELIQ_ENABLED", "true")
     aid = _make_athlete(client)
-    r = client.get(f"/api/athletes/{aid}/daily-challenge")
+    r = client.get(f"/api/athletes/{aid}/daily-challenge", headers=auth_headers("athlete", athlete_id=aid))
     assert r.status_code == 200
     body = r.json()
     assert body["enabled"] is True
@@ -89,7 +90,7 @@ def test_daily_challenge_get_hides_verdict_before_answering(client, monkeypatch)
     _seed_challenge(conn, _today_pst().isoformat())
     conn.close()
 
-    r = client.get(f"/api/athletes/{aid}/daily-challenge")
+    r = client.get(f"/api/athletes/{aid}/daily-challenge", headers=auth_headers("athlete", athlete_id=aid))
     challenge = r.json()["challenge"]
     assert challenge["answered"] is False
     assert "verdict" not in challenge
@@ -104,14 +105,15 @@ def test_daily_challenge_verdict_flow_end_to_end(client, monkeypatch):
     _seed_challenge(conn, _today_pst().isoformat(), verdict="myth")
     conn.close()
 
-    r = client.post(f"/api/athletes/{aid}/daily-challenge/verdict", json={"guess": "myth"})
+    headers = auth_headers("athlete", athlete_id=aid)
+    r = client.post(f"/api/athletes/{aid}/daily-challenge/verdict", json={"guess": "myth"}, headers=headers)
     assert r.status_code == 200
     body = r.json()
     assert body["correct"] is True
     assert body["points_earned"] == 10
     assert body["streak"] == {"current": 1, "best": 1}
 
-    again = client.get(f"/api/athletes/{aid}/daily-challenge").json()
+    again = client.get(f"/api/athletes/{aid}/daily-challenge", headers=headers).json()
     assert again["challenge"]["answered"] is True
     assert again["challenge"]["correct"] is True
     assert again["total_completed"] == 1
@@ -120,7 +122,10 @@ def test_daily_challenge_verdict_flow_end_to_end(client, monkeypatch):
 def test_daily_challenge_verdict_404_when_nothing_scheduled(client, monkeypatch):
     monkeypatch.setenv("FUELIQ_ENABLED", "true")
     aid = _make_athlete(client)
-    r = client.post(f"/api/athletes/{aid}/daily-challenge/verdict", json={"guess": "myth"})
+    r = client.post(
+        f"/api/athletes/{aid}/daily-challenge/verdict", json={"guess": "myth"},
+        headers=auth_headers("athlete", athlete_id=aid),
+    )
     assert r.status_code == 404
 
 
@@ -134,7 +139,8 @@ def test_daily_challenge_verdict_does_not_appear_in_fueliq_hub_score(client, mon
     _seed_challenge(conn, _today_pst().isoformat())
     conn.close()
 
-    before = client.get(f"/api/athletes/{aid}/hub").json()
-    client.post(f"/api/athletes/{aid}/daily-challenge/verdict", json={"guess": "myth"})
-    after = client.get(f"/api/athletes/{aid}/hub").json()
+    headers = auth_headers("athlete", athlete_id=aid)
+    before = client.get(f"/api/athletes/{aid}/hub", headers=headers).json()
+    client.post(f"/api/athletes/{aid}/daily-challenge/verdict", json={"guess": "myth"}, headers=headers)
+    after = client.get(f"/api/athletes/{aid}/hub", headers=headers).json()
     assert after["score"] == before["score"]

@@ -20,11 +20,12 @@ api/routes/fueliq_daily_challenge.py.)
 
 from datetime import date, timedelta
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.database import get_conn
 from api.models import FuelIQLessonComplete, FuelIQQuizAnswer
 from api.services import fueliq_service as fq
+from api.services.session_auth import require_session, assert_owns_athlete
 
 router = APIRouter()
 
@@ -40,12 +41,13 @@ _LEVEL_NAMES = {
 
 
 @router.get("/{athlete_id}/hub")
-def get_hub(athlete_id: int):
+def get_hub(athlete_id: int, identity=Depends(require_session)):
     if not fq.fueliq_enabled():
         return {"enabled": False}
 
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         progress = fq.get_progress(athlete_id, conn)
         badges = [
             r["badge_key"]
@@ -158,12 +160,13 @@ def get_hub(athlete_id: int):
 
 
 @router.get("/{athlete_id}/lessons")
-def list_lessons(athlete_id: int, level: int = Query(...)):
+def list_lessons(athlete_id: int, level: int = Query(...), identity=Depends(require_session)):
     if not fq.fueliq_enabled():
         return {"enabled": False}
 
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         progress = fq.get_progress(athlete_id, conn)
         unlocked = fq.level_unlocked(progress["score"], level)
         rows = conn.execute(
@@ -189,12 +192,13 @@ def list_lessons(athlete_id: int, level: int = Query(...)):
 
 
 @router.get("/{athlete_id}/lessons/{lesson_id}")
-def get_lesson(athlete_id: int, lesson_id: int):
+def get_lesson(athlete_id: int, lesson_id: int, identity=Depends(require_session)):
     if not fq.fueliq_enabled():
         return {"enabled": False}
 
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         lesson = conn.execute(
             "SELECT id, level, title, hook, fact_body, visual_ref, takeaway, points "
             "FROM fueliq_lessons WHERE id = ? AND is_myth = 0 AND review_status = 'approved'",
@@ -219,12 +223,13 @@ def get_lesson(athlete_id: int, lesson_id: int):
 
 
 @router.post("/{athlete_id}/lessons/{lesson_id}/complete")
-def complete_lesson(athlete_id: int, lesson_id: int, body: FuelIQLessonComplete):
+def complete_lesson(athlete_id: int, lesson_id: int, body: FuelIQLessonComplete, identity=Depends(require_session)):
     if not fq.fueliq_enabled():
         return {"enabled": False}
 
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         exists = conn.execute(
             "SELECT 1 FROM fueliq_lessons WHERE id = ? AND is_myth = 0", (lesson_id,)
         ).fetchone()
@@ -238,12 +243,13 @@ def complete_lesson(athlete_id: int, lesson_id: int, body: FuelIQLessonComplete)
 
 
 @router.post("/{athlete_id}/questions/{question_id}/answer")
-def answer_question(athlete_id: int, question_id: int, body: FuelIQQuizAnswer):
+def answer_question(athlete_id: int, question_id: int, body: FuelIQQuizAnswer, identity=Depends(require_session)):
     if not fq.fueliq_enabled():
         return {"enabled": False}
 
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         exists = conn.execute(
             "SELECT 1 FROM fueliq_questions WHERE id = ?", (question_id,)
         ).fetchone()
@@ -257,12 +263,13 @@ def answer_question(athlete_id: int, question_id: int, body: FuelIQQuizAnswer):
 
 
 @router.get("/{athlete_id}/badges")
-def get_badges(athlete_id: int):
+def get_badges(athlete_id: int, identity=Depends(require_session)):
     if not fq.fueliq_enabled():
         return {"enabled": False}
 
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         badges = fq.list_badges(athlete_id, conn)
     finally:
         conn.close()

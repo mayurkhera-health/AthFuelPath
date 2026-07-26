@@ -11,6 +11,7 @@ from db.setup import init_db
 from api.services.db_migrations import run_all
 from api.database import get_conn
 from api.main import app
+from tests.conftest import auth_headers
 
 
 @pytest.fixture
@@ -56,7 +57,10 @@ def _make_athlete(client, *, allergies=None, dietary=None):
 
 def test_window_returns_plate_and_options(client):
     aid = _make_athlete(client)
-    r = client.get("/api/plate/window", params={"athlete_id": aid, "window_key": "everyday_breakfast"})
+    r = client.get(
+        "/api/plate/window", params={"athlete_id": aid, "window_key": "everyday_breakfast"},
+        headers=auth_headers("athlete", athlete_id=aid),
+    )
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["plate"] is not None
@@ -73,8 +77,13 @@ def test_window_returns_plate_and_options(client):
 def test_plate_resizes_between_windows(client):
     """Different windows must yield different plate shapes (the whole point)."""
     aid = _make_athlete(client)
-    bfast = client.get("/api/plate/window", params={"athlete_id": aid, "window_key": "everyday_breakfast"}).json()
-    snack = client.get("/api/plate/window", params={"athlete_id": aid, "window_key": "quick_snack"}).json()
+    headers = auth_headers("athlete", athlete_id=aid)
+    bfast = client.get(
+        "/api/plate/window", params={"athlete_id": aid, "window_key": "everyday_breakfast"}, headers=headers
+    ).json()
+    snack = client.get(
+        "/api/plate/window", params={"athlete_id": aid, "window_key": "quick_snack"}, headers=headers
+    ).json()
     carbs_bfast = next(s["pct"] for s in bfast["plate"]["sections"] if s["key"] == "carbs")
     carbs_snack = next(s["pct"] for s in snack["plate"]["sections"] if s["key"] == "carbs")
     assert carbs_snack > carbs_bfast  # quick snack is far more carb-dominant
@@ -82,7 +91,10 @@ def test_plate_resizes_between_windows(client):
 
 def test_nudge_window_has_no_plate(client):
     aid = _make_athlete(client)
-    r = client.get("/api/plate/window", params={"athlete_id": aid, "window_key": "between_games"})
+    r = client.get(
+        "/api/plate/window", params={"athlete_id": aid, "window_key": "between_games"},
+        headers=auth_headers("athlete", athlete_id=aid),
+    )
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["plate"] is None
@@ -93,7 +105,10 @@ def test_nudge_window_has_no_plate(client):
 def test_allergy_filters_options(client):
     """A dairy-allergic athlete must never be offered a dairy dish."""
     aid = _make_athlete(client, allergies=["dairy"])
-    r = client.get("/api/plate/window", params={"athlete_id": aid, "window_key": "everyday_dinner"})
+    r = client.get(
+        "/api/plate/window", params={"athlete_id": aid, "window_key": "everyday_dinner"},
+        headers=auth_headers("athlete", athlete_id=aid),
+    )
     assert r.status_code == 200, r.text
     labels = [o["short_label"].lower() for o in r.json()["options"]]
     # Butter chicken (dairy) must be excluded; some options should still remain.
@@ -102,7 +117,13 @@ def test_allergy_filters_options(client):
 
 
 def test_unknown_athlete_404(client):
-    r = client.get("/api/plate/window", params={"athlete_id": 999999, "window_key": "everyday_dinner"})
+    # A parent-role token always resolves ownership via a DB lookup (unlike an
+    # athlete token, which can short-circuit on athlete_id match alone) — the
+    # actual parent_id value doesn't matter since athlete 999999 doesn't exist.
+    r = client.get(
+        "/api/plate/window", params={"athlete_id": 999999, "window_key": "everyday_dinner"},
+        headers=auth_headers("parent", parent_id=1),
+    )
     assert r.status_code == 404
 
 
@@ -110,7 +131,10 @@ def test_flag_off_returns_empty(client, monkeypatch):
     """With PERFORMANCE_PLATE_ENABLED off, the endpoint is dark (no plate/options)."""
     aid = _make_athlete(client)
     monkeypatch.setenv("PERFORMANCE_PLATE_ENABLED", "false")
-    r = client.get("/api/plate/window", params={"athlete_id": aid, "window_key": "everyday_breakfast"})
+    r = client.get(
+        "/api/plate/window", params={"athlete_id": aid, "window_key": "everyday_breakfast"},
+        headers=auth_headers("athlete", athlete_id=aid),
+    )
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["plate"] is None

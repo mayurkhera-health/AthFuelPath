@@ -1,8 +1,9 @@
 from datetime import date as dt_date, timedelta
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from api.database import get_conn
 from api.services import claude_ai
 from api.services.report_service import build_weekly_report
+from api.services.session_auth import require_session, assert_owns_athlete
 
 router = APIRouter()
 
@@ -22,9 +23,10 @@ def _badge(score: int):
 
 
 @router.get("/{athlete_id}/daily")
-def daily_fuel_score(athlete_id: int, date: str = None):
+def daily_fuel_score(athlete_id: int, date: str = None, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
@@ -63,9 +65,10 @@ def daily_fuel_score(athlete_id: int, date: str = None):
 
 
 @router.get("/{athlete_id}/weekly")
-def weekly_parent_report(athlete_id: int, week_start: str = None):
+def weekly_parent_report(athlete_id: int, week_start: str = None, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
@@ -122,7 +125,7 @@ def weekly_parent_report(athlete_id: int, week_start: str = None):
 
 
 @router.get("/{athlete_id}/weekly-report")
-def weekly_fuel_report_v2(athlete_id: int, week_start: str = None):
+def weekly_fuel_report_v2(athlete_id: int, week_start: str = None, identity=Depends(require_session)):
     """
     Full structured weekly report for the Fuel Report tab.
     Returns grade, what_went_well, critical_gap, daily_scores, next_week, summary.
@@ -132,6 +135,7 @@ def weekly_fuel_report_v2(athlete_id: int, week_start: str = None):
     resolved = week_start or get_week_start()
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         return build_weekly_report(athlete_id, resolved, conn)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -140,9 +144,10 @@ def weekly_fuel_report_v2(athlete_id: int, week_start: str = None):
 
 
 @router.get("/{athlete_id}/tournament-readiness")
-def tournament_readiness(athlete_id: int, tournament_date: str = None):
+def tournament_readiness(athlete_id: int, tournament_date: str = None, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")

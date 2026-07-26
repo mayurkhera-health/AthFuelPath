@@ -11,7 +11,7 @@ recipes/grocery-list endpoints use, so a client can fetch/select the full
 recipe behind an option via /api/recipes/{id} and /api/recipes/selections
 using this profile_key as fueling_window_key.
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.database import get_conn
 from api.services import recipe_db
@@ -23,6 +23,7 @@ from api.services.plate_config import (
     normalize_allergens,
     select_options,
 )
+from api.services.session_auth import require_session, assert_owns_athlete
 
 router = APIRouter()
 
@@ -31,6 +32,7 @@ router = APIRouter()
 def get_window_plate(
     athlete_id: int = Query(...),
     window_key: str = Query(...),
+    identity=Depends(require_session),
 ):
     # Feature flag — ships dark. When off, no DB work: return an empty payload so
     # the client renders nothing (and does no per-window plate fetch overhead).
@@ -44,6 +46,7 @@ def get_window_plate(
 
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         row = conn.execute(
             "SELECT allergies, dietary_restrictions FROM athletes WHERE id = ?",
             (athlete_id,),
