@@ -10,9 +10,15 @@ directly and are already isolated — the fixture runs for them too but they ign
 the named DB, which is harmless.
 """
 import itertools
+import os
 from unittest.mock import MagicMock
 
 import pytest
+
+# Needed by every test that logs in or calls a session-protected route (see
+# api/services/session_auth.py). Set once here rather than per-file since it's
+# now a broad dependency, unlike the narrower TEAM_COACH_SESSION_SECRET.
+os.environ.setdefault("APP_SESSION_SECRET", "test-session-secret-do-not-use-in-prod")
 
 from api import database as _dbmod
 from api.services import email_service
@@ -98,3 +104,12 @@ def _fresh_db():
     _dbmod._test_db_uri = None
     # _persistent_memory_conn stays open; the next module's init_db() will
     # detect the URI change and recycle it onto a fresh testdb.
+
+
+def auth_headers(role, parent_id=None, athlete_id=None):
+    """Shared helper: mint a valid session token for a test caller and return
+    it as a ready-to-use requests/TestClient headers dict. role is 'parent' or
+    'athlete'. Import as `from tests.conftest import auth_headers`."""
+    from api.services.session_auth import mint_session_token
+    token = mint_session_token(role=role, parent_id=parent_id, athlete_id=athlete_id)
+    return {"Authorization": f"Bearer {token}"}

@@ -22,6 +22,7 @@ from db.setup import init_db
 from api.services.db_migrations import run_all
 from api.database import get_conn
 from api.main import app
+from tests.conftest import auth_headers
 
 
 @pytest.fixture
@@ -146,6 +147,7 @@ class TestUpdateAthletePhone:
         r = client.put(
             f"/api/athletes/{athlete['id']}",
             json={**athlete, "phone": "(650) 555-9999"},
+            headers=auth_headers("athlete", athlete_id=athlete["id"]),
         )
         assert r.status_code == 200, r.text
         assert r.json()["phone"] == "(650) 555-9999"
@@ -164,7 +166,10 @@ class TestUpdateAthletePhone:
         athlete = r.json()
 
         payload = {k: v for k, v in athlete.items() if k != "phone"}
-        r2 = client.put(f"/api/athletes/{athlete['id']}", json=payload)
+        r2 = client.put(
+            f"/api/athletes/{athlete['id']}", json=payload,
+            headers=auth_headers("athlete", athlete_id=athlete["id"]),
+        )
         assert r2.status_code == 200, r2.text
         assert r2.json()["phone"] == "(408) 555-1234"
 
@@ -173,6 +178,7 @@ class TestUpdateAthletePhone:
         r = client.put(
             f"/api/athletes/{athlete['id']}",
             json={**athlete, "phone": "not-a-phone"},
+            headers=auth_headers("athlete", athlete_id=athlete["id"]),
         )
         assert r.status_code == 422, r.text
 

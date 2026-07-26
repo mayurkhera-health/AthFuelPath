@@ -11,6 +11,7 @@ from db.setup import init_db
 from api.services.db_migrations import run_all
 from api.database import get_conn
 from api.main import app
+from tests.conftest import auth_headers
 
 
 @pytest.fixture
@@ -49,7 +50,7 @@ def _make_athlete(client, *, age=15, gender="girl"):
 def test_blueprint_get_does_not_500_for_age_ge_14(client):
     """Regression: _computed_calculated must not raise NameError for age>=14."""
     aid = _make_athlete(client, age=15, gender="girl")
-    r = client.get(f"/api/athletes/{aid}/blueprint")
+    r = client.get(f"/api/athletes/{aid}/blueprint", headers=auth_headers("athlete", athlete_id=aid))
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["status"] == "ready"
@@ -64,7 +65,7 @@ def test_blueprint_get_lazy_generates_when_null(client):
     conn.execute("UPDATE athletes SET blueprint_json=NULL WHERE id=?", (aid,))
     conn.commit()
 
-    r = client.get(f"/api/athletes/{aid}/blueprint")
+    r = client.get(f"/api/athletes/{aid}/blueprint", headers=auth_headers("athlete", athlete_id=aid))
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "ready"
     assert r.json()["blueprint"]["hero"]["headline"]  # real blueprint content

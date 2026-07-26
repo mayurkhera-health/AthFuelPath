@@ -2,10 +2,11 @@ import hashlib
 import logging
 import random
 from datetime import datetime, timedelta
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from api.models import ParentCreate, ParentResponse, ParentProfileUpdate, OTPRequest, OTPVerify
 from api.database import get_conn
 from api.services.email import send_otp_email
+from api.services.session_auth import mint_session_token, require_session, assert_owns_parent, assert_owns_athlete
 
 log = logging.getLogger(__name__)
 
@@ -58,7 +59,8 @@ def login(data: OTPRequest):
             raise HTTPException(404, "No account found with that email address.")
         parent_id = dict(parent)["id"]
         athletes = conn.execute("SELECT * FROM athletes WHERE parent_id = ?", (parent_id,)).fetchall()
-        return {"parent": dict(parent), "athletes": [dict(a) for a in athletes]}
+        token = mint_session_token(role="parent", parent_id=parent_id)
+        return {"parent": dict(parent), "athletes": [dict(a) for a in athletes], "session_token": token}
     finally:
         conn.close()
 
@@ -157,9 +159,10 @@ def test_reset(email: str):
 
 
 @router.delete("/{parent_id}")
-def delete_parent_account(parent_id: int):
+def delete_parent_account(parent_id: int, identity=Depends(require_session)):
     """Permanently delete a parent account and all associated athlete data.
     Required for Apple App Store Guideline 5.1.1(v) in-app account deletion."""
+    assert_owns_parent(identity, parent_id)
     conn = get_conn()
     try:
         row = conn.execute("SELECT id FROM parents WHERE id = ?", (parent_id,)).fetchone()
@@ -187,7 +190,8 @@ def delete_parent_account(parent_id: int):
 
 
 @router.patch("/{parent_id}/dismiss-schedule-reminder")
-def dismiss_schedule_reminder(parent_id: int):
+def dismiss_schedule_reminder(parent_id: int, identity=Depends(require_session)):
+    assert_owns_parent(identity, parent_id)
     conn = get_conn()
     try:
         row = conn.execute("SELECT id FROM parents WHERE id = ?", (parent_id,)).fetchone()
@@ -217,7 +221,8 @@ def email_exists(email: str):
 
 
 @router.patch("/{parent_id}/profile", response_model=ParentResponse)
-def update_parent_profile(parent_id: int, data: ParentProfileUpdate):
+def update_parent_profile(parent_id: int, data: ParentProfileUpdate, identity=Depends(require_session)):
+    assert_owns_parent(identity, parent_id)
     conn = get_conn()
     try:
         row = conn.execute("SELECT * FROM parents WHERE id = ?", (parent_id,)).fetchone()
@@ -235,7 +240,8 @@ def update_parent_profile(parent_id: int, data: ParentProfileUpdate):
 
 
 @router.get("/{parent_id}", response_model=ParentResponse)
-def get_parent(parent_id: int):
+def get_parent(parent_id: int, identity=Depends(require_session)):
+    assert_owns_parent(identity, parent_id)
     conn = get_conn()
     try:
         row = conn.execute("SELECT * FROM parents WHERE id = ?", (parent_id,)).fetchone()
@@ -247,10 +253,11 @@ def get_parent(parent_id: int):
 
 
 @router.post("/{parent_id}/blueprint-viewed")
-def blueprint_viewed(parent_id: int, background_tasks: BackgroundTasks):
+def blueprint_viewed(parent_id: int, background_tasks: BackgroundTasks, identity=Depends(require_session)):
     """Called once when a parent first opens the Blueprint screen.
     Idempotent: stamps blueprint_first_viewed_at only on the first call,
     then sends a one-time onboarding summary email to the founder."""
+    assert_owns_parent(identity, parent_id)
     conn = get_conn()
     try:
         row = conn.execute("SELECT * FROM parents WHERE id = ?", (parent_id,)).fetchone()

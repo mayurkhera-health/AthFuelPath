@@ -14,6 +14,7 @@ from db.setup import init_db
 from api.services.db_migrations import run_all, _add_food_preferences_to_athletes
 from api.database import get_conn
 from api.main import app
+from tests.conftest import auth_headers
 
 
 # ── Migration ────────────────────────────────────────────────────────────────
@@ -90,7 +91,10 @@ def test_food_preferences_round_trips_create_and_get(client):
     created = r.json()
     assert created["food_preferences"] == pref
 
-    got = client.get(f"/api/athletes/{created['id']}")
+    got = client.get(
+        f"/api/athletes/{created['id']}",
+        headers=auth_headers("athlete", athlete_id=created["id"]),
+    )
     assert got.status_code == 200, got.text
     assert got.json()["food_preferences"] == pref
 

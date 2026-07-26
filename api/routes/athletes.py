@@ -1,8 +1,9 @@
 import json
 from datetime import datetime, timezone
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from api.models import AthleteCreate, AthleteResponse
 from api.database import get_conn
+from api.services.session_auth import require_session, assert_owns_athlete
 from api.services.nutrition_calc import (
     calc_daily_targets, calc_age, calc_rmr,
     lbs_to_kg, ft_in_to_cm, _normalize_sex,
@@ -130,9 +131,10 @@ def create_athlete(data: AthleteCreate, background_tasks: BackgroundTasks):
 
 
 @router.get("/{athlete_id}", response_model=AthleteResponse)
-def get_athlete(athlete_id: int):
+def get_athlete(athlete_id: int, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
@@ -142,11 +144,15 @@ def get_athlete(athlete_id: int):
 
 
 @router.put("/{athlete_id}", response_model=AthleteResponse)
-def update_athlete(athlete_id: int, data: AthleteCreate, background_tasks: BackgroundTasks):
+def update_athlete(
+    athlete_id: int, data: AthleteCreate, background_tasks: BackgroundTasks,
+    identity=Depends(require_session),
+):
     if not (13 <= data.age <= 17):
         raise HTTPException(400, "FuelUp Youth is designed for athletes ages 13-17.")
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         existing = conn.execute(
             "SELECT season_phase, food_preferences, phone FROM athletes WHERE id = ?", (athlete_id,)
         ).fetchone()
@@ -191,9 +197,10 @@ def update_athlete(athlete_id: int, data: AthleteCreate, background_tasks: Backg
 
 
 @router.get("/{athlete_id}/blueprint")
-def get_blueprint(athlete_id: int):
+def get_blueprint(athlete_id: int, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
@@ -270,13 +277,14 @@ def get_blueprint(athlete_id: int):
 
 
 @router.post("/{athlete_id}/regenerate-blueprint", status_code=202)
-def regenerate_blueprint(athlete_id: int, background_tasks: BackgroundTasks):
+def regenerate_blueprint(athlete_id: int, background_tasks: BackgroundTasks, identity=Depends(require_session)):
     """
     Re-trigger blueprint generation for an athlete whose prior attempt failed.
     Returns 202 immediately; Bedrock runs in the background.
     """
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         row = conn.execute("SELECT id FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
@@ -287,9 +295,10 @@ def regenerate_blueprint(athlete_id: int, background_tasks: BackgroundTasks):
 
 
 @router.patch("/{athlete_id}/dismiss-schedule-reminder")
-def dismiss_schedule_reminder_athlete(athlete_id: int):
+def dismiss_schedule_reminder_athlete(athlete_id: int, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         row = conn.execute("SELECT id FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")

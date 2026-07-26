@@ -8,6 +8,7 @@ from api.services.fueling_targets import normalize_season_phase
 from api.services.email_service import send_email
 from api.services import email_templates
 from api.services import login_alerts
+from api.services.session_auth import mint_session_token
 from api.routes.athletes import generate_blueprint_bg
 
 logger = logging.getLogger(__name__)
@@ -81,4 +82,5 @@ def complete_onboarding(data: OnboardingComplete, background_tasks: BackgroundTa
     except Exception:
         logger.exception("welcome email failed (non-blocking)")
 
-    return {"parent": parent, "athlete": athlete}
+    token = mint_session_token(role="parent", parent_id=parent["id"])
+    return {"parent": parent, "athlete": athlete, "session_token": token}

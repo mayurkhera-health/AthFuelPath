@@ -10,6 +10,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from api.database import get_conn
 from api.services import login_alerts
+from api.services.session_auth import mint_session_token
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,8 @@ def unified_login(data: LoginRequest, background_tasks: BackgroundTasks):
             except Exception:
                 logger.warning("login alert scheduling failed (non-blocking)", exc_info=True)
 
-            return {"role": "parent", "parent": parent_d, "athletes": athletes}
+            token = mint_session_token(role="parent", parent_id=parent_d["id"])
+            return {"role": "parent", "parent": parent_d, "athletes": athletes, "session_token": token}
 
         # 2. Athlete?
         al = conn.execute(
@@ -78,7 +80,11 @@ def unified_login(data: LoginRequest, background_tasks: BackgroundTasks):
             ).fetchone()
             if not athlete:
                 raise HTTPException(500, "Athlete profile not found.")
-            return {"role": "athlete", "athlete": dict(athlete)}
+            athlete_d = dict(athlete)
+            token = mint_session_token(
+                role="athlete", athlete_id=athlete_d["id"], parent_id=athlete_d["parent_id"],
+            )
+            return {"role": "athlete", "athlete": athlete_d, "session_token": token}
 
         raise HTTPException(404, "No account found with that email address.")
     finally:
@@ -140,6 +146,7 @@ def create_athlete_login(athlete_id: int, data: AthleteCreateLoginRequest):
                 raise HTTPException(409, "An account with that email already exists.")
             raise HTTPException(500, str(e))
 
-        return {"role": "athlete", "athlete": dict(athlete)}
+        token = mint_session_token(role="athlete", athlete_id=athlete_id, parent_id=parent_id)
+        return {"role": "athlete", "athlete": dict(athlete), "session_token": token}
     finally:
         conn.close()
