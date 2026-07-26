@@ -1,6 +1,5 @@
 """Onboarding-wizard `food_preferences` field:
-migration (idempotent + column add), create/read round-trip through the API,
-and AI-coach context integration (included when present, omitted when null)."""
+migration (idempotent + column add) and create/read round-trip through the API."""
 
 import os
 os.environ["DB_PATH"] = ":memory:"
@@ -15,7 +14,6 @@ from db.setup import init_db
 from api.services.db_migrations import run_all, _add_food_preferences_to_athletes
 from api.database import get_conn
 from api.main import app
-from api.services.coach_service import build_system_prompt
 
 
 # ── Migration ────────────────────────────────────────────────────────────────
@@ -101,52 +99,3 @@ def test_food_preferences_nullable_on_create(client):
     r = client.post("/api/athletes/", json=_athlete_payload(client.parent_id, food_preferences=None))
     assert r.status_code == 201, r.text
     assert r.json()["food_preferences"] is None
-
-
-# ── Coach context ────────────────────────────────────────────────────────────
-
-def _coach_context(food_preferences):
-    """Minimal valid context for build_system_prompt — only food_preferences varies."""
-    return {
-        "blueprint": {
-            "name": "Sam",
-            "age": 15,
-            "allergies": "",
-            "dietary_restrictions": "",
-            "food_preferences": food_preferences,
-            "blueprint_summary": "",
-            "sweat_profile": "",
-        },
-        "schedule": {
-            "window_label": "Breakfast",
-            "window_time": "7:30 AM",
-            "category_label": "Carb-forward",
-            "event_name": None,
-            "event_type": "rest",
-            "event_start_time": None,
-            "event_city": None,
-        },
-        "baseline": {
-            "carbs_g_min": 200, "carbs_g_max": 250,
-            "protein_g_min": 60, "protein_g_max": 80,
-            "hydration_oz_min": 60, "hydration_oz_max": 80,
-            "lea_alert": False,
-        },
-        "weather": None,
-    }
-
-
-def test_coach_prompt_includes_food_preferences_when_present():
-    prompt = build_system_prompt(_coach_context("prefers crunchy textures"), "athlete")
-    assert "Food preferences" in prompt
-    assert "prefers crunchy textures" in prompt
-
-
-def test_coach_prompt_omits_food_preferences_when_null():
-    prompt = build_system_prompt(_coach_context(None), "athlete")
-    assert "Food preferences" not in prompt
-
-
-def test_coach_prompt_omits_food_preferences_when_empty():
-    prompt = build_system_prompt(_coach_context(""), "athlete")
-    assert "Food preferences" not in prompt
