@@ -98,7 +98,7 @@ All API routes use the `/api/` prefix. The React frontend sets `const API = impo
 `App.jsx` owns the top-level view state (`login → onboarding → dashboard`). `Dashboard.jsx` renders `AppShell` with a selected athlete and tab. Each tab is a standalone screen component. `Blueprint.jsx` renders the athlete's AI-generated nutrition blueprint. There is no client-side routing library.
 
 ### Push notifications
-`api/routes/notifications.py` sends Web Push via `pywebpush`. VAPID keys are stored as Fly.io secrets. The browser service worker is at `frontend/public/sw.js`. Subscription endpoints are stored in the `push_subscriptions` table.
+`api/routes/notifications.py` stores Web Push subscriptions (`push_subscriptions` table) and serves the VAPID public key — used by the legacy web frontend's `frontend/src/NotificationsScreen.jsx` + `notificationService.js` (browser service worker at `frontend/public/sw.js`). **Correction (2026-07-26): `pywebpush` is never actually imported or called anywhere in the codebase** — subscribing/storing/toggling prefs all work, but nothing ever sends a Web Push through them. This is separate from the mobile app's Expo push (`expo_push_tokens` table, `notification_service.py`, `POST /expo-token`), which does actually send.
 
 ## Test suite baseline — `feat/fueliq` (deterministic, established 2026-07-14)
 
