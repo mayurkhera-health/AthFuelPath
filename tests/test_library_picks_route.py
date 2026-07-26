@@ -92,3 +92,19 @@ def test_missing_parent_id_422s(client):
 def test_unknown_athlete_id_404s(client):
     r = client.get("/api/library/picks/999999", params={"parent_id": 1})
     assert r.status_code == 404
+
+
+# ─── Copy rule: win-framed, never deficit-framed ─────────────────────────────
+
+def test_build_reason_is_never_deficit_framed():
+    """CLAUDE.md rule 5: positive/win-framed copy only. The old
+    '{name} has been low N of M days' phrasing is banned outright."""
+    from api.services.library_service import _build_reason
+
+    banned = ["missed", "behind", "deficit", "failed", "warning", "lacking", "critical", "low", "has been low"]
+    for nutrient_key in ("iron_mg", "calcium_mg", "carbs_g", "water_oz", "unknown_nutrient"):
+        reason = _build_reason({"nutrient": nutrient_key, "days_below": 3, "days_logged": 3})
+        lowered = reason.lower()
+        for word in banned:
+            assert word not in lowered, f"{reason!r} contains banned word {word!r}"
+        assert "3" not in reason  # never quantifies the gap

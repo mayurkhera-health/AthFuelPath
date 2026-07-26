@@ -87,15 +87,26 @@ def generate_weekly_picks(athlete_id: int, conn) -> None:
         """, (athlete_id, article["id"], week_start, reason))
 
 
+# Win-framed per-nutrient copy — CLAUDE.md rule 5: "All copy is positive and
+# win-framed" (banned: missed, behind, deficit, failed, warning, lacking,
+# critical). The previous "Because X has been low N of M days this week" was
+# deficit-framed and quantified a shortfall — replaced with a forward-looking
+# suggestion that never counts or names the gap.
+_BOOST_COPY = {
+    "iron": "A boost of iron this week could help you feel stronger.",
+    "calcium": "A boost of calcium this week supports strong bones as you grow.",
+    "carbs": "A few more carbs this week could help you feel more fueled.",
+    "hydration": "Staying a little more hydrated this week could help you feel your best.",
+}
+
+
 def _build_reason(gap: dict) -> str:
     names = {
         "iron_mg": "iron", "calcium_mg": "calcium",
         "carbs_g": "carbs", "water_oz": "hydration",
     }
     name = names.get(gap["nutrient"], gap["nutrient"])
-    days = gap.get("days_below", 0)
-    logged = gap.get("days_logged", 1)
-    return f"Because {name} has been low {days} of {logged} days this week"
+    return _BOOST_COPY.get(name, f"A boost of {name} this week could help you feel stronger.")
 
 
 def _get_unread_article(athlete_id: int, category: str, conn):
