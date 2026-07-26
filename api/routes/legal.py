@@ -16,11 +16,11 @@ SEED_DOCUMENTS = [
         "title": "Privacy Policy",
         "content": """# Privacy Policy
 
-**Last updated:** June 2026
+**Last updated:** July 2026
 
 ## Introduction
 
-Fueling2Win ("we," "our," or "us") is committed to protecting the privacy of young athletes and their families. This Privacy Policy explains how we collect, use, and safeguard information when you use the Fueling2Win application.
+FuelUp Youth ("we," "our," or "us"), operated by Food Explorers LLC of San Jose, California, is committed to protecting the privacy of young athletes and their families. This Privacy Policy explains how we collect, use, and safeguard information when you use the FuelUp Youth application.
 
 ## Information We Collect
 
@@ -53,15 +53,15 @@ We may use aggregate, anonymized data (with no personally identifiable informati
 
 ## Children's Privacy
 
-Fueling2Win is designed for youth athletes ages 9–17. All accounts are created and managed by a parent or guardian. We comply with applicable children's privacy laws including COPPA.
+FuelUp Youth is designed for youth athletes ages 13–17. All accounts are created and managed by a parent or guardian. We comply with applicable children's privacy laws including COPPA.
 
 ## Data Deletion
 
-You may request complete deletion of all your data at any time by emailing **support@fueling2win.com**. We will delete all records within 30 days.
+You may request complete deletion of all your data at any time by emailing **purvi@dietsandlife.com**. We will delete all records within 30 days.
 
 ## Contact
 
-Questions about this Privacy Policy? Contact us at **support@fueling2win.com**.
+Questions about this Privacy Policy? Contact us at **purvi@dietsandlife.com**.
 """,
     },
     {
@@ -69,27 +69,27 @@ Questions about this Privacy Policy? Contact us at **support@fueling2win.com**.
         "title": "Terms of Service",
         "content": """# Terms of Service
 
-**Last updated:** June 2026
+**Last updated:** July 2026
 
 ## Acceptance of Terms
 
-By creating an account and using Fueling2Win ("the App"), you agree to these Terms of Service. If you do not agree, please do not use the App.
+By creating an account and using FuelUp Youth ("the App"), operated by Food Explorers LLC of San Jose, California, you agree to these Terms of Service. If you do not agree, please do not use the App.
 
 ## Description of Service
 
-Fueling2Win provides educational food guidance and nutrition information for youth soccer athletes ages 9–17. All recommendations are based on published pediatric sports nutrition research.
+FuelUp Youth provides educational food guidance and nutrition information for youth soccer athletes ages 13–17. All recommendations are based on published pediatric sports nutrition research.
 
 ## Account Eligibility
 
 - Accounts must be created by a parent or legal guardian
-- The athlete must be between 9 and 17 years of age
+- The athlete must be between 13 and 17 years of age
 - You must provide accurate information during account setup
 
 ## Acceptable Use
 
-You agree to use Fueling2Win only for its intended purpose: supporting the nutrition and fueling habits of a youth athlete. You agree **not** to:
+You agree to use FuelUp Youth only for its intended purpose: supporting the nutrition and fueling habits of a youth athlete. You agree **not** to:
 
-- Create accounts for athletes outside the 9–17 age range
+- Create accounts for athletes outside the 13–17 age range
 - Share login credentials with unauthorized users
 - Attempt to access other users' data
 - Use the App for any commercial purpose without written permission
@@ -100,9 +100,9 @@ You agree to use Fueling2Win only for its intended purpose: supporting the nutri
 
 ## Limitation of Liability
 
-Fueling2Win provides **educational food guidance only** — not medical nutrition therapy. We are not responsible for health outcomes resulting from following or not following app recommendations. Always consult a licensed healthcare provider for medical concerns.
+FuelUp Youth provides **educational food guidance only** — not medical nutrition therapy. We are not responsible for health outcomes resulting from following or not following app recommendations. Always consult a licensed healthcare provider for medical concerns.
 
-To the maximum extent permitted by law, Fueling2Win's total liability for any claims arising from your use of the App shall not exceed the amount you paid for the App in the prior 12 months.
+To the maximum extent permitted by law, FuelUp Youth's total liability for any claims arising from your use of the App shall not exceed the amount you paid for the App in the prior 12 months.
 
 ## Termination
 
@@ -118,7 +118,7 @@ These Terms are governed by the laws of the State of California, without regard 
 
 ## Contact
 
-Questions? Contact us at **support@fueling2win.com**.
+Questions? Contact us at **purvi@dietsandlife.com**.
 """,
     },
     {
@@ -126,15 +126,15 @@ Questions? Contact us at **support@fueling2win.com**.
         "title": "Medical Disclaimer",
         "content": """# Medical Disclaimer
 
-**Please read this disclaimer carefully before using Fueling2Win.**
+**Please read this disclaimer carefully before using FuelUp Youth.**
 
 ## Not Medical Advice
 
-Fueling2Win provides **educational food guidance only**. The information, recommendations, meal plans, nutrition targets, and hydration guidance provided by this application are for general educational purposes and do **not** constitute medical advice, medical nutrition therapy, or clinical dietary treatment.
+FuelUp Youth provides **educational food guidance only**. The information, recommendations, meal plans, nutrition targets, and hydration guidance provided by this application are for general educational purposes and do **not** constitute medical advice, medical nutrition therapy, or clinical dietary treatment.
 
 ## No Doctor-Patient Relationship
 
-Use of Fueling2Win does not create a doctor-patient relationship, dietitian-client relationship, or any other professional healthcare relationship between you and Fueling2Win or its developers.
+Use of FuelUp Youth does not create a doctor-patient relationship, dietitian-client relationship, or any other professional healthcare relationship between you and FuelUp Youth or its developers.
 
 ## Consult a Healthcare Professional
 
@@ -149,7 +149,7 @@ Before making significant changes to your athlete's diet, especially if your ath
 
 ## Sources and Accuracy
 
-Fueling2Win's nutrition recommendations are based on peer-reviewed research and guidelines from:
+FuelUp Youth's nutrition recommendations are based on peer-reviewed research and guidelines from:
 
 - Everett MD 2025
 - American Academy of Pediatrics (AAP)
@@ -173,7 +173,7 @@ If an athlete experiences any of the following, **stop all activity and seek imm
 
 ## Limitation
 
-Fueling2Win is not a substitute for professional medical care. The creators and operators of Fueling2Win accept no liability for health outcomes based on the use or non-use of information provided in this application.
+FuelUp Youth is not a substitute for professional medical care. The creators and operators of FuelUp Youth accept no liability for health outcomes based on the use or non-use of information provided in this application.
 """,
     },
     {
@@ -181,40 +181,40 @@ Fueling2Win is not a substitute for professional medical care. The creators and 
         "title": "Youth Athlete Disclaimer",
         "content": """# Youth Athlete Disclaimer
 
-## Who Fueling2Win Is For
+## Who FuelUp Youth Is For
 
-Fueling2Win is designed exclusively for youth soccer athletes between the ages of **9 and 17 years**. All accounts are created and managed by a parent or legal guardian.
+FuelUp Youth is designed exclusively for youth soccer athletes between the ages of **13 and 17 years**. All accounts are created and managed by a parent or legal guardian.
 
 ## Parental Responsibility
 
 By creating an account, the parent or guardian confirms:
 
-- Their athlete is between 9 and 17 years of age
+- Their athlete is between 13 and 17 years of age
 - They have read and accepted the Medical Disclaimer
-- They understand that Fueling2Win provides educational food guidance — not medical treatment
+- They understand that FuelUp Youth provides educational food guidance — not medical treatment
 - They will consult a healthcare professional for any medical nutrition concerns
 - They take responsibility for supervising their athlete's use of the App
 
 ## Age-Appropriate Guidance
 
-All nutrition recommendations, calorie targets, macronutrient ranges, and hydration guidance are calculated using evidence-based formulas for the pediatric population. Fueling2Win does **not** apply adult nutrition guidelines to youth athletes.
+All nutrition recommendations, calorie targets, macronutrient ranges, and hydration guidance are calculated using evidence-based formulas for the pediatric population. FuelUp Youth does **not** apply adult nutrition guidelines to youth athletes.
 
 Our recommendations account for:
 
-- Growth and development needs of athletes ages 9–17
+- Growth and development needs of athletes ages 13–17
 - The elevated energy demands of competitive youth soccer
 - Age-specific iron, calcium, and bone development requirements
-- Safe weight management principles — Fueling2Win does not support caloric restriction for weight loss in youth athletes
+- Safe weight management principles — FuelUp Youth does not support caloric restriction for weight loss in youth athletes
 
 ## Weight and Body Composition
 
-Fueling2Win does **not** encourage, recommend, or support weight loss programs for youth athletes. Our calorie targets are set to support healthy performance, growth, and development.
+FuelUp Youth does **not** encourage, recommend, or support weight loss programs for youth athletes. Our calorie targets are set to support healthy performance, growth, and development.
 
 If you have concerns about your athlete's weight or body composition, please consult a pediatrician or registered dietitian.
 
 ## Eating Concerns
 
-If you observe signs of disordered eating — including food restriction, binge behaviors, extreme weight loss, or excessive concern with body weight — please immediately consult a healthcare professional. Fueling2Win is not equipped to address eating disorders.
+If you observe signs of disordered eating — including food restriction, binge behaviors, extreme weight loss, or excessive concern with body weight — please immediately consult a healthcare professional. FuelUp Youth is not equipped to address eating disorders.
 
 ## Data Privacy for Minors
 
@@ -222,7 +222,7 @@ We collect the minimum data necessary to provide personalized guidance. Athlete 
 
 ## Contact
 
-For questions about youth athlete guidelines: **support@fueling2win.com**
+For questions about youth athlete guidelines: **purvi@dietsandlife.com**
 """,
     },
     {
@@ -232,9 +232,9 @@ For questions about youth athlete guidelines: **support@fueling2win.com**
 
 ## AI-Assisted Features
 
-Fueling2Win uses artificial intelligence (AI) — specifically Anthropic's Claude — to generate personalized nutrition blueprints, meal suggestions, and recovery guidance. This disclaimer explains how AI is used and its limitations.
+FuelUp Youth uses artificial intelligence (AI) — specifically Anthropic's Claude — to generate personalized nutrition blueprints, meal suggestions, and recovery guidance. This disclaimer explains how AI is used and its limitations.
 
-## What AI Does in Fueling2Win
+## What AI Does in FuelUp Youth
 
 AI is used to:
 
@@ -263,11 +263,11 @@ AI-generated content may occasionally:
 - Misinterpret complex individual health situations
 - Provide generic guidance that does not account for specific medical conditions
 
-**AI-generated content in Fueling2Win is not a substitute for advice from a licensed registered dietitian, physician, or other qualified healthcare professional.**
+**AI-generated content in FuelUp Youth is not a substitute for advice from a licensed registered dietitian, physician, or other qualified healthcare professional.**
 
 ## AI and Medical Decisions
 
-Fueling2Win's AI is explicitly instructed to:
+FuelUp Youth's AI is explicitly instructed to:
 
 - Never provide medical diagnoses
 - Never recommend supplements, medications, or treatments
@@ -276,26 +276,35 @@ Fueling2Win's AI is explicitly instructed to:
 
 ## Knowledge Base
 
-Fueling2Win's AI answers are grounded in an approved knowledge base of peer-reviewed nutrition content. The AI is constrained to answer only from this approved content and will state when it does not have sufficient information.
+FuelUp Youth's AI answers are grounded in an approved knowledge base of peer-reviewed nutrition content. The AI is constrained to answer only from this approved content and will state when it does not have sufficient information.
 
 ## Questions
 
-If you believe an AI-generated recommendation was inaccurate or harmful, please contact us immediately at **support@fueling2win.com**.
+If you believe an AI-generated recommendation was inaccurate or harmful, please contact us immediately at **purvi@dietsandlife.com**.
 """,
     },
 ]
 
 
 def seed_legal_documents(conn) -> None:
-    """Insert default documents if they don't exist."""
+    """Insert default documents if they don't exist. Also backfills any
+    existing row still carrying the old pre-rebrand "Fueling2Win" content —
+    those rows were auto-seeded from an earlier version of SEED_DOCUMENTS,
+    never hand-edited, so overwriting them here is safe; a real admin edit
+    via PUT /{slug} would no longer contain that string and is left alone."""
     for doc in SEED_DOCUMENTS:
         existing = conn.execute(
-            "SELECT id FROM legal_documents WHERE slug = ?", (doc["slug"],)
+            "SELECT id, content FROM legal_documents WHERE slug = ?", (doc["slug"],)
         ).fetchone()
         if not existing:
             conn.execute(
                 "INSERT INTO legal_documents (slug, title, content, updated_at) VALUES (?, ?, ?, ?)",
                 (doc["slug"], doc["title"], doc["content"], datetime.utcnow().isoformat()),
+            )
+        elif "Fueling2Win" in existing["content"]:
+            conn.execute(
+                "UPDATE legal_documents SET title = ?, content = ?, updated_at = ? WHERE id = ?",
+                (doc["title"], doc["content"], datetime.utcnow().isoformat(), existing["id"]),
             )
     conn.commit()
 
