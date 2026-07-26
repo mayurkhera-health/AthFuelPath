@@ -60,8 +60,10 @@ MEDICAL_INPUT_TRIGGERS: list[str] = [
     "vomiting blood", "seizure", "unconscious",
     # Eating disorders
     "eating disorder", "anorexia", "bulimia",
-    "purge", "purging", "binge eating",
-    "starving myself", "not eating",
+    "purge", "purging",
+    "binge", "binge eating", "binging", "bingeing",
+    "starving myself", "stop eating", "stopped eating",
+    "not eating", "not been eating", "haven't been eating", "haven't eaten",
 ]
 
 # Output triggers are wider and paraphrase-aware — over-firing is the safe

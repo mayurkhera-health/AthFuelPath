@@ -14,6 +14,7 @@ from api.services.knowledge.calculations import (
     pre_training_meal_window, post_training_recovery_window, calorie_estimate,
 )
 from api.services.nutrition_calc import calc_age
+from api.services.safety_filters import MEDICAL_INPUT_TRIGGERS
 
 logger = logging.getLogger(__name__)
 
@@ -38,12 +39,14 @@ WHAT YOU CANNOT DO:
 - You do not help with weight loss, calorie restriction, or non-nutrition topics.
 """.strip()
 
-_SAFETY_TERMS = [
-    "faint", "fainting", "unconscious", "chest pain", "can't breathe",
-    "eating disorder", "purge", "starving", "stop eating", "lose weight fast",
-    "anorexia", "bulimia", "binge", "severe dehydration", "seizure",
-    "vomiting blood", "not eating",
-]
+
+# safety_filters.py's MEDICAL_INPUT_TRIGGERS is the maintained, more complete
+# term list (used by the unused coach_service.py path) — it now backs this
+# live path too, so there is one authoritative list instead of two drifting
+# ones. "severe dehydration", "lose weight fast", and bare "starving" are
+# kept as extras this list already caught that MEDICAL_INPUT_TRIGGERS doesn't
+# cover under its own terms, to avoid losing any existing coverage.
+_SAFETY_TERMS = MEDICAL_INPUT_TRIGGERS + ["severe dehydration", "lose weight fast", "starving"]
 
 
 _CLASSIFIER_SYSTEM = f"""You route Nutrition Coach questions for youth soccer athletes ages 9-17.

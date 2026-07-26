@@ -1359,3 +1359,50 @@ def test_coach_recipe_opener_passes_persona_into_system_prompt():
 
     system_prompt = mock_converse.call_args.kwargs["system"]
     assert "Casey's parent/guardian" in system_prompt
+
+
+def test_safety_flag_uses_the_shared_medical_trigger_list():
+    """Regression: the live safety stop used its own short, separately-
+    maintained keyword list (missing "purging", "haven't been eating", etc.)
+    while a more complete list already existed in safety_filters.py, backing
+    only an unused coach-chat path. _SAFETY_TERMS must now be built from
+    that shared list so both paths stay in sync."""
+    from api.services.knowledge.answer import _SAFETY_TERMS
+    from api.services.safety_filters import MEDICAL_INPUT_TRIGGERS
+
+    for term in MEDICAL_INPUT_TRIGGERS:
+        assert term in _SAFETY_TERMS, f"{term!r} from the shared list is missing from _SAFETY_TERMS"
+
+
+@pytest.mark.parametrize("message", [
+    "I purge sometimes",
+    "I think I have an eating disorder",
+    "I've been purging after meals",
+    "I haven't been eating",
+    "I've been binging and then purging",
+    "I stopped eating for two days",
+])
+def test_safety_flag_catches_real_teen_phrasing(message):
+    """Each of these is a real phrasing a teenager might actually type —
+    including two (purging as a gerund, "haven't been eating") that the
+    old short keyword list silently missed."""
+    from api.services.knowledge.answer import _detect_safety_flag
+    assert _detect_safety_flag(message) is True, f"missed: {message!r}"
+
+
+def test_safety_flag_short_circuits_before_any_model_call():
+    """A caught message must return the fixed safety response without ever
+    invoking the LLM — the hard stop is the point."""
+    from api.services.knowledge.answer import answer_with_knowledge
+
+    with patch("api.services.knowledge.answer.converse_text") as mock_converse:
+        with patch("api.services.knowledge.answer._classify_coach_path") as mock_classify:
+            result = answer_with_knowledge(
+                "I haven't been eating",
+                {"id": 1, "first_name": "Alex", "age": 15},
+            )
+
+    mock_converse.assert_not_called()
+    mock_classify.assert_not_called()
+    assert result["safety_flag"] is True
+    assert "doctor" in result["answer"].lower() or "dietitian" in result["answer"].lower()
