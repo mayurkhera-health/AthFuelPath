@@ -130,9 +130,20 @@ def weekly_fuel_report_v2(athlete_id: int, week_start: str = None, identity=Depe
     Full structured weekly report for the Fuel Report tab.
     Returns grade, what_went_well, critical_gap, daily_scores, next_week, summary.
     """
+    from datetime import date as _date
     from api.services.nutrition_analysis import get_week_start
 
     resolved = week_start or get_week_start()
+    try:
+        _date.fromisoformat(resolved)
+    except ValueError:
+        # build_weekly_report's own date.fromisoformat() call used to raise
+        # this same ValueError, which the except-clause below caught and
+        # returned as a 404 with the raw Python exception text as `detail`
+        # — indistinguishable from a genuine "athlete not found" 404, and a
+        # confusing error to show a client. Validated here instead, as a
+        # clean 400 before build_weekly_report ever runs.
+        raise HTTPException(status_code=400, detail=f"week_start must be an ISO 8601 date (YYYY-MM-DD), got {resolved!r}")
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)
