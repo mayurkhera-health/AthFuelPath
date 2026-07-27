@@ -61,6 +61,59 @@ def test_require_athlete_includes_diet_pref_and_date_of_birth(client):
     assert athlete["date_of_birth"] == "2010-08-01"
 
 
+def test_add_item_rejects_a_food_matching_the_athletes_allergy(client):
+    """Regression: POST /add-item took a client-supplied food_id and inserted it
+    with no allergen check at all, unlike every other pantry endpoint (generate/
+    regenerate/suggest-replacement/gap-suggestions), which only ever offer foods
+    from safe_foods_for_athlete()."""
+    p = client.post("/api/parents/", json={
+        "full_name": "P", "email": "pantry-allergy-test@example.com", "consent_confirmed": True,
+    })
+    pid = p.json()["id"]
+    a = client.post("/api/athletes/", json={
+        "parent_id": pid, "first_name": "Sam", "age": 15, "gender": "boy",
+        "weight_lbs": 130, "height_ft": 5, "height_in": 8, "allergies": "dairy",
+    })
+    aid = a.json()["id"]
+
+    r = client.post(
+        "/api/pantry/add-item",
+        json={"athlete_id": aid, "week_start": "2026-06-29", "food_id": "yogurt_honey",
+              "meal_context": "snacks_everyday"},
+        headers=auth_headers("athlete", athlete_id=aid),
+    )
+    assert r.status_code == 422, r.text
+
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT id FROM pantry_list_items WHERE athlete_id = ? AND food_id = 'yogurt_honey'",
+        (aid,),
+    ).fetchone()
+    conn.close()
+    assert row is None, "An allergen-conflicting food was inserted despite the 422."
+
+
+def test_add_item_allows_a_safe_food(client):
+    p = client.post("/api/parents/", json={
+        "full_name": "P", "email": "pantry-safe-test@example.com", "consent_confirmed": True,
+    })
+    pid = p.json()["id"]
+    a = client.post("/api/athletes/", json={
+        "parent_id": pid, "first_name": "Sam2", "age": 15, "gender": "boy",
+        "weight_lbs": 130, "height_ft": 5, "height_in": 8, "allergies": "dairy",
+    })
+    aid = a.json()["id"]
+
+    r = client.post(
+        "/api/pantry/add-item",
+        json={"athlete_id": aid, "week_start": "2026-06-29", "food_id": "banana_ripe",
+              "meal_context": "snacks_everyday"},
+        headers=auth_headers("athlete", athlete_id=aid),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["item_count"] == 1
+
+
 def test_generate_happy_path(client, monkeypatch):
     aid = _make_athlete(client)
     monkeypatch.setattr(pantry_route.claude_ai, "prompt8_pantry_plan",

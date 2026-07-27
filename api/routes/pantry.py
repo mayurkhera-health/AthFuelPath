@@ -518,11 +518,21 @@ def add_item(data: PantryAddItem, identity=Depends(require_session)):
     conn = get_conn()
     try:
         assert_owns_athlete(identity, data.athlete_id, conn)
-        _require_athlete(data.athlete_id, conn)
+        athlete = _require_athlete(data.athlete_id, conn)
 
         food = get_food_by_id(data.food_id)
         if not food:
             raise HTTPException(404, f"Food not found: {data.food_id}")
+
+        # Every other pantry endpoint (generate/regenerate/suggest-replacement/
+        # gap-suggestions) only ever offers foods from safe_foods_for_athlete().
+        # This one takes a client-supplied food_id directly with no such check —
+        # a client could add any food in FOOD_DATABASE regardless of allergens.
+        safe_ids = {f["food_id"] for f in safe_foods_for_athlete(athlete)}
+        if data.food_id not in safe_ids:
+            raise HTTPException(
+                422, "That food conflicts with this athlete's allergies or dietary restrictions."
+            )
 
         cue = cue_label_for(food)
         conn.execute(
