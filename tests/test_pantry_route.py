@@ -39,6 +39,28 @@ def _make_athlete(client):
         "weight_lbs":110,"height_ft":5,"height_in":6})
     return a.json()["id"]
 
+def test_require_athlete_includes_diet_pref_and_date_of_birth(client):
+    """Regression: _require_athlete()'s SELECT omitted diet_pref and
+    date_of_birth, so calc_daily_targets() always saw diet_pref default to
+    "omnivore" (understating protein targets and skipping the vegan
+    iron-risk flag for vegetarian/vegan athletes) and always fell back from
+    a precise DOB-based age to the coarse integer `age` field."""
+    p = client.post("/api/parents/", json={
+        "full_name": "P", "email": "diet-pref-test@example.com", "consent_confirmed": True,
+    })
+    pid = p.json()["id"]
+    a = client.post("/api/athletes/", json={
+        "parent_id": pid, "first_name": "Vera", "age": 15, "gender": "girl",
+        "weight_lbs": 110, "height_ft": 5, "height_in": 6,
+        "diet_pref": "vegan", "date_of_birth": "2010-08-01",
+    })
+    aid = a.json()["id"]
+
+    athlete = pantry_route._require_athlete(aid, get_conn())
+    assert athlete["diet_pref"] == "vegan"
+    assert athlete["date_of_birth"] == "2010-08-01"
+
+
 def test_generate_happy_path(client, monkeypatch):
     aid = _make_athlete(client)
     monkeypatch.setattr(pantry_route.claude_ai, "prompt8_pantry_plan",

@@ -31,11 +31,19 @@ class PantryCheckPatch(BaseModel):
 
 
 def _require_athlete(athlete_id: int, conn):
-    """Fetch all athlete columns needed across pantry endpoints in one query."""
+    """Fetch all athlete columns needed across pantry endpoints in one query.
+
+    Must include diet_pref and date_of_birth — calc_daily_targets() silently
+    defaults diet_pref to "omnivore" and falls back from a precise DOB-based
+    age to the coarse integer `age` field when either is missing from this
+    dict, understating protein targets and the vegan iron-risk flag for
+    vegetarian/vegan athletes, and using less precise age-based RMR math for
+    every athlete regardless of diet."""
     row = conn.execute(
         """SELECT id, first_name, allergies, dietary_restrictions,
                   weight_lbs, height_ft, height_in, gender, age,
-                  lifestyle_activity, season_phase, food_preferences
+                  lifestyle_activity, season_phase, food_preferences,
+                  diet_pref, date_of_birth
            FROM athletes WHERE id = ?""",
         (athlete_id,),
     ).fetchone()
