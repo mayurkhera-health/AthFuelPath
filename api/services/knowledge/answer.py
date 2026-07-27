@@ -14,7 +14,8 @@ from api.services.knowledge.calculations import (
     pre_training_meal_window, post_training_recovery_window, calorie_estimate,
 )
 from api.services.nutrition_calc import calc_age
-from api.services.safety_filters import MEDICAL_INPUT_TRIGGERS
+from api.services.safety_filters import MEDICAL_INPUT_TRIGGERS, find_allergen_violations
+from api.services.plate_config import normalize_allergens
 
 logger = logging.getLogger(__name__)
 
@@ -308,6 +309,23 @@ def _parse_dietary(raw) -> list:
     return [d.strip() for d in str(raw).split(",") if d.strip().lower() != "none"]
 
 
+def _scan_categories(allergies: list[str], restrictions: list[str]) -> list[str]:
+    """Normalize both allergies and free-text dietary restrictions/intolerances
+    ('dairy-free', 'lactose intolerant') onto the same big-9 category
+    vocabulary, so the output allergen scan (find_allergen_violations) also
+    catches intolerances, not just allergies. Restriction phrasing that
+    doesn't map onto a scannable category (vegetarian, halal, ...) is dropped
+    here — the LLM prompt instruction is the only guard for those, unchanged."""
+    stripped_restrictions = []
+    for r in restrictions:
+        t = r.strip().lower()
+        for suffix in ("-free", " free", "-intolerant", " intolerant", "-intolerance", " intolerance"):
+            t = t.replace(suffix, "")
+        stripped_restrictions.append(t.strip())
+    categories = normalize_allergens(allergies) + normalize_allergens(stripped_restrictions)
+    return list(dict.fromkeys(categories))
+
+
 def _format_history(history: list[dict] | None) -> str:
     if not history:
         return ""
@@ -572,6 +590,49 @@ def _answer_with_restaurant(
             "sources": list_sources(),
         }
 
+    # Hard safety net: the prompt rule above ("NEVER suggest items containing
+    # X") is a soft instruction the model can miss — real menu excerpts pulled
+    # from the web make that easy. Scan the actual answer and regenerate/block
+    # rather than trust compliance alone. See safety_filters.find_allergen_violations.
+    scan_cats = _scan_categories(allergies, restrictions)
+    violations = find_allergen_violations(answer_text, scan_cats)
+    if violations:
+        logger.warning(
+            "Coach restaurant answer for athlete_id=%s mentioned possible allergen(s) %s "
+            "despite instructions — regenerating", athlete.get("id"), violations,
+        )
+        try:
+            retry_prompt = system_prompt + (
+                f"\n\nSAFETY CORRECTION: your previous draft mentioned food(s) containing "
+                f"{', '.join(violations)}, which this athlete cannot have. Do not name any "
+                f"dish containing {', '.join(scan_cats)} anywhere in your answer, even as an aside."
+            )
+            answer_text = converse_text(system=retry_prompt, user=question, max_tokens=400, temperature=0.2)
+            violations = find_allergen_violations(answer_text, scan_cats)
+        except Exception:
+            logger.exception("Restaurant answer safety-retry failed for %r", name)
+            violations = violations or ["unknown"]
+
+    if violations:
+        logger.error(
+            "Coach restaurant answer for athlete_id=%s still mentioned allergen(s) %s after "
+            "retry — falling back to safe message", athlete.get("id"), violations,
+        )
+        return {
+            "answer": (
+                f"**I couldn't find options at {name} that clearly avoid "
+                f"{', '.join(scan_cats)}, {first_name}.** "
+                "Please double-check directly with the restaurant, or tell me a couple of "
+                "items you're considering and I'll help you check them."
+            ),
+            "format": "markdown",
+            "intent": "restaurant",
+            "citations": [],
+            "restaurant_sources": [{"title": r.title, "url": r.url} for r in results],
+            "calculation": None,
+            "sources": list_sources(),
+        }
+
     header = _restaurant_header(name, athlete.get("id"), latitude, longitude)
 
     return {
@@ -721,6 +782,50 @@ def _answer_with_nearby_restaurants(
             "format": "markdown",
             "intent": "restaurant_nearby",
             "citations": [],
+            "calculation": None,
+            "sources": list_sources(),
+        }
+
+    # Same hard safety net as the named-restaurant path (see there for why).
+    # This path names restaurants/cuisine types, not dishes — lower risk, but
+    # a restaurant name itself can contain an allergen word (e.g. "Red
+    # Lobster" for a shellfish allergy), which is worth catching too.
+    scan_cats = _scan_categories(allergies, restrictions)
+    violations = find_allergen_violations(answer_text, scan_cats)
+    if violations:
+        logger.warning(
+            "Coach nearby-restaurant answer for athlete_id=%s mentioned possible allergen(s) "
+            "%s despite instructions — regenerating", athlete.get("id"), violations,
+        )
+        try:
+            retry_prompt = system_prompt + (
+                f"\n\nSAFETY CORRECTION: your previous draft mentioned "
+                f"{', '.join(violations)}, which this athlete cannot have. Avoid any "
+                f"restaurant/cuisine strongly associated with {', '.join(scan_cats)}."
+            )
+            answer_text = converse_text(system=retry_prompt, user=question, max_tokens=400, temperature=0.2)
+            violations = find_allergen_violations(answer_text, scan_cats)
+        except Exception:
+            logger.exception("Nearby restaurant answer safety-retry failed")
+            violations = violations or ["unknown"]
+
+    if violations:
+        logger.error(
+            "Coach nearby-restaurant answer for athlete_id=%s still mentioned allergen(s) %s "
+            "after retry — falling back to safe message", athlete.get("id"), violations,
+        )
+        return {
+            "answer": (
+                f"**I couldn't confidently pick nearby options that avoid "
+                f"{', '.join(scan_cats)}, {first_name}.** "
+                "Please double-check directly with the restaurant before ordering."
+            ),
+            "format": "markdown",
+            "intent": "restaurant_nearby",
+            "citations": [],
+            "nearby_sources": [
+                {"name": c.name, "place_id": c.place_id, "maps_url": c.maps_url} for c in candidates
+            ],
             "calculation": None,
             "sources": list_sources(),
         }

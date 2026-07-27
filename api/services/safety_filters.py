@@ -9,6 +9,8 @@ minor.  Neither layer is gated by a flag or env var — they are always-on.
 The model and its prompt rules are a secondary reinforcement, not the floor.
 """
 
+import re
+
 
 # ── Trigger phrases ────────────────────────────────────────────────────────────
 # Matched case-insensitively.  Any single match fires the filter.
@@ -176,3 +178,61 @@ def check_output_safe(response: str) -> str | None:
     if any(p in resp for p in MEDICAL_OUTPUT_TRIGGERS):
         return MEDICAL_OUTPUT_RESPONSE
     return None
+
+
+# ── Allergen output scan ───────────────────────────────────────────────────────
+# The Coach's restaurant-lookup paths pull real, untrusted menu text from the
+# web and rely on a prompt instruction ("never suggest X") to avoid an
+# athlete's allergens — a soft check an LLM can and does miss. This is the
+# hard check behind it: scan the model's actual answer for concrete dish/
+# ingredient words matching the athlete's known allergens (already normalized
+# to the big-9 vocabulary via plate_config.normalize_allergens) before the
+# response ever reaches the user. Broader than plate_config's synonym map,
+# which only covers athlete-entered *input* variants — this matches menu-
+# style *output* language.
+ALLERGEN_SCAN_KEYWORDS: dict[str, list[str]] = {
+    "dairy": [
+        "milk", "cheese", "cream", "butter", "yogurt", "yoghurt", "ranch",
+        "alfredo", "parmesan", "mozzarella", "cheddar", "queso", "ice cream",
+        "custard", "brie", "feta", "gouda", "buttermilk", "provolone", "ricotta",
+    ],
+    "egg": ["egg", "eggs", "mayonnaise", "mayo", "meringue", "frittata", "omelet", "omelette"],
+    "fish": [
+        "fish", "salmon", "tuna", "cod", "tilapia", "anchovy", "anchovies",
+        "halibut", "trout", "sardine", "mahi", "bass", "snapper", "catfish", "swordfish",
+    ],
+    "shellfish": [
+        "shrimp", "prawn", "crab", "lobster", "scallop", "clam", "mussel",
+        "oyster", "crawfish", "crayfish", "calamari", "squid", "octopus", "langoustine",
+    ],
+    "tree nuts": [
+        "almond", "walnut", "cashew", "pecan", "pistachio", "hazelnut",
+        "macadamia", "pine nut", "brazil nut",
+    ],
+    "peanut": ["peanut", "peanuts", "groundnut"],
+    "gluten": [
+        "wheat", "bread", "flour", "pasta", "noodle", "bun", "breaded",
+        "batter", "crouton", "tortilla", "cracker", "pastry", "dough", "gluten",
+    ],
+    "soy": ["soy", "soya", "tofu", "edamame", "tempeh", "teriyaki"],
+    "sesame": ["sesame", "tahini"],
+}
+
+
+def find_allergen_violations(text: str, allergen_categories: list[str]) -> list[str]:
+    """Scan generated text for dish/ingredient words matching the athlete's
+    known allergens/intolerances. `allergen_categories` must already be
+    normalized to the big-9 vocabulary. Returns the categories that appear
+    to be violated — empty means the text looks safe. Call this AFTER any
+    model call that can name specific foods, BEFORE the response reaches
+    the user."""
+    if not allergen_categories:
+        return []
+    lowered = text.lower()
+    hits = []
+    for cat in allergen_categories:
+        for kw in ALLERGEN_SCAN_KEYWORDS.get(cat, [cat]):
+            if re.search(rf"\b{re.escape(kw)}\b", lowered):
+                hits.append(cat)
+                break
+    return hits
