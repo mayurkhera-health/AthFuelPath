@@ -1,32 +1,19 @@
 """
-BOLA (Broken Object-Level Authorization) probe — POST/DELETE /api/athletes/{id}/confirmations.
+BOLA (Broken Object-Level Authorization) regression — POST/DELETE
+/api/athletes/{id}/confirmations.
 
-api/routes/fuel_report.py's confirmation endpoints take athlete_id straight from the URL
-path and never check it against any caller identity. This app has no session tokens by
-design (CLAUDE.md Sec.5: "No auth tokens. Session is identity-by-ID") -- that decision
-concerns *how a user authenticates* (the approved email-only login) and is explicitly
-out of scope to challenge here. This test is about a DIFFERENT, unrelated question:
-once a request arrives, does the server check that the athlete_id in the URL actually
-belongs to whoever is asking? Right now it does not, for anyone -- there is no caller
-identity captured anywhere in this route to check against. Per CLAUDE.md's own rule
-#9 ("Enforce visibility server-side (403), not just in the UI"), this endpoint does
-not currently meet the project's own bar, and athlete_id values are small sequential
-integers, so they are trivially guessable/enumerable -- this is not a theoretical gap.
-
-Concretely: anyone who merely learns another athlete's numeric ID (a sibling's
-device, a support screenshot, a QA build with sequential test accounts, or plain
-enumeration) can create AND delete that athlete's fuel-window confirmations, with
-nothing tying the request back to a legitimate relationship to that child. In a
-COPPA-scoped app for 13-17 year olds this is a real cross-account write/delete
-vulnerability, independent of the login mechanism.
-
-STATUS AS OF THIS WRITING: both tests below are EXPECTED TO FAIL against the live
-route -- there is no ownership check yet to make them pass. They are included as
-regression/triage tests: once a fix lands (e.g. a scoped caller identity + a
-belongs-to-parent check mirroring the one that already exists in
-POST /api/auth/athlete-create-login/{id}, see tests/test_auth_flow.py
-test_create_login_requires_athlete_belongs_to_parent), these tests turn green and
-lock the fix in.
+api/routes/fuel_report.py's confirmation endpoints used to take athlete_id
+straight from the URL path with no check against any caller identity —
+athlete_id values are small sequential integers, trivially guessable, so
+anyone who merely learned another athlete's numeric ID could create or
+delete that athlete's fuel-window confirmations. Fixed via api/services/
+session_auth.py's require_session/assert_owns_athlete (a session token
+minted at the existing email-only login, per CLAUDE.md rule #9 "Enforce
+visibility server-side (403), not just in the UI") — these tests now pass
+and lock the fix in. Every caller below must send a real (but
+unauthorized) session token; no token at all 401s instead, which is
+covered by test_athletes_parents_bola.py for the equivalent pattern on
+other routes.
 """
 import os
 os.environ["DB_PATH"] = ":memory:"
@@ -40,6 +27,7 @@ from db.setup import init_db
 from api.services.db_migrations import run_all
 from api.database import get_conn
 from api.main import app
+from tests.conftest import auth_headers
 
 
 @pytest.fixture
@@ -105,13 +93,12 @@ def test_confirming_a_window_for_an_athlete_you_do_not_own_is_rejected(client):
     Simulates the real-world attack: an unrelated caller who only knows a victim's
     numeric athlete_id (guessed a nearby sequential ID, captured it from a shared
     link/screenshot, etc.) writes a fuel-window confirmation for a child they have no
-    relationship to. Nothing needs to be forged -- there is no token to forge, because
-    none is ever checked, so only the victim's athlete_id is required.
+    relationship to. The attacker's token is real and valid — it's just for the
+    wrong athlete — proving the rejection comes from the ownership check, not
+    merely from having no token at all.
     """
-    # The attacker's own real account exists and is irrelevant to the exploit -- the
-    # vulnerability is that it doesn't matter who (if anyone) is asking.
     attacker_parent = make_parent("attacker@example.com")
-    make_athlete(attacker_parent, "AttackerKid")
+    attacker_athlete_id = make_athlete(attacker_parent, "AttackerKid")
 
     victim_parent = make_parent("victim@example.com")
     victim_athlete_id = make_athlete(victim_parent, "Victim")
@@ -119,13 +106,13 @@ def test_confirming_a_window_for_an_athlete_you_do_not_own_is_rejected(client):
     r = client.post(
         f"/api/athletes/{victim_athlete_id}/confirmations",
         json={"window_key": "breakfast", "window_type": "pre_fuel", "log_date": "2026-07-26"},
+        headers=auth_headers("athlete", athlete_id=attacker_athlete_id),
     )
 
-    assert r.status_code in (401, 403, 404), (
+    assert r.status_code == 403, (
         "Expected the confirmations endpoint to reject a write for an athlete_id the "
         f"caller has no relationship to, but got {r.status_code}: {r.text}. This "
-        "confirms unrestricted cross-athlete write access (BOLA) -- see module "
-        "docstring for the real-world impact and the current fix status."
+        "would confirm unrestricted cross-athlete write access (BOLA)."
     )
     assert fetch_confirmation(victim_athlete_id, "breakfast") is None, (
         "A confirmation was written for the victim athlete by an unrelated caller."
@@ -135,6 +122,7 @@ def test_confirming_a_window_for_an_athlete_you_do_not_own_is_rejected(client):
 def test_deleting_another_athletes_confirmation_is_rejected(client):
     """Same gap, the destructive direction: an unrelated caller can erase a real,
     already-recorded confirmation belonging to another family's athlete."""
+    attacker_athlete_id = make_athlete(make_parent("attacker2@example.com"), "AttackerKid2")
     victim_parent = make_parent("victim2@example.com")
     victim_athlete_id = make_athlete(victim_parent, "Victim2")
 
@@ -149,12 +137,36 @@ def test_deleting_another_athletes_confirmation_is_rejected(client):
     r = client.delete(
         f"/api/athletes/{victim_athlete_id}/confirmations",
         params={"window_key": "breakfast", "log_date": "2026-07-26"},
+        headers=auth_headers("athlete", athlete_id=attacker_athlete_id),
     )
 
-    assert r.status_code in (401, 403, 404), (
+    assert r.status_code == 403, (
         f"Expected the delete to be rejected, got {r.status_code}: {r.text}. Any "
         "caller can silently delete another athlete's fuel confirmation."
     )
     assert fetch_confirmation(victim_athlete_id, "breakfast") is not None, (
         "The victim's confirmation was deleted by an unrelated caller."
+    )
+
+
+def test_confirming_for_a_nonexistent_athlete_404s_even_with_a_matching_self_token(client):
+    """
+    assert_owns_athlete's fast path for an athlete-role token (identity.athlete_id
+    matches the URL's athlete_id) never touches the DB. A syntactically valid
+    self-token for an athlete_id that doesn't exist (deleted account, or a token
+    minted then the row removed) used to sail through and silently INSERT an
+    orphaned confirmation row instead of erroring.
+    """
+    ghost_athlete_id = 999999
+    r = client.post(
+        f"/api/athletes/{ghost_athlete_id}/confirmations",
+        json={"window_key": "breakfast", "window_type": "pre_fuel", "log_date": "2026-07-26"},
+        headers=auth_headers("athlete", athlete_id=ghost_athlete_id),
+    )
+    assert r.status_code == 404, (
+        f"Expected 404 for a nonexistent athlete_id even with a matching self-token, "
+        f"got {r.status_code}: {r.text}."
+    )
+    assert fetch_confirmation(ghost_athlete_id, "breakfast") is None, (
+        "An orphaned confirmation row was inserted for an athlete_id that doesn't exist."
     )

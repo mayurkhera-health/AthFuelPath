@@ -53,6 +53,14 @@ def record_confirmation(
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)
+        # assert_owns_athlete's fast path for an athlete-role token (identity
+        # matches athlete_id directly) never touches the DB — an athlete
+        # whose own account was deleted between token mint and this request
+        # would otherwise pass ownership and silently insert an orphaned
+        # confirmation row instead of erroring. Sibling routes in today.py
+        # already do this same existence check; this one didn't.
+        if not conn.execute("SELECT id FROM athletes WHERE id = ?", (athlete_id,)).fetchone():
+            raise HTTPException(404, "Athlete not found.")
         conn.execute(
             "INSERT OR IGNORE INTO confirmations (athlete_id, log_date, window_key, window_type) "
             "VALUES (?, ?, ?, ?)",
