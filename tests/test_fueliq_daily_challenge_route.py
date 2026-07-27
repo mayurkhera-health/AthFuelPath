@@ -129,6 +129,19 @@ def test_daily_challenge_verdict_404_when_nothing_scheduled(client, monkeypatch)
     assert r.status_code == 404
 
 
+def test_daily_challenge_verdict_rejects_invalid_guess(client, monkeypatch):
+    """Regression: guess used to be a bare str — anything other than
+    "real"/"myth" never matched _VALID_VERDICTS and was silently recorded as
+    wrong instead of being rejected as malformed input."""
+    monkeypatch.setenv("FUELIQ_ENABLED", "true")
+    aid = _make_athlete(client)
+    r = client.post(
+        f"/api/athletes/{aid}/daily-challenge/verdict", json={"guess": "definitely maybe"},
+        headers=auth_headers("athlete", athlete_id=aid),
+    )
+    assert r.status_code == 422
+
+
 def test_daily_challenge_verdict_does_not_appear_in_fueliq_hub_score(client, monkeypatch):
     """The whole point of the separation — completing the Daily Challenge
     must never move the athlete's Fuel IQ score/rank."""

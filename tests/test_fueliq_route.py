@@ -163,6 +163,24 @@ def test_answer_question_returns_correctness_and_explanation(client, monkeypatch
     assert body["misconception_tag"] == "tag1"
 
 
+def test_answer_question_rejects_invalid_selected_option(client, monkeypatch):
+    """Regression: selected_option used to be a bare str — any value other
+    than "a"/"b"/"c" never matched correct_option and was silently recorded
+    as a wrong answer instead of being rejected as malformed input."""
+    monkeypatch.setenv("FUELIQ_ENABLED", "true")
+    aid = _make_athlete(client)
+    conn = get_conn()
+    lesson_id = _seed_lesson(conn)
+    question_id = _seed_question(conn, lesson_id, correct_option="b")
+    conn.close()
+
+    r = client.post(
+        f"/api/athletes/{aid}/questions/{question_id}/answer", json={"selected_option": "z"},
+        headers=auth_headers("athlete", athlete_id=aid),
+    )
+    assert r.status_code == 422
+
+
 def test_badges_lists_all_defined_badges_locked_until_earned(client, monkeypatch):
     monkeypatch.setenv("FUELIQ_ENABLED", "true")
     aid = _make_athlete(client)

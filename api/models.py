@@ -322,7 +322,10 @@ class MealPlanGenerateRequest(BaseModel):
 
 
 class FuelIQQuizAnswer(BaseModel):
-    selected_option: str
+    # Was a bare str — any other value (typo, stale client, garbage) never
+    # matched fueliq_questions.correct_option and was silently recorded as a
+    # wrong answer instead of being rejected as malformed input.
+    selected_option: Literal["a", "b", "c"]
 
 
 class FuelIQLessonComplete(BaseModel):
@@ -330,7 +333,9 @@ class FuelIQLessonComplete(BaseModel):
 
 
 class FuelIQDailyChallengeVerdict(BaseModel):
-    guess: str
+    # Same gap as FuelIQQuizAnswer above — matches
+    # fueliq_daily_challenge_service._VALID_VERDICTS exactly.
+    guess: Literal["real", "myth"]
 
 
 class OTPRequest(BaseModel):
