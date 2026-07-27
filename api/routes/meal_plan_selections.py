@@ -8,11 +8,27 @@ from api.services.session_auth import require_session, assert_owns_athlete
 router = APIRouter()
 
 
+class MealPlanRecipeIn(BaseModel):
+    """Mirrors fuelup-mobile/types/recipe.ts's Recipe shape. Was previously a
+    bare `dict` — any malformed payload (missing fields, wrong types) was
+    stored and re-served as-is with no validation at the API boundary."""
+    id: int | None = None
+    name: str
+    category: str
+    calories: float
+    protein_g: float
+    carbs_g: float
+    fat_g: float
+    ingredients: list[str]
+    preparation_notes: str
+    tags: list[str] | None = None
+
+
 class ItemIn(BaseModel):
     athlete_id: int
     plan_date: str
     text: str | None = None
-    recipe: dict | None = None
+    recipe: MealPlanRecipeIn | None = None
     added_by: str = "parent"
 
     @field_validator("added_by")
@@ -35,7 +51,7 @@ class ItemIn(BaseModel):
         if self.recipe is None and not self.text:
             raise ValueError("text or recipe is required")
         if self.recipe is not None and not self.text:
-            name = (self.recipe.get("name") or "").strip()
+            name = self.recipe.name.strip()
             if not name:
                 raise ValueError("recipe.name is required when text is omitted")
             self.text = name
@@ -44,7 +60,7 @@ class ItemIn(BaseModel):
 
 @router.post("/windows/{window_key}/items", status_code=201)
 def add_item(window_key: str, body: ItemIn, identity=Depends(require_session)):
-    recipe_json = json.dumps(body.recipe) if body.recipe is not None else None
+    recipe_json = json.dumps(body.recipe.model_dump()) if body.recipe is not None else None
     conn = get_conn()
     try:
         assert_owns_athlete(identity, body.athlete_id, conn)
@@ -65,7 +81,7 @@ def add_item(window_key: str, body: ItemIn, identity=Depends(require_session)):
         item_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
         out = {"id": item_id, "text": body.text, "added_by": body.added_by}
         if body.recipe is not None:
-            out["recipe"] = body.recipe
+            out["recipe"] = body.recipe.model_dump()
         return out
     finally:
         conn.close()

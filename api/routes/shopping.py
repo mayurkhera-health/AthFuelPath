@@ -78,15 +78,20 @@ def add_item(data: ShoppingItemCreate, identity=Depends(require_session)):
         if not conn.execute("SELECT id FROM athletes WHERE id = ?", (data.athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
         list_id = _get_or_create_list(data.athlete_id, data.week_start, conn)
+        name = data.name.strip()
+        # Case/whitespace-insensitive duplicate check — "Bananas" then
+        # "bananas " used to create two separate rows instead of being
+        # recognized as the same item. The first-inserted row's original
+        # casing is preserved; the duplicate just returns it as-is.
         existing = conn.execute(
-            "SELECT * FROM shopping_list_items WHERE list_id = ? AND name = ? AND category = ?",
-            (list_id, data.name, data.category),
+            "SELECT * FROM shopping_list_items WHERE list_id = ? AND LOWER(name) = LOWER(?) AND category = ?",
+            (list_id, name, data.category),
         ).fetchone()
         if existing:
             return JSONResponse(content=dict(existing), status_code=200)
         conn.execute(
             "INSERT INTO shopping_list_items (list_id, name, category, source) VALUES (?, ?, ?, ?)",
-            (list_id, data.name, data.category, data.source),
+            (list_id, name, data.category, data.source),
         )
         conn.commit()
         row = conn.execute(

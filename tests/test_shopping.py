@@ -446,6 +446,25 @@ def test_add_item_idempotent(client):
     assert len(items) == 1
 
 
+def test_add_item_duplicate_check_is_case_and_whitespace_insensitive(client):
+    """Regression: "Bananas" then "bananas " (different case, trailing space)
+    used to be treated as two different items instead of a duplicate."""
+    aid = _make_athlete_route(client, "re4b")
+    headers = auth_headers("athlete", athlete_id=aid)
+    client.post("/api/shopping/list/items", json={
+        "athlete_id": aid, "week_start": "2026-06-16",
+        "name": "Bananas", "category": "pre_fuel", "source": "suggested",
+    }, headers=headers)
+    client.post("/api/shopping/list/items", json={
+        "athlete_id": aid, "week_start": "2026-06-16",
+        "name": "bananas ", "category": "pre_fuel", "source": "suggested",
+    }, headers=headers)
+    resp = client.get(f"/api/shopping/list?athlete_id={aid}&week_start=2026-06-16", headers=headers)
+    items = [i for g in resp.json()["groups"] for i in g["items"] if i["name"].strip().lower() == "bananas"]
+    assert len(items) == 1
+    assert items[0]["name"] == "Bananas"  # first-inserted casing preserved
+
+
 def test_check_uncheck_item(client):
     aid = _make_athlete_route(client, "re5")
     headers = auth_headers("athlete", athlete_id=aid)
