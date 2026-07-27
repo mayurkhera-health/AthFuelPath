@@ -32,12 +32,21 @@ def register_expo_token(data: ExpoTokenPayload):
         return {"message": "No profile id provided."}
     conn = get_conn()
     try:
+        # A push token belongs to a DEVICE, not a person — on a shared device (one
+        # family tablet/phone used by both a parent and an athlete), the parent's
+        # registration and the athlete's registration carry the SAME token. Since
+        # token is the unique key, an unconditional overwrite here would blank out
+        # whichever id the other profile's registration didn't send (e.g. the
+        # athlete's call sends athlete_id with no parent_id, wiping the parent_id
+        # a prior registration had set) — silently killing that profile's push
+        # notifications with no error surfaced anywhere. COALESCE keeps whichever
+        # side the current call doesn't mention, so one token can carry both ids.
         conn.execute(
             """INSERT INTO expo_push_tokens (athlete_id, parent_id, token, platform, timezone)
                VALUES (?, ?, ?, ?, ?)
                ON CONFLICT(token) DO UPDATE SET
-               athlete_id=excluded.athlete_id,
-               parent_id=excluded.parent_id,
+               athlete_id=COALESCE(excluded.athlete_id, expo_push_tokens.athlete_id),
+               parent_id=COALESCE(excluded.parent_id, expo_push_tokens.parent_id),
                platform=excluded.platform,
                timezone=excluded.timezone,
                updated_at=datetime('now')""",
