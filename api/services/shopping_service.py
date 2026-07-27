@@ -84,11 +84,14 @@ def _active_categories(classification: dict) -> list[str]:
 # ── Week event fetch ──────────────────────────────────────────────────────────
 
 def fetch_week_events(athlete_id: int, week_start: str, conn) -> dict:
-    """Return {date_str: [event_dict, ...]} for the 7 days starting week_start."""
-    monday = date.fromisoformat(week_start)
+    """Return {date_str: [event_dict, ...]} for the 7 days starting week_start.
+    week_start is Sunday-anchored, matching api/utils/week.py's get_week_start()
+    and the mobile client's own getWeekStart() (WEEK_STARTS_ON=0) — the only
+    real caller of this shopping endpoint."""
+    sunday = date.fromisoformat(week_start)
     result: dict = {}
     for i in range(7):
-        day = (monday + timedelta(days=i)).isoformat()
+        day = (sunday + timedelta(days=i)).isoformat()
         rows = conn.execute(
             "SELECT * FROM events WHERE athlete_id = ? AND event_date = ? ORDER BY start_time",
             (athlete_id, day),
@@ -99,7 +102,9 @@ def fetch_week_events(athlete_id: int, week_start: str, conn) -> dict:
 
 # ── Essentials generation ─────────────────────────────────────────────────────
 
-_DAY_ABBRS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+# week_start is Sunday-anchored (see fetch_week_events) — day 0 is Sunday.
+# This previously started "Mon", mislabeling every day in the strip by one.
+_DAY_ABBRS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
 
 def _week_tier(game_count: int, practice_count: int) -> tuple[str, str]:
@@ -144,12 +149,12 @@ def build_essentials(athlete_id: int, week_start: str, conn) -> dict:
         classification["game_count"], classification["practice_count"]
     )
 
-    # Day strip (Mon–Sun with day type)
-    monday = date.fromisoformat(week_start)
+    # Day strip (Sun–Sat with day type)
+    sunday = date.fromisoformat(week_start)
     day_types = classification["day_types"]
     day_strip = [
         {
-            "date":  (monday + timedelta(days=i)).isoformat(),
+            "date":  (sunday + timedelta(days=i)).isoformat(),
             "label": _DAY_ABBRS[i],
             "type":  day_types[i] if i < len(day_types) else "rest",
         }

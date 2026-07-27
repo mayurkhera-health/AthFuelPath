@@ -4,6 +4,7 @@ from pydantic import BaseModel, field_validator
 from typing import Literal, Optional, List
 
 from api.services.activity_type_resolver import VALID_ACTIVITY_TYPES
+from api.services.shopping_service import CATEGORY_ORDER as SHOPPING_CATEGORIES
 
 
 def _normalize_start_time(v: Optional[str]) -> Optional[str]:
@@ -345,10 +346,21 @@ class OTPVerify(BaseModel):
 
 class ShoppingItemCreate(BaseModel):
     athlete_id: int
-    week_start: str          # ISO Monday date e.g. "2026-06-16"
+    week_start: str          # ISO Sunday-anchored date e.g. "2026-06-14"
     name: str
     category: str
     source: str = "suggested"   # suggested | custom | pack
+
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, v):
+        # An unrecognized category silently created an invisible "ghost" item
+        # — CATEGORY_ORDER is the fixed set every group-rendering loop
+        # iterates, so anything else never appears in any group, with no
+        # error to the caller and no way to find it again except by deleting it.
+        if v not in SHOPPING_CATEGORIES:
+            raise ValueError(f"category must be one of {SHOPPING_CATEGORIES}")
+        return v
 
 
 class ShoppingItemPatch(BaseModel):

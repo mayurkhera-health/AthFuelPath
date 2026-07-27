@@ -180,6 +180,29 @@ def _seed(conn):
     seed_fueling_foods(conn)
 
 
+def test_day_strip_is_sunday_anchored_not_monday(conn):
+    """Regression: the day strip used to start "Mon", but week_start is
+    Sunday-anchored (api/utils/week.py's get_week_start(), and the mobile
+    client's own getWeekStart() with WEEK_STARTS_ON=0) — every day in the
+    strip was mislabeled by one. 2026-06-14 is a real Sunday; an event on
+    2026-06-17 (Wednesday) must land at day_strip[3], labeled "Wed"."""
+    _seed(conn)
+    aid = _insert_athlete(conn, "daystrip")
+    conn.execute(
+        "INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, duration_hours) "
+        "VALUES (?, 'Practice', 'practice', '2026-06-17', '16:00', 1.5)",
+        (aid,),
+    )
+    conn.commit()
+    result = build_essentials(aid, "2026-06-14", conn)
+    strip = result["header"]["day_strip"]
+    assert [d["label"] for d in strip] == ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    assert strip[0]["date"] == "2026-06-14"
+    assert strip[3]["date"] == "2026-06-17"
+    assert strip[3]["type"] != "rest"
+    assert strip[0]["type"] == "rest"
+
+
 def test_build_essentials_no_events_returns_staples_only(conn):
     _seed(conn)
     aid = _insert_athlete(conn, "rest")
@@ -392,6 +415,23 @@ def test_add_item_and_get_list(client):
     assert resp2.status_code == 200
     items = [i for g in resp2.json()["groups"] for i in g["items"]]
     assert any(i["id"] == item_id and i["name"] == "Bananas" for i in items)
+
+
+def test_add_item_rejects_unknown_category(client):
+    """Regression: an unrecognized category used to be accepted and stored,
+    creating an invisible "ghost" item — every group-rendering loop only
+    iterates CATEGORY_ORDER, so it would never appear in any group, with no
+    error and no way to find or remove it except a direct DB query."""
+    aid = _make_athlete_route(client, "re3b")
+    headers = auth_headers("athlete", athlete_id=aid)
+    resp = client.post("/api/shopping/list/items", json={
+        "athlete_id": aid, "week_start": "2026-06-16",
+        "name": "Mystery Item", "category": "not_a_real_category", "source": "suggested",
+    }, headers=headers)
+    assert resp.status_code == 422
+    list_resp = client.get(f"/api/shopping/list?athlete_id={aid}&week_start=2026-06-16", headers=headers)
+    items = [i for g in list_resp.json()["groups"] for i in g["items"]]
+    assert not any(i["name"] == "Mystery Item" for i in items)
 
 
 def test_add_item_idempotent(client):
