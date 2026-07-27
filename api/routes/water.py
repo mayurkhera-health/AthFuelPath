@@ -1,16 +1,36 @@
 from datetime import date as dt_date
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from api.database import get_conn
 from api.services.session_auth import require_session, assert_owns_athlete
 
 router = APIRouter()
 
+# A hydration bottle is a few cups; even an all-day tournament wouldn't put a
+# real reading anywhere near this — it exists to reject fat-fingered/garbage
+# input (e.g. a stray extra digit), not to model a plausible daily max.
+_MAX_PLAUSIBLE_CUPS = 50
+
 
 class WaterLogCreate(BaseModel):
     athlete_id: int
-    cups: int
-    date: str = None
+    cups: int = Field(ge=0, le=_MAX_PLAUSIBLE_CUPS)
+    date: str | None = None
+
+    @field_validator("date")
+    @classmethod
+    def validate_date(cls, v: str | None) -> str | None:
+        # A malformed date used to be stored as-is: log_water's own
+        # ON CONFLICT key is (athlete_id, log_date), so it saved successfully,
+        # but get_water_today() always queries with a real ISO date string —
+        # the row could never match, so it silently vanished from every GET.
+        if v is None:
+            return v
+        try:
+            dt_date.fromisoformat(v)
+        except ValueError:
+            raise ValueError(f"date must be an ISO 8601 date (YYYY-MM-DD), got {v!r}")
+        return v
 
 
 @router.get("/{athlete_id}/today")
@@ -19,6 +39,8 @@ def get_water_today(athlete_id: int, identity=Depends(require_session)):
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)
+        if not conn.execute("SELECT id FROM athletes WHERE id = ?", (athlete_id,)).fetchone():
+            raise HTTPException(404, "Athlete not found.")
         row = conn.execute(
             "SELECT cups FROM water_logs WHERE athlete_id = ? AND log_date = ?",
             (athlete_id, today),
@@ -41,7 +63,7 @@ def log_water(data: WaterLogCreate, identity=Depends(require_session)):
                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
                ON CONFLICT(athlete_id, log_date)
                DO UPDATE SET cups = excluded.cups, updated_at = CURRENT_TIMESTAMP""",
-            (data.athlete_id, log_date, max(0, data.cups)),
+            (data.athlete_id, log_date, data.cups),
         )
         conn.commit()
         return {"athlete_id": data.athlete_id, "date": log_date, "cups": data.cups}
