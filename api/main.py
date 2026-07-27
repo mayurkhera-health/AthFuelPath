@@ -98,7 +98,18 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    # allow_credentials=True combined with a wildcard origin is a known bad
+    # pairing — browsers actually respond by echoing back the requesting
+    # origin instead of "*" whenever credentials are on, so this
+    # combination effectively grants every website credentialed access.
+    # Every real auth mechanism here (session Bearer tokens, X-Admin-Key)
+    # travels in a header the client sets explicitly, never a cookie, so
+    # allow_credentials was never actually needed — dropping it (rather
+    # than guessing at a fixed origin allowlist, which risks breaking the
+    # same-origin web frontend/admin panel this app also serves via
+    # StaticFiles, or a dev frontend on a different port) closes the gap
+    # with no behavior change for any real client.
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
