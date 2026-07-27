@@ -125,10 +125,17 @@ def rank_for_notification(w: dict) -> int:
 
 
 def select_notification_windows(windows: list[dict]) -> list[dict]:
+    """Picks candidate windows to potentially notify about today. Does NOT
+    apply any quiet-hours filter here — this list is shared across both the
+    athlete and parent stream, who each configure their own independent
+    Quiet Hours (see should_notify_recipient), so no single hardcoded or
+    shared window can correctly represent both. A window that opens during
+    one recipient's quiet hours can still be legitimate for the other, or
+    for a recipient who configured a non-default window; the per-recipient
+    check at actual send time is the real gate."""
     eligible = [
         w for w in windows
         if w["is_tappable"]
-        and not in_quiet_hours(w["open_time"])
         and rank_for_notification(w) < 99
     ]
     return sorted(eligible, key=lambda w: (rank_for_notification(w), w["sort_time"]))[:DAILY_CAP]

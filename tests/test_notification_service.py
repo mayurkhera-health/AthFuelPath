@@ -186,11 +186,20 @@ class TestSelectNotificationWindows:
         assert "fuel_after_primary_1" in keys
         assert "pre_event_meal_1" in keys
 
-    def test_excludes_quiet_hours(self):
+    def test_does_not_pre_filter_by_a_hardcoded_quiet_hours_window(self):
+        """Regression: selection used to exclude any window opening before
+        06:30/at-or-after 22:00 via a single hardcoded floor, shared across
+        both the athlete and parent stream — even though each recipient
+        configures their own independent Quiet Hours (should_notify_recipient).
+        A recipient with a later quiet_start than the old 22:00 default could
+        never be notified about a window in that gap, no matter what they'd
+        configured. Selection now only ranks/caps; the per-recipient check at
+        actual send time is the real (and only) quiet-hours gate."""
         windows = [
             _window("fuel_after_primary_1", "fuel_after", "04:00", priority=True),
         ]
-        assert select_notification_windows(windows) == []
+        result = select_notification_windows(windows)
+        assert [w["window_key"] for w in result] == ["fuel_after_primary_1"]
 
     def test_excludes_non_tappable(self):
         windows = [

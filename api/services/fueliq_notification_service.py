@@ -85,7 +85,9 @@ def _log_push_event(athlete_id: int, trigger: str, outcome: str, date_str: str, 
 # ── Per-athlete notification tick ──────────────────────────────────────────────
 
 def _notify_athlete_fueliq(athlete_id: int, conn, now: datetime | None = None) -> None:
-    from api.services.notification_service import resolve_timezone, send_notification_guarded
+    from api.services.notification_service import (
+        resolve_timezone, send_notification_guarded, get_notification_prefs, in_quiet_window,
+    )
 
     token_rows = conn.execute(
         "SELECT token, timezone FROM expo_push_tokens WHERE athlete_id = ?",
@@ -114,6 +116,18 @@ def _notify_athlete_fueliq(athlete_id: int, conn, now: datetime | None = None) -
     pregame_on  = bool(prefs_row["pregame_enabled"])
 
     if not morning_on and not pregame_on:
+        return
+
+    # The athlete's own configured Quiet Hours (Settings > Notifications) must
+    # be respected here too, on top of the fixed §2.1 school-hours blackout
+    # below — the two are independent checks, not a replacement for each
+    # other. A user who sets a stricter or looser custom window than the
+    # spec default must actually see that reflected in Fuel IQ pushes, not
+    # just the fuel-window pushes this same prefs row already gates.
+    user_prefs = get_notification_prefs("athlete", athlete_id, conn)
+    if user_prefs["quiet_hours_enabled"] and in_quiet_window(
+        local_time, user_prefs["quiet_start"], user_prefs["quiet_end"]
+    ):
         return
 
     tokens = [r["token"] for r in token_rows]

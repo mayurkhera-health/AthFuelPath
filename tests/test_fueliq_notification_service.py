@@ -13,6 +13,7 @@ from api.services.db_migrations import (
     _create_expo_push_tokens,
     _add_timezone_to_tokens,
     _create_notification_log,
+    _create_notification_prefs,
     _create_fueliq_notification_prefs,
     _create_fueliq_push_events,
 )
@@ -44,6 +45,7 @@ def _fueliq_notif_db():
     _create_expo_push_tokens(conn)
     _add_timezone_to_tokens(conn)
     _create_notification_log(conn)
+    _create_notification_prefs(conn)
     _create_fueliq_notification_prefs(conn)
     _create_fueliq_push_events(conn)
     conn.commit()
@@ -275,6 +277,47 @@ class TestMorningTrigger:
         ).fetchone()
         assert row["morning_enabled"] == 1
         assert row["pregame_enabled"] == 1
+
+    def test_respects_athletes_own_configured_quiet_hours(self, monkeypatch):
+        """Regression: Fuel IQ pushes used to only check the fixed §2.1
+        blackout (before 06:30 / school hours / after 21:00) and completely
+        ignored the athlete's own Quiet Hours setting from Settings >
+        Notifications — the same prefs row that already gates fuel-window
+        pushes. 07:30 is outside the §2.1 blackout, but an athlete who
+        extended their own quiet hours to end at 08:00 must still be
+        respected here."""
+        conn = _fueliq_notif_db()
+        _add_token(conn, "Tok1", athlete_id=1)
+        _add_event(conn, 1, "practice", "2026-07-10")
+        conn.execute(
+            "INSERT INTO notification_prefs (profile_type, profile_id, quiet_hours_enabled, quiet_start, quiet_end) "
+            "VALUES ('athlete', 1, 1, '22:00', '08:00')"
+        )
+        conn.commit()
+        sent = _patch_send(monkeypatch)
+
+        now = datetime(2026, 7, 10, 7, 30, tzinfo=PST)
+        fns._notify_athlete_fueliq(1, conn, now=now)
+
+        assert sent == []
+
+    def test_disabling_quiet_hours_entirely_still_allows_the_default_push(self, monkeypatch):
+        """A user who turns Quiet Hours off entirely must not be newly
+        blocked by this check — only the still-active §2.1 blackout applies."""
+        conn = _fueliq_notif_db()
+        _add_token(conn, "Tok1", athlete_id=1)
+        _add_event(conn, 1, "practice", "2026-07-10")
+        conn.execute(
+            "INSERT INTO notification_prefs (profile_type, profile_id, quiet_hours_enabled, quiet_start, quiet_end) "
+            "VALUES ('athlete', 1, 0, '22:00', '08:00')"
+        )
+        conn.commit()
+        sent = _patch_send(monkeypatch)
+
+        now = datetime(2026, 7, 10, 7, 30, tzinfo=PST)
+        fns._notify_athlete_fueliq(1, conn, now=now)
+
+        assert len(sent) == 1
 
 
 # ─── _notify_athlete_fueliq — Trigger 2 (pregame) ──────────────────────────────
