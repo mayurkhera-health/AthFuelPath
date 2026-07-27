@@ -284,12 +284,12 @@ def _has_team_player(athlete_id: int, conn) -> bool:
 
 
 def _has_level_up(athlete_id: int, conn) -> bool:
-    """Earned the first time an athlete reaches Level 2 (score ≥ 100)."""
+    """Earned the first time an athlete reaches Level 2."""
     row = conn.execute(
         "SELECT score FROM fueliq_athlete_progress WHERE athlete_id = ?",
         (athlete_id,),
     ).fetchone()
-    return bool(row) and row["score"] >= 100
+    return bool(row) and level_unlocked(row["score"], 2)
 
 
 BADGE_CHECKS = {

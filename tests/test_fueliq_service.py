@@ -88,7 +88,7 @@ def test_fueliq_tables_are_created():
 
 @pytest.mark.parametrize(
     "level,threshold",
-    [(1, 0), (2, 100), (3, 200), (4, 300)],
+    [(1, 0), (2, 65), (3, 120), (4, 145), (5, 165)],
 )
 def test_level_unlock_threshold(level, threshold):
     assert fq.level_unlocked(threshold, level) is True
@@ -96,7 +96,7 @@ def test_level_unlock_threshold(level, threshold):
 
 @pytest.mark.parametrize(
     "level,threshold",
-    [(2, 100), (3, 200), (4, 300)],
+    [(2, 65), (3, 120), (4, 145), (5, 165)],
 )
 def test_level_locked_below_threshold(level, threshold):
     assert fq.level_unlocked(threshold - 1, level) is False
@@ -357,6 +357,20 @@ def test_game_day_ready_requires_all_level_2_lessons_complete():
     assert "game_day_ready" not in result1["newly_earned_badges"]
     result2 = fq.complete_lesson(1, l2, conn)
     assert "game_day_ready" in result2["newly_earned_badges"]
+    conn.close()
+
+
+def test_level_up_badge_awarded_at_the_real_level_2_threshold_not_a_stale_100():
+    """Regression: _has_level_up used to hardcode score >= 100 while the real
+    Level 2 threshold (_LEVEL_THRESHOLDS[2]) is 65 — an athlete who leveled up
+    at score 65-99 never got the badge. Baseline score is 50; a 10-point
+    lesson with a perfect-quiz bonus (+5) reaches exactly 65."""
+    conn = _fueliq_db()
+    lesson_id = _insert_lesson(conn, points=10)
+    assert fq.get_progress(1, conn)["score"] == 50
+    result = fq.complete_lesson(1, lesson_id, conn, perfect_quiz=True)
+    assert fq.get_progress(1, conn)["score"] == 65
+    assert "level_up" in result["newly_earned_badges"]
     conn.close()
 
 
