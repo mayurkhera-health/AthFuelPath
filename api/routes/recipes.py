@@ -198,7 +198,10 @@ def get_recipes_for_window(
     finally:
         conn.close()
     allergies = _parse_allergies(athlete.get("allergies"))
-    recipes = recipe_db.get_valid_recipes(profile_key=window_key, allergies=allergies)
+    dietary = _parse_dietary(athlete.get("dietary_restrictions"))
+    recipes = recipe_db.get_valid_recipes(
+        profile_key=window_key, allergies=allergies, dietary_restrictions=dietary,
+    )
     return {"recipes": recipes, "window_key": window_key, "count": len(recipes)}
 
 
