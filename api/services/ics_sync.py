@@ -20,9 +20,12 @@ event classifies identically to a hand-imported one, with two server-only guards
     manual events (source='manual') are never touched.
 """
 
+import ipaddress
 import logging
+import socket
 import threading
 from datetime import datetime, timedelta, timezone, date
+from urllib.parse import urlparse
 
 import httpx
 from icalendar import Calendar
@@ -52,16 +55,52 @@ def normalize_calendar_url(url: str) -> str:
     return u
 
 
+_MAX_REDIRECTS = 5
+
+
+def _is_public_host(host: str) -> bool:
+    """SSRF guard — reject any host that resolves to a private/loopback/link-local/
+    reserved IP (RFC 1918, 169.254.0.0/16 cloud-metadata range, ::1, etc). Real BYGA/
+    PlayMetrics feeds resolve to public hosting and pass through untouched; this only
+    blocks a submitted URL from reaching internal infrastructure."""
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return False
+    for _, _, _, _, sockaddr in infos:
+        ip = ipaddress.ip_address(sockaddr[0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            return False
+    return True
+
+
 def fetch_ics_text(url: str) -> str:
     """Fetch raw ICS text. Raises on network / HTTP error — callers treat any raise
-    as a failed feed and SKIP the delete phase (never wipe on a transient failure)."""
+    as a failed feed and SKIP the delete phase (never wipe on a transient failure).
+
+    SSRF guard: redirects are followed manually (follow_redirects=False) with the
+    host re-validated on every hop — a URL that starts out public can still 302 to
+    an internal address, so trusting httpx's automatic redirect following would
+    only check the first hop."""
     fetch_url = normalize_calendar_url(url)
     if not fetch_url.startswith("http"):
         raise ValueError(f"Invalid calendar URL: {url!r}")
-    resp = httpx.get(fetch_url, timeout=15, headers={"User-Agent": "FuelUp/1.0"},
-                     follow_redirects=True)
-    resp.raise_for_status()
-    return resp.text
+
+    for _ in range(_MAX_REDIRECTS + 1):
+        host = urlparse(fetch_url).hostname
+        if not host or not _is_public_host(host):
+            raise ValueError(f"Calendar URL host is not allowed: {host!r}")
+        resp = httpx.get(fetch_url, timeout=15, headers={"User-Agent": "FuelUp/1.0"},
+                         follow_redirects=False)
+        if resp.status_code in (301, 302, 303, 307, 308):
+            location = resp.headers.get("location")
+            if not location:
+                resp.raise_for_status()
+            fetch_url = str(httpx.URL(fetch_url).join(location))
+            continue
+        resp.raise_for_status()
+        return resp.text
+    raise ValueError("Too many redirects while fetching calendar feed")
 
 
 # ─── Parsing ──────────────────────────────────────────────────────────────────
