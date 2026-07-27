@@ -297,12 +297,19 @@ def sync_grocery_list(data: _SyncGroceryList, identity=Depends(require_session))
             (data.athlete_id, data.week_start),
         ).fetchall()
         list_id = _get_or_create_recipe_list(data.athlete_id, data.week_start, conn)
-        existing_names = {
-            row["name"]
-            for row in conn.execute(
-                "SELECT name FROM recipe_list_items WHERE list_id = ?", (list_id,)
-            ).fetchall()
-        }
+        existing_rows = conn.execute(
+            "SELECT name, checked FROM recipe_list_items WHERE list_id = ?", (list_id,)
+        ).fetchall()
+        existing_names = {row["name"] for row in existing_rows}
+        # Full delete+reinsert below rebuilds the list from every currently-
+        # selected recipe's ingredients — necessary since removing a recipe
+        # must remove ingredients no other selection still needs. But it was
+        # wiping `checked` on EVERY add/remove of ANY recipe, not just when a
+        # shared ingredient name was involved: a manually-checked item got
+        # reset to unchecked the instant the user added or removed a
+        # completely unrelated recipe. Capture what was checked here and
+        # restore it below for any item that survives the resync.
+        previously_checked = {row["name"] for row in existing_rows if row["checked"]}
         conn.execute(
             "DELETE FROM recipe_list_item_sources WHERE list_item_id IN "
             "(SELECT id FROM recipe_list_items WHERE list_id = ?)",
@@ -350,6 +357,13 @@ def sync_grocery_list(data: _SyncGroceryList, identity=Depends(require_session))
                         " VALUES (?, ?, ?)",
                         (item_row["id"], row["recipe_id"], recipe.get("name", row["recipe_id"])),
                     )
+        if previously_checked:
+            placeholders = ",".join("?" * len(previously_checked))
+            conn.execute(
+                f"UPDATE recipe_list_items SET checked = 1 "
+                f"WHERE list_id = ? AND name IN ({placeholders})",
+                (list_id, *previously_checked),
+            )
         new_names = {
             row["name"]
             for row in conn.execute(
