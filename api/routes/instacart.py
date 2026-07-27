@@ -13,7 +13,7 @@ before this endpoint existed.
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import ValidationError
 
 from api.database import get_conn
@@ -22,18 +22,20 @@ from api.services.instacart_shopping_list import (
     ShoppingListCreateRequest,
     create_shopping_list,
 )
+from api.services.session_auth import require_session, assert_owns_athlete
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
 @router.post("/shopping-list", status_code=201)
-def create_instacart_shopping_list(payload: ShoppingListCreateRequest):
+def create_instacart_shopping_list(payload: ShoppingListCreateRequest, identity=Depends(require_session)):
     if not instacart_client.instacart_shopping_list_enabled():
         raise HTTPException(404, "Instacart shopping list handoff is not currently available.")
 
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, payload.athlete_id, conn)
         if not conn.execute("SELECT id FROM athletes WHERE id = ?", (payload.athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
     finally:

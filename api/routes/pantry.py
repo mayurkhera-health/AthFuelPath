@@ -1,6 +1,6 @@
 # api/routes/pantry.py
 from datetime import date, timedelta
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from api.database import get_conn
 from api.services import claude_ai
@@ -14,6 +14,7 @@ from api.services.pantry_service import (
 )
 from api.services.food_db import get_food_by_id
 from api.services.pantry_plan import compute_slot_plan, fallback_select, fallback_replacement
+from api.services.session_auth import require_session, assert_owns_athlete
 
 router = APIRouter()
 
@@ -68,9 +69,10 @@ def _week_nutrition(athlete: dict, week_start: str, week_events: list[dict]) -> 
 
 
 @router.get("/list")
-def get_list(athlete_id: int = Query(...), week_start: str = Query(...)):
+def get_list(athlete_id: int = Query(...), week_start: str = Query(...), identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         athlete = _require_athlete(athlete_id, conn)
 
         event_rows = conn.execute(
@@ -99,9 +101,10 @@ def get_list(athlete_id: int = Query(...), week_start: str = Query(...)):
 
 
 @router.post("/generate")
-def generate_list(athlete_id: int = Query(...), week_start: str = Query(...)):
+def generate_list(athlete_id: int = Query(...), week_start: str = Query(...), identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         athlete = _require_athlete(athlete_id, conn)
 
         # Single events fetch — reused for both AI prompt and response
@@ -172,9 +175,10 @@ def generate_list(athlete_id: int = Query(...), week_start: str = Query(...)):
 
 
 @router.patch("/items/{item_id}")
-def patch_item(item_id: int, data: PantryCheckPatch):
+def patch_item(item_id: int, data: PantryCheckPatch, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, data.athlete_id, conn)
         row = conn.execute(
             "SELECT id FROM pantry_list_items WHERE id = ? AND athlete_id = ?", (item_id, data.athlete_id)
         ).fetchone()
@@ -191,9 +195,10 @@ def patch_item(item_id: int, data: PantryCheckPatch):
 
 
 @router.delete("/items/{item_id}")
-def delete_item(item_id: int, athlete_id: int = Query(...)):
+def delete_item(item_id: int, athlete_id: int = Query(...), identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         row = conn.execute(
             "SELECT id FROM pantry_list_items WHERE id = ? AND athlete_id = ?",
             (item_id, athlete_id)
@@ -223,9 +228,10 @@ class PantryAddItem(BaseModel):
 
 
 @router.post("/exclude")
-def exclude_food(data: PantryExclude):
+def exclude_food(data: PantryExclude, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, data.athlete_id, conn)
         _require_athlete(data.athlete_id, conn)
         conn.execute(
             """INSERT OR REPLACE INTO athlete_food_prefs (athlete_id, food_name, preference, category)
@@ -245,9 +251,10 @@ def exclude_food(data: PantryExclude):
 
 
 @router.post("/suggest-replacement")
-def suggest_replacement(data: PantrySuggestReplacement):
+def suggest_replacement(data: PantrySuggestReplacement, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, data.athlete_id, conn)
         athlete = _require_athlete(data.athlete_id, conn)
 
         # 1. Get current list food_ids (to avoid duplicates)
@@ -331,9 +338,11 @@ def gap_suggestions(
     athlete_id: int = Query(...),
     week_start: str = Query(...),
     gap_type: str = Query(...),
+    identity=Depends(require_session),
 ):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         athlete = _require_athlete(athlete_id, conn)
 
         # Get current pantry list food_ids to exclude
@@ -400,9 +409,12 @@ def _build_list_response(athlete_id: int, week_start: str, conn):
 
 
 @router.post("/regenerate-unchecked")
-def regenerate_unchecked(athlete_id: int = Query(...), week_start: str = Query(...)):
+def regenerate_unchecked(
+    athlete_id: int = Query(...), week_start: str = Query(...), identity=Depends(require_session),
+):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         athlete = _require_athlete(athlete_id, conn)
 
         # 1. Get checked food_ids (keep these, exclude from AI)
@@ -494,9 +506,10 @@ def regenerate_unchecked(athlete_id: int = Query(...), week_start: str = Query(.
 
 
 @router.post("/add-item")
-def add_item(data: PantryAddItem):
+def add_item(data: PantryAddItem, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, data.athlete_id, conn)
         _require_athlete(data.athlete_id, conn)
 
         food = get_food_by_id(data.food_id)

@@ -8,10 +8,11 @@ api/routes/coach.py's thumbs up/down telemetry (POST /api/coach/feedback).
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from api.database import get_conn
+from api.services.session_auth import require_session, assert_owns_athlete
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -28,7 +29,7 @@ class InstacartFeedback(BaseModel):
 
 
 @router.post("/feedback", status_code=201)
-def submit_instacart_feedback(payload: InstacartFeedback):
+def submit_instacart_feedback(payload: InstacartFeedback, identity=Depends(require_session)):
     if payload.outcome not in _VALID_OUTCOMES:
         raise HTTPException(400, f"outcome must be one of {sorted(_VALID_OUTCOMES)}")
     if payload.would_use_again not in _VALID_WOULD_USE_AGAIN:
@@ -36,6 +37,8 @@ def submit_instacart_feedback(payload: InstacartFeedback):
 
     conn = get_conn()
     try:
+        if payload.athlete_id is not None:
+            assert_owns_athlete(identity, payload.athlete_id, conn)
         cur = conn.execute(
             """INSERT INTO instacart_handoff_feedback
                    (athlete_id, outcome, would_use_again, comment)

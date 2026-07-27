@@ -16,6 +16,7 @@ from api.services.db_migrations import run_all
 from api.database import get_conn
 from api.main import app
 from api.services import instacart_client
+from tests.conftest import auth_headers
 
 
 @pytest.fixture(scope="module")
@@ -64,11 +65,12 @@ VALID_PAYLOAD = {
     "title": "Weekly groceries",
     "items": [{"name": "whole milk", "quantity": 1, "unit": "gallon"}],
 }
+HEADERS = auth_headers("athlete", athlete_id=1)
 
 
 def test_happy_path_returns_shopping_list_url(client, monkeypatch):
     _stub_instacart(monkeypatch)
-    r = client.post("/api/instacart/shopping-list", json=VALID_PAYLOAD)
+    r = client.post("/api/instacart/shopping-list", json=VALID_PAYLOAD, headers=HEADERS)
     assert r.status_code == 201, r.text
     body = r.json()
     assert body["provider"] == "instacart"
@@ -78,33 +80,35 @@ def test_happy_path_returns_shopping_list_url(client, monkeypatch):
 
 def test_flag_disabled_returns_404(client, monkeypatch):
     monkeypatch.setenv("INSTACART_SHOPPING_LIST_ENABLED", "false")
-    r = client.post("/api/instacart/shopping-list", json=VALID_PAYLOAD)
+    r = client.post("/api/instacart/shopping-list", json=VALID_PAYLOAD, headers=HEADERS)
     assert r.status_code == 404
 
 
 def test_unknown_athlete_returns_404(client, monkeypatch):
     _stub_instacart(monkeypatch)
     payload = {**VALID_PAYLOAD, "athlete_id": 999}
-    r = client.post("/api/instacart/shopping-list", json=payload)
+    r = client.post(
+        "/api/instacart/shopping-list", json=payload, headers=auth_headers("parent", parent_id=1),
+    )
     assert r.status_code == 404
 
 
 def test_empty_items_rejected_with_400(client):
     payload = {**VALID_PAYLOAD, "items": []}
-    r = client.post("/api/instacart/shopping-list", json=payload)
+    r = client.post("/api/instacart/shopping-list", json=payload, headers=HEADERS)
     assert r.status_code == 422  # FastAPI/Pydantic validation error
 
 
 def test_missing_api_key_returns_safe_500(client, monkeypatch):
     monkeypatch.delenv("INSTACART_API_KEY", raising=False)
-    r = client.post("/api/instacart/shopping-list", json=VALID_PAYLOAD)
+    r = client.post("/api/instacart/shopping-list", json=VALID_PAYLOAD, headers=HEADERS)
     assert r.status_code == 500
     assert "test-key" not in r.text
 
 
 def test_instacart_auth_failure_returns_safe_502(client, monkeypatch):
     _stub_instacart(monkeypatch, status_code=401, body={})
-    r = client.post("/api/instacart/shopping-list", json=VALID_PAYLOAD)
+    r = client.post("/api/instacart/shopping-list", json=VALID_PAYLOAD, headers=HEADERS)
     assert r.status_code == 502
     assert "401" not in r.text  # no raw upstream status/body leaked to the client
 
@@ -114,7 +118,7 @@ def test_instacart_validation_error_returns_400(client, monkeypatch):
         "error_code": 1001,
         "message": "Invalid quantity: -0.1. Cannot be lower than or equal to 0.0",
     })
-    r = client.post("/api/instacart/shopping-list", json=VALID_PAYLOAD)
+    r = client.post("/api/instacart/shopping-list", json=VALID_PAYLOAD, headers=HEADERS)
     assert r.status_code == 400
     # We show our own generic message, not Instacart's raw error text.
     assert "Cannot be lower than" not in r.text
@@ -122,29 +126,29 @@ def test_instacart_validation_error_returns_400(client, monkeypatch):
 
 def test_instacart_rate_limit_returns_429(client, monkeypatch):
     _stub_instacart(monkeypatch, status_code=429, body={})
-    r = client.post("/api/instacart/shopping-list", json=VALID_PAYLOAD)
+    r = client.post("/api/instacart/shopping-list", json=VALID_PAYLOAD, headers=HEADERS)
     assert r.status_code == 429
 
 
 def test_instacart_5xx_returns_safe_502(client, monkeypatch):
     _stub_instacart(monkeypatch, status_code=503, body={})
-    r = client.post("/api/instacart/shopping-list", json=VALID_PAYLOAD)
+    r = client.post("/api/instacart/shopping-list", json=VALID_PAYLOAD, headers=HEADERS)
     assert r.status_code == 502
 
 
 def test_network_timeout_returns_safe_502(client, monkeypatch):
     _stub_instacart(monkeypatch, side_effect=instacart_client.requests.Timeout("timed out"))
-    r = client.post("/api/instacart/shopping-list", json=VALID_PAYLOAD)
+    r = client.post("/api/instacart/shopping-list", json=VALID_PAYLOAD, headers=HEADERS)
     assert r.status_code == 502
 
 
 def test_malformed_response_missing_url_returns_safe_502(client, monkeypatch):
     _stub_instacart(monkeypatch, status_code=200, body={"unexpected": "shape"})
-    r = client.post("/api/instacart/shopping-list", json=VALID_PAYLOAD)
+    r = client.post("/api/instacart/shopping-list", json=VALID_PAYLOAD, headers=HEADERS)
     assert r.status_code == 502
 
 
 def test_unsafe_returned_url_rejected(client, monkeypatch):
     _stub_instacart(monkeypatch, status_code=200, body={"products_link_url": "https://evil.example.com/x"})
-    r = client.post("/api/instacart/shopping-list", json=VALID_PAYLOAD)
+    r = client.post("/api/instacart/shopping-list", json=VALID_PAYLOAD, headers=HEADERS)
     assert r.status_code == 502

@@ -92,6 +92,7 @@ from api.services.db_migrations import run_all
 from api.database import get_conn
 from api.main import app
 import api.routes.pantry as pantry_route
+from tests.conftest import auth_headers
 
 @pytest.fixture
 def db():
@@ -120,7 +121,10 @@ def test_generate_with_free_text_restriction_succeeds(client, monkeypatch):
     aid = _make_athlete(client, dietary_restrictions="Red meat")
     monkeypatch.setattr(pantry_route.claude_ai, "prompt8_pantry_plan",
                         lambda *a, **k: {"items": [], "reasoning": ""})
-    r = client.post(f"/api/pantry/generate?athlete_id={aid}&week_start=2026-06-29")
+    r = client.post(
+        f"/api/pantry/generate?athlete_id={aid}&week_start=2026-06-29",
+        headers=auth_headers("athlete", athlete_id=aid),
+    )
     assert r.status_code == 200, r.text
     assert r.json()["item_count"] >= 1
 
@@ -130,7 +134,10 @@ def test_generate_rejects_ai_items_outside_safe_list(client, monkeypatch):
     monkeypatch.setattr(pantry_route.claude_ai, "prompt8_pantry_plan",
                         lambda *a, **k: {"items": [{"food_id": "milk_8oz", "meal_context": "hydration", "must_have": False}],
                                          "reasoning": ""})
-    r = client.post(f"/api/pantry/generate?athlete_id={aid}&week_start=2026-06-29")
+    r = client.post(
+        f"/api/pantry/generate?athlete_id={aid}&week_start=2026-06-29",
+        headers=auth_headers("athlete", athlete_id=aid),
+    )
     assert r.status_code == 200, r.text
     names = [i["name"] for g in r.json()["groups"] for i in g["items"]]
     assert not any("Milk" in n for n in names), f"dairy food leaked past allergy filter: {names}"

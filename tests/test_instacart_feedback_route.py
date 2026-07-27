@@ -10,6 +10,7 @@ from db.setup import init_db
 from api.services.db_migrations import run_all
 from api.database import get_conn
 from api.main import app
+from tests.conftest import auth_headers
 
 
 @pytest.fixture
@@ -27,7 +28,7 @@ def test_feedback_saved_and_201(client):
         "athlete_id": 1,
         "outcome": "worked_great",
         "would_use_again": "yes",
-    })
+    }, headers=auth_headers("athlete", athlete_id=1))
     assert r.status_code == 201, r.text
     body = r.json()
     assert body["ok"] is True
@@ -47,14 +48,17 @@ def test_minimal_payload_ok_without_athlete_id(client):
     r = client.post("/api/instacart/feedback", json={
         "outcome": "some_issues",
         "would_use_again": "maybe",
-    })
+    }, headers=auth_headers("athlete", athlete_id=999))
     assert r.status_code == 201, r.text
     assert r.json()["ok"] is True
 
 
 def test_invalid_outcome_rejected(client):
     before = get_conn().execute("SELECT COUNT(*) AS c FROM instacart_handoff_feedback").fetchone()["c"]
-    r = client.post("/api/instacart/feedback", json={"outcome": "meh", "would_use_again": "yes"})
+    r = client.post(
+        "/api/instacart/feedback", json={"outcome": "meh", "would_use_again": "yes"},
+        headers=auth_headers("athlete", athlete_id=999),
+    )
     assert r.status_code == 400, r.text
     after = get_conn().execute("SELECT COUNT(*) AS c FROM instacart_handoff_feedback").fetchone()["c"]
     assert after == before, "an invalid outcome must not be persisted"
@@ -62,7 +66,10 @@ def test_invalid_outcome_rejected(client):
 
 def test_invalid_would_use_again_rejected(client):
     before = get_conn().execute("SELECT COUNT(*) AS c FROM instacart_handoff_feedback").fetchone()["c"]
-    r = client.post("/api/instacart/feedback", json={"outcome": "worked_great", "would_use_again": "nah"})
+    r = client.post(
+        "/api/instacart/feedback", json={"outcome": "worked_great", "would_use_again": "nah"},
+        headers=auth_headers("athlete", athlete_id=999),
+    )
     assert r.status_code == 400, r.text
     after = get_conn().execute("SELECT COUNT(*) AS c FROM instacart_handoff_feedback").fetchone()["c"]
     assert after == before, "an invalid would_use_again must not be persisted"
