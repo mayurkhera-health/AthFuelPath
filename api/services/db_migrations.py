@@ -54,6 +54,7 @@ def run_all():
         _drop_fueliq_lessons_drop_week(conn)
         _add_phone_to_athletes(conn)
         _add_phone_to_parents(conn)
+        _add_wind_down_dismissed_to_athletes(conn)
         _create_teamcoach_tables(conn)
         conn.commit()
     finally:
@@ -438,6 +439,14 @@ def _add_phone_to_parents(conn):
     cols = [r[1] for r in conn.execute("PRAGMA table_info(parents)").fetchall()]
     if "phone" not in cols:
         conn.execute("ALTER TABLE parents ADD COLUMN phone TEXT DEFAULT NULL")
+
+
+def _add_wind_down_dismissed_to_athletes(conn):
+    """Permanent 'Skip forever' flag for the Evening Wind-Down card (day_layout.py,
+    behind DAY_LAYOUT_V2). Set via PATCH /athletes/:id/dismiss-wind-down. Idempotent."""
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(athletes)").fetchall()]
+    if "wind_down_dismissed" not in cols:
+        conn.execute("ALTER TABLE athletes ADD COLUMN wind_down_dismissed INTEGER DEFAULT 0")
 
 
 def _create_admin_audit_log(conn):

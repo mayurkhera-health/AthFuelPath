@@ -247,7 +247,7 @@ def build_day_layout(events: list, athlete: dict, now: datetime) -> dict:
     start_dt = wev2._parse_start(_as_wev2_event(primary_ev))
     end_dt = wev2._event_end(_as_wev2_event(primary_ev), start_dt)
     cards = _standard_single_event_cards(primary_ev, start_dt, end_dt)
-    if end_dt.time() > EVENING_WIND_DOWN_AFTER:
+    if not athlete.get("wind_down_dismissed") and end_dt.time() > EVENING_WIND_DOWN_AFTER:
         cards.append({
             "key": "wind_down", "card": "wind_down", "label": "Evening Wind-Down",
             "is_event": False, "is_tappable": True,

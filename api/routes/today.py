@@ -131,6 +131,25 @@ def get_today_view(
         conn.close()
 
 
+@router.patch("/{athlete_id}/dismiss-wind-down")
+def dismiss_wind_down(athlete_id: int, identity=Depends(require_session)):
+    """Permanently suppress the Evening Wind-Down card (day_layout.py, behind
+    DAY_LAYOUT_V2) for this athlete — mobile's 'Skip forever' action. Mobile has
+    called this route since it shipped the Wind-Down card UI, but the route
+    never existed server-side; the dismissal silently never persisted."""
+    conn = get_conn()
+    try:
+        assert_owns_athlete(identity, athlete_id, conn)
+        row = conn.execute("SELECT id FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Athlete not found.")
+        conn.execute("UPDATE athletes SET wind_down_dismissed = 1 WHERE id = ?", (athlete_id,))
+        conn.commit()
+        return {"wind_down_dismissed": True}
+    finally:
+        conn.close()
+
+
 @router.post("/{athlete_id}/windows/{slot_name}/capture")
 async def capture_window(
     athlete_id: int,

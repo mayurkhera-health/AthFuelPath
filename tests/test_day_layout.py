@@ -93,6 +93,17 @@ def test_evening_training_appends_wind_down():
     assert wd["is_tappable"] is True
 
 
+def test_no_wind_down_when_athlete_dismissed_it_forever():
+    """Regression: mobile's 'Skip forever' had no backend route to persist to,
+    so the dismissal never stuck — wind_down_dismissed on the athlete row
+    (set by PATCH /athletes/:id/dismiss-wind-down) must suppress the card."""
+    ev = {"id": 1, "event_type": "practice", "activity_type": "practice",
+          "event_date": "2026-06-27", "start_time": "19:00", "duration_hours": 2.0}
+    athlete = {**_athlete(), "wind_down_dismissed": 1}
+    res = build_day_layout([ev], athlete, now=datetime(2026, 6, 27, 6, 0))
+    assert "wind_down" not in [c["card"] for c in res["cards"]]
+
+
 def test_no_wind_down_when_event_ends_before_8pm():
     ev = {"id": 1, "event_type": "practice", "activity_type": "practice",
           "event_date": "2026-06-27", "start_time": "15:00", "duration_hours": 1.0}  # ends 16:00

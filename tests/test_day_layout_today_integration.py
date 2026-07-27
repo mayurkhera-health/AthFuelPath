@@ -279,3 +279,48 @@ def test_flag_off_legacy_targets_unchanged(monkeypatch):
     conn.close()
     assert captured["activity_type"] is None
     assert captured["event_type"] != "game"   # legacy passes the day_type label, not raw "game"
+
+
+# ── PATCH /athletes/:id/dismiss-wind-down — regression for the missing route ──
+# Mobile's "Skip forever" on the Evening Wind-Down card has always called this
+# route; it never existed server-side, so the dismissal silently never stuck —
+# the card just reappeared on the next refetch.
+
+from fastapi.testclient import TestClient
+from api.main import app
+from tests.conftest import auth_headers
+
+
+def test_dismiss_wind_down_persists_and_suppresses_the_card(monkeypatch, db_conn):
+    monkeypatch.setenv("DAY_LAYOUT_V2", "true")
+    from api.services.today_service import build_today_view
+
+    athlete_id = _seed_athlete_and_event(db_conn)
+
+    with TestClient(app) as client:
+        r = client.patch(
+            f"/api/athletes/{athlete_id}/dismiss-wind-down",
+            headers=auth_headers("athlete", athlete_id=athlete_id),
+        )
+        assert r.status_code == 200, r.text
+        assert r.json() == {"wind_down_dismissed": True}
+
+    row = db_conn.execute(
+        "SELECT wind_down_dismissed FROM athletes WHERE id = ?", (athlete_id,)
+    ).fetchone()
+    assert row["wind_down_dismissed"] == 1
+
+    result = build_today_view(athlete_id, db_conn, today=TARGET_DATE)
+    windows = result["windows"]
+    assert not any(w.get("slot_name") == "wind_down" or w.get("window_type") == "wind_down"
+                   for w in windows), "wind_down card still present after dismissal"
+
+
+def test_dismiss_wind_down_404s_for_a_nonexistent_athlete(monkeypatch, db_conn):
+    r_athlete_id = 999999
+    with TestClient(app) as client:
+        r = client.patch(
+            f"/api/athletes/{r_athlete_id}/dismiss-wind-down",
+            headers=auth_headers("athlete", athlete_id=r_athlete_id),
+        )
+        assert r.status_code == 404
