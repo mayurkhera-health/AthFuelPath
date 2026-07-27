@@ -14,7 +14,13 @@ from api.services.knowledge.calculations import (
     pre_training_meal_window, post_training_recovery_window, calorie_estimate,
 )
 from api.services.nutrition_calc import calc_age
-from api.services.safety_filters import MEDICAL_INPUT_TRIGGERS, find_allergen_violations
+from api.services.safety_filters import (
+    MEDICAL_INPUT_TRIGGERS,
+    WEIGHT_INPUT_TRIGGERS,
+    WEIGHT_INPUT_RESPONSE,
+    check_output_safe,
+    find_allergen_violations,
+)
 from api.services.plate_config import normalize_allergens
 
 logger = logging.getLogger(__name__)
@@ -176,6 +182,18 @@ def _audience_suffix(persona: str | None, athlete: dict) -> str:
 def _detect_safety_flag(question: str) -> bool:
     q = question.lower()
     return any(term in q for term in _SAFETY_TERMS)
+
+
+def _detect_weight_input_flag(question: str) -> bool:
+    """safety_filters.py's WEIGHT_INPUT_TRIGGERS list existed but was never
+    called anywhere — a question like "how do I lose weight before tryouts"
+    had no hard input-side check at all, only the system prompt's "you do
+    not help with weight loss" instruction: the same soft-reliance pattern
+    that let an allergen slip through the restaurant path. Checked
+    separately from _detect_safety_flag/_SAFETY_TERMS (medical/injury) so
+    the existing medical response text and coverage are untouched."""
+    q = question.lower()
+    return any(term in q for term in WEIGHT_INPUT_TRIGGERS)
 
 
 def _classify_coach_path(question: str, athlete: dict) -> dict:
@@ -996,6 +1014,42 @@ def answer_with_knowledge(
     """
     Main RAG entry point for the Nutrition Coach.
     Returns {"answer", "citations", "calculation", "sources"}.
+
+    Wraps _route_and_answer with the output-side safety net: every path's
+    generated answer is scanned by check_output_safe (weight-loss talk,
+    medical diagnosis/treatment language) before it reaches the user, the
+    same "don't just trust the prompt" principle as the restaurant
+    allergen check. This is the single funnel point every path returns
+    through, so new paths get the check for free.
+    """
+    result = _route_and_answer(
+        question, athlete, history=history, is_first_message=is_first_message,
+        recipe_category=recipe_category, prefer_recipe=prefer_recipe, now=now,
+        latitude=latitude, longitude=longitude, persona=persona,
+    )
+    fixed = check_output_safe(result.get("answer") or "")
+    if fixed:
+        logger.warning(
+            "Coach output safety filter triggered for athlete_id=%s", athlete.get("id"),
+        )
+        result = {**result, "answer": fixed, "safety_flag": True}
+    return result
+
+
+def _route_and_answer(
+    question: str,
+    athlete: dict,
+    history: list[dict] | None = None,
+    is_first_message: bool = False,
+    recipe_category: str | None = None,
+    prefer_recipe: bool = False,
+    now: str | None = None,
+    latitude: float | None = None,
+    longitude: float | None = None,
+    persona: str | None = None,
+) -> dict:
+    """
+    Routing + generation, called only through answer_with_knowledge above.
     `now` (client local ISO timestamp) and `latitude`/`longitude` are optional.
     Used for: restaurant-lookup meal-timing framing + location-narrowed
     search, and a heat/hydration advisory in the general knowledge answer
@@ -1005,6 +1059,15 @@ def answer_with_knowledge(
     unrecognized values fall back to today's generic tone.
     """
     contextual_question = _question_with_history(question, history)
+    if _detect_weight_input_flag(question):
+        return {
+            "answer": WEIGHT_INPUT_RESPONSE,
+            "format": "markdown",
+            "citations": [],
+            "calculation": None,
+            "safety_flag": True,
+            "sources": list_sources(),
+        }
     if _detect_safety_flag(question):
         return {
             "answer": (
