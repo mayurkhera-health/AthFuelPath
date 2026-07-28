@@ -1,8 +1,10 @@
 """TeamCoach dashboard data assembly.
 
 All DB reads use get_read_conn() — read-only connection, 3s timeout (decision #3).
-Never queries fueling_window_log from a request handler (non-negotiable constraint).
-Engagement data comes exclusively from team_engagement_snapshot.
+Per-athlete activity (logging status, last-logged, streaks) reads confirmations —
+the real Today-tab "I Ate This" log. Team-level completion % comes exclusively
+from team_engagement_snapshot (written by snapshot_job, which also reads
+confirmations).
 """
 from api.database import get_read_conn
 
@@ -175,16 +177,12 @@ def get_roster(team_id: int) -> list[dict]:
 
 
 def _team_has_any_real_log_data(conn, team_id: int) -> bool:
-    """Stopgap for the fact that fueling_window_log (what the snapshot job and
-    this file's per-athlete status reads) is fed by a logging pipeline that
-    doesn't exist in production yet — the real Today-tab confirm/unconfirm
-    flow writes to a different table (confirmations). Until the snapshot
-    pipeline is repointed at the real data (tracked separately — this isn't a
-    one-line table swap, since the old fixed 6-slot completion math doesn't
-    match the current variable-window-count engine), a roster with zero real
-    log rows, ever, is "no data yet", not a genuine attention-worthy team."""
+    """Stopgap (H26): a roster with zero real confirmations, ever, is
+    "no data yet", not a genuine attention-worthy team — keeps a brand-new
+    roster from showing a false "needs attention" flag before any athlete
+    has ever confirmed a fuel window."""
     row = conn.execute(
-        """SELECT 1 FROM fueling_window_log
+        """SELECT 1 FROM confirmations
            WHERE athlete_id IN (SELECT athlete_id FROM roster_membership WHERE team_id = ?)
            LIMIT 1""",
         (team_id,),
@@ -194,29 +192,27 @@ def _team_has_any_real_log_data(conn, team_id: int) -> bool:
 
 def _last_logged(conn, athlete_id: int) -> str | None:
     row = conn.execute(
-        """SELECT MAX(date) AS last_date FROM fueling_window_log
-           WHERE athlete_id = ? AND completed = 1""",
+        """SELECT MAX(log_date) AS last_date FROM confirmations
+           WHERE athlete_id = ?""",
         (athlete_id,),
     ).fetchone()
     return row["last_date"] if row and row["last_date"] else None
 
 
 def _logging_status(conn, athlete_id: int) -> str:
-    """Check for completed fueling-window logs in the past 7 days.
+    """Check for confirmed fuel windows in the past 7 days.
     Returns 'active', 'inactive', or 'no_data'.
-    'no_data' is the expected state in production until mobile logging ships.
     """
     row = conn.execute(
         """SELECT COUNT(*) AS cnt
-           FROM fueling_window_log
+           FROM confirmations
            WHERE athlete_id = ?
-             AND completed = 1
-             AND date >= date('now', '-7 days')""",
+             AND log_date >= date('now', '-7 days')""",
         (athlete_id,),
     ).fetchone()
     if row is None or row["cnt"] == 0:
         any_row = conn.execute(
-            "SELECT 1 FROM fueling_window_log WHERE athlete_id = ? LIMIT 1",
+            "SELECT 1 FROM confirmations WHERE athlete_id = ? LIMIT 1",
             (athlete_id,),
         ).fetchone()
         return "inactive" if any_row else "no_data"
@@ -277,9 +273,9 @@ def get_athlete_detail(team_id: int, athlete_id: int) -> dict | None:
             return None
 
         logs = conn.execute(
-            """SELECT DISTINCT date FROM fueling_window_log
-               WHERE athlete_id = ? AND completed = 1
-               ORDER BY date DESC""",
+            """SELECT DISTINCT log_date AS date FROM confirmations
+               WHERE athlete_id = ?
+               ORDER BY log_date DESC""",
             (athlete_id,),
         ).fetchall()
         dates = [r["date"] for r in logs]

@@ -797,3 +797,17 @@ def on_event_added_or_changed(athlete_id: int, event_date: str, conn) -> dict:
         (athlete_id, event_date),
     ).fetchall()]
     return generate_windows_for_day(athlete_id, event_date, events)
+
+
+def scheduled_tap_window_keys(athlete_id: int, date_str: str, conn) -> list[str]:
+    """Window keys the engine would show as confirmable ("tap") for this
+    athlete on this day — the real, variable per-day denominator for
+    completion scoring. Mirrors on_event_added_or_changed's event fetch;
+    this is the single source of truth for "how many windows were actually
+    scheduled" (1-5 per the guardrails, never a fixed constant)."""
+    events = [dict(r) for r in conn.execute(
+        "SELECT * FROM events WHERE athlete_id = ? AND event_date = ? ORDER BY start_time",
+        (athlete_id, date_str),
+    ).fetchall()]
+    result = generate_windows_for_day(athlete_id, date_str, events)
+    return [w["key"] for w in result["windows"] if w.get("tap", True)]

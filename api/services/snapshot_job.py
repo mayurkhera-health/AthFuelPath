@@ -1,31 +1,37 @@
 """Daily engagement snapshot generator for TeamCoach.
 
-Reads fueling_window_log to compute per-athlete completion rate for a week,
-then upserts a summary to team_engagement_snapshot.
+Reads confirmations (the real Today-tab "I Ate This" log) to compute
+per-athlete completion rate for a week, then upserts a summary to
+team_engagement_snapshot.
+
+The denominator is NOT a fixed slot count — the window-generation engine
+(window_templates.generate_windows_for_day, via scheduled_tap_window_keys)
+produces a variable number of confirmable windows per day (1-5, per its
+guardrails), so each day's scheduled count is computed from the engine and
+summed across the week.
 
 Called by:
   - APScheduler: daily at 11pm PT (api/main.py lifespan)
   - /api/admin/team-coach/teams/{id}/snapshot (manual trigger / backfill)
 
 TeamCoach request handlers NEVER call this — they read team_engagement_snapshot.
-window_slot valid values: everyday | fuel_before | top_up | during | recharge | rebuild
 """
+from datetime import date, timedelta
 from api.database import get_conn
+from api.services.window_templates import scheduled_tap_window_keys
 
 DEFAULT_THRESHOLD_PCT = 80
 
-# All possible window slots — used as the fixed denominator for completion %.
-# An athlete with 0 logged slots scores 0%; logging n completed out of TOTAL_SLOTS
-# gives n/TOTAL_SLOTS * 100. This matches the spec comment "1/6 = 17%".
-WINDOW_SLOTS = ("everyday", "fuel_before", "top_up", "during", "recharge", "rebuild")
-TOTAL_SLOTS = len(WINDOW_SLOTS)  # 6
-
 
 def _current_week_start() -> str:
-    from datetime import date, timedelta
     today = date.today()
     monday = today - timedelta(days=today.weekday())
     return monday.isoformat()
+
+
+def _week_dates(week_start: str) -> list[str]:
+    start = date.fromisoformat(week_start)
+    return [(start + timedelta(days=i)).isoformat() for i in range(7)]
 
 
 def generate_snapshot(team_id: int, week_start: str | None = None) -> dict:
@@ -61,25 +67,28 @@ def generate_snapshot(team_id: int, week_start: str | None = None) -> dict:
             }
 
         athlete_ids = [r["athlete_id"] for r in roster]
+        week_dates = _week_dates(week_start)
+        week_end = week_dates[-1]
         placeholders = ",".join("?" * len(athlete_ids))
-        logs = conn.execute(
-            f"""SELECT athlete_id,
-                       SUM(CASE WHEN completed=1 THEN 1 ELSE 0 END) AS total_completed
-                FROM fueling_window_log
+        confirmed = conn.execute(
+            f"""SELECT athlete_id, COUNT(*) AS total_confirmed
+                FROM confirmations
                 WHERE athlete_id IN ({placeholders})
-                  AND date >= ?
-                  AND date <= date(?, '+6 days')
+                  AND log_date >= ?
+                  AND log_date <= ?
                 GROUP BY athlete_id""",
-            (*athlete_ids, week_start, week_start),
+            (*athlete_ids, week_start, week_end),
         ).fetchall()
+        confirmed_map = {r["athlete_id"]: r["total_confirmed"] for r in confirmed}
 
-        log_map = {r["athlete_id"]: r for r in logs}
         above = 0
         for aid in athlete_ids:
-            row = log_map.get(aid)
-            completed = row["total_completed"] if row else 0
-            if TOTAL_SLOTS > 0:
-                pct = 100 * completed / TOTAL_SLOTS
+            total_scheduled = sum(
+                len(scheduled_tap_window_keys(aid, d, conn)) for d in week_dates
+            )
+            completed = confirmed_map.get(aid, 0)
+            if total_scheduled > 0:
+                pct = 100 * completed / total_scheduled
                 if pct >= threshold_pct:
                     above += 1
 
