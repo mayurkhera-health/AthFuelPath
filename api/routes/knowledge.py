@@ -2,22 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
 from typing import Optional
 import json
-import os
 
 from api.database import get_conn
 from api.services.knowledge.ingest import ingest_file, ingest_all
 from api.services.knowledge.answer import answer_with_knowledge
 from api.services.knowledge.approved_sources import list_sources
 from api.services.session_auth import require_session, assert_owns_athlete
+from api.services.knowledge_admin import require_knowledge_admin_key as _require_admin
 
 router = APIRouter()
-
-_ADMIN_KEY = os.getenv("KNOWLEDGE_ADMIN_KEY", "fuelup-admin")
-
-
-def _require_admin(x_admin_key: Optional[str] = Header(None)):
-    if x_admin_key != _ADMIN_KEY:
-        raise HTTPException(403, "Admin key required. Pass X-Admin-Key header.")
 
 
 class AskRequest(BaseModel):

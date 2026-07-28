@@ -1,4 +1,3 @@
-import os
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
@@ -6,10 +5,9 @@ from api.database import get_conn
 from api.services.nutrition_analysis import get_week_start
 from api.services.library_service import generate_weekly_picks
 from api.services.session_auth import require_session, assert_owns_athlete
+from api.services.knowledge_admin import require_knowledge_admin_key as _require_admin
 
 router = APIRouter()
-
-_ADMIN_KEY = os.getenv("KNOWLEDGE_ADMIN_KEY", "fuelup-admin")
 
 VALID_CATEGORIES = {"iron", "gameday", "carbs", "recovery", "calcium", "hydration", "parents"}
 
@@ -38,11 +36,6 @@ class ArticleUpdate(BaseModel):
     science_source: Optional[str] = None
     published_date: Optional[str] = None
     is_active: Optional[int] = None
-
-
-def _require_admin(key: Optional[str]):
-    if key != _ADMIN_KEY:
-        raise HTTPException(status_code=403, detail="Admin key required")
 
 
 @router.get("/articles")

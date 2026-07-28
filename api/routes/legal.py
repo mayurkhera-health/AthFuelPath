@@ -2,13 +2,11 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
 from typing import Optional
-import os
 
 from api.database import get_conn
+from api.services.knowledge_admin import require_knowledge_admin_key
 
 router = APIRouter()
-
-_ADMIN_KEY = os.getenv("KNOWLEDGE_ADMIN_KEY", "fuelup-admin")
 
 SEED_DOCUMENTS = [
     {
@@ -353,8 +351,7 @@ def update_legal_document(
     x_admin_key: Optional[str] = Header(None),
 ):
     """Update a legal document. Requires X-Admin-Key header."""
-    if x_admin_key != _ADMIN_KEY:
-        raise HTTPException(403, "Admin key required. Pass X-Admin-Key header.")
+    require_knowledge_admin_key(x_admin_key)
     if not body.content.strip():
         raise HTTPException(400, "Content cannot be empty.")
 
