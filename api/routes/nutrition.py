@@ -1,9 +1,10 @@
 import json
 from datetime import date as dt_date
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from api.database import get_conn
 from api.models import SweatOutputRequest
 from api.services import nutrition_calc, weather as weather_svc, meal_timing
+from api.services.session_auth import require_session, assert_owns_athlete
 
 router = APIRouter()
 
@@ -55,14 +56,15 @@ def get_targets(athlete_id: int, date: str = None, event_type: str = None):
 
 
 @router.post("/sweat")
-def calculate_sweat(req: SweatOutputRequest):
+def calculate_sweat(req: SweatOutputRequest, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, req.athlete_id, conn)
         athlete = conn.execute("SELECT * FROM athletes WHERE id = ?", (req.athlete_id,)).fetchone()
         if not athlete:
             raise HTTPException(404, "Athlete not found.")
         event = conn.execute("SELECT * FROM events WHERE id = ?", (req.event_id,)).fetchone()
-        if not event:
+        if not event or event["athlete_id"] != req.athlete_id:
             raise HTTPException(404, "Event not found.")
         ev = dict(event)
         # Prefer the event's stored venue coordinates; fall back to its city, then

@@ -14,6 +14,7 @@ from api.services.db_migrations import run_all
 from api.database import get_conn
 from api.services import weather
 from api.main import app
+from tests.conftest import auth_headers
 
 
 # ── derive_sweat_profile ─────────────────────────────────────────────────────
@@ -149,7 +150,8 @@ def test_sweat_route_uses_event_venue_coords(client, monkeypatch):
         return {"temp_f": 88.0, "humidity": 60, "description": "sunny", "error": None}
 
     monkeypatch.setattr(weather, "_fetch_weather", fake_fetch)
-    r = client.post("/api/nutrition/sweat", json={"athlete_id": athlete_id, "event_id": event_id})
+    r = client.post("/api/nutrition/sweat", json={"athlete_id": athlete_id, "event_id": event_id},
+                     headers=auth_headers("athlete", athlete_id=athlete_id))
     assert r.status_code == 200, r.text
     assert seen["lat"] == 10.0 and seen["lon"] == 20.0
     assert r.json()["weather_temp_f"] == 88.0
@@ -163,7 +165,8 @@ def test_sweat_route_survives_null_humidity_from_weather_api(client, monkeypatch
         weather, "_fetch_weather",
         lambda city=None, lat=None, lon=None: {"temp_f": 90.0, "humidity": None, "description": "hazy", "error": None},
     )
-    r = client.post("/api/nutrition/sweat", json={"athlete_id": athlete_id, "event_id": event_id})
+    r = client.post("/api/nutrition/sweat", json={"athlete_id": athlete_id, "event_id": event_id},
+                     headers=auth_headers("athlete", athlete_id=athlete_id))
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["weather_temp_f"] == 90.0
@@ -178,13 +181,20 @@ def test_sweat_route_survives_weather_api_error(client, monkeypatch):
         weather, "_fetch_weather",
         lambda city=None, lat=None, lon=None: {"temp_f": None, "humidity": None, "description": "unknown", "error": "API down"},
     )
-    r = client.post("/api/nutrition/sweat", json={"athlete_id": athlete_id, "event_id": event_id})
+    r = client.post("/api/nutrition/sweat", json={"athlete_id": athlete_id, "event_id": event_id},
+                     headers=auth_headers("athlete", athlete_id=athlete_id))
     assert r.status_code == 200, r.text
     assert r.json()["weather_temp_f"] is None
 
 
+def test_sweat_route_requires_a_session(client):
+    r = client.post("/api/nutrition/sweat", json={"athlete_id": 1, "event_id": 1})
+    assert r.status_code == 401
+
+
 def test_sweat_route_404_for_missing_athlete(client):
-    r = client.post("/api/nutrition/sweat", json={"athlete_id": 999999, "event_id": 1})
+    r = client.post("/api/nutrition/sweat", json={"athlete_id": 999999, "event_id": 1},
+                     headers=auth_headers("athlete", athlete_id=999999))
     assert r.status_code == 404
 
 
@@ -196,5 +206,30 @@ def test_sweat_route_404_for_missing_event(client):
         "weight_lbs": 110, "height_ft": 5, "height_in": 6,
     })
     athlete_id = a.json()["id"]
-    r = client.post("/api/nutrition/sweat", json={"athlete_id": athlete_id, "event_id": 999999})
+    r = client.post("/api/nutrition/sweat", json={"athlete_id": athlete_id, "event_id": 999999},
+                     headers=auth_headers("athlete", athlete_id=athlete_id))
     assert r.status_code == 404
+
+
+def test_sweat_route_rejects_unrelated_athlete_token(client):
+    victim_athlete_id, event_id = _make_athlete_and_event(client, latitude=10.0, longitude=20.0)
+    attacker_athlete_id, _ = _make_athlete_and_event(client)
+    r = client.post(
+        "/api/nutrition/sweat", json={"athlete_id": victim_athlete_id, "event_id": event_id},
+        headers=auth_headers("athlete", athlete_id=attacker_athlete_id),
+    )
+    assert r.status_code == 403
+
+
+def test_sweat_route_rejects_a_real_event_belonging_to_another_athlete(client):
+    """The core BOLA fix: a caller who owns athlete A but passes athlete A's own
+    athlete_id alongside athlete B's real event_id must not get B's event data."""
+    victim_athlete_id, victim_event_id = _make_athlete_and_event(client, latitude=10.0, longitude=20.0)
+    attacker_athlete_id, _ = _make_athlete_and_event(client)
+    r = client.post(
+        "/api/nutrition/sweat", json={"athlete_id": attacker_athlete_id, "event_id": victim_event_id},
+        headers=auth_headers("athlete", athlete_id=attacker_athlete_id),
+    )
+    assert r.status_code == 404, (
+        f"Expected the mismatched event to be rejected, got {r.status_code}: {r.text}"
+    )
