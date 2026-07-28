@@ -23,7 +23,9 @@ EVENT_TYPE_MAP = {
     "rest": "rest",
     "pre-game day": "practice",
     "post-game recovery day": "rest",
-    "double training day": "tournament",
+    # Two training/practice sessions, not a multi-game tournament — was
+    # incorrectly bucketed as "tournament", inheriting its max carb tier.
+    "double training day": "training",
 }
 
 # Lifestyle PAL — non-training daily activity level (onboarding field; default "light")
@@ -71,12 +73,17 @@ HYDRATION_TARGETS = {  # oz/day — legacy fallback only
 }
 
 # ── Spec-formula tables (getDashboardTargets) ─────────────────────────────────
+# No dedicated "tournament" tier: a tournament day's carb target now comes from
+# the same "hard" tier a demanding game day gets (8 g/kg). The event-type LABEL
+# "tournament" used to force a flat 10 g/kg regardless of actual session length
+# or measured intensity — a short single-game "tournament" got a full all-day
+# carb prescription with no matching calorie budget to pay for it (Purvi,
+# 2026-07-27 — root cause of the negative fat_g defect fixed separately).
 CHO_FACTOR = {
     "rest":       {"any": 4.0},
     "low":        {"any": 4.0},
     "moderate":   {"lt60": 6.0, "bt6090": 6.0, "gt90": 6.0},
     "hard":       {"lt60": 8.0, "bt6090": 8.0, "gt90": 8.0},
-    "tournament": {"any": 10.0},
 }
 
 SEASON_CHO  = {"in_season": 1.0, "off_season": 0.90, "post_season": 0.85}
@@ -252,7 +259,7 @@ def check_growth_phase(age_yr: float, sex: str) -> dict:
 def _cho_intensity_key(norm: str, intensity: Optional[str]) -> str:
     """Map event_type + raw intensity to a CHO_FACTOR key."""
     if norm == "tournament":
-        return "tournament"
+        return "hard"  # same tier as a demanding game day — see CHO_FACTOR comment
     if norm == "rest":
         return "rest"
     if intensity == "high":

@@ -142,3 +142,33 @@ def test_calc_daily_fat_high_flag_still_fires_above_the_ceiling():
     # FAT_HIGH path must be untouched by the floor change.
     fat = nc.calc_daily_fat(total_kcal=3000, daily_cho_g=100, daily_prot_g=50, sex="male")
     assert fat["fat_flag"] == "FAT_HIGH"
+
+
+# ---- tournament carb-factor fix (Purvi, 2026-07-27) ----
+# The event-type LABEL "tournament" used to force a flat 10 g/kg carb factor
+# regardless of actual session length or measured intensity — higher than even
+# a "hard" game day (8 g/kg). Tournament now shares the exact same tier as a
+# demanding game day.
+
+def test_tournament_no_longer_gets_a_higher_carb_factor_than_game():
+    game = nc.calc_daily_targets(HEAVY_ATH, event_type="game", duration_min=60,
+                                  activity_type="game")
+    tournament = nc.calc_daily_targets(HEAVY_ATH, event_type="tournament", duration_min=60,
+                                        activity_type="tournament")
+    assert tournament["carbs_g"] == game["carbs_g"]
+
+
+def test_tournament_carb_factor_is_no_longer_the_old_flat_10_g_per_kg():
+    wt_kg = nc.lbs_to_kg(HEAVY_ATH["weight_lbs"])
+    t = nc.calc_daily_targets(HEAVY_ATH, event_type="tournament", duration_min=60,
+                               activity_type="tournament")
+    g_per_kg = t["carbs_g"] / wt_kg
+    assert g_per_kg < 10.0
+
+
+def test_double_training_day_no_longer_maps_to_tournament():
+    # "double training day" was mapped to the "tournament" event-type bucket,
+    # inheriting its (now-removed) inflated carb tier despite being two
+    # practice/training sessions, not a multi-game tournament.
+    assert nc.normalize_event_type("double training day") != "tournament"
+    assert nc.normalize_event_type("double training day") == "training"

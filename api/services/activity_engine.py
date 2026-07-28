@@ -14,7 +14,13 @@ _PROFILES = {
                         "is_sc_day": False, "layout": "standard"},
     "game":            {"cho_modifier": 1.10, "intensity_override": "hard",
                         "is_sc_day": False, "layout": "standard"},
-    "tournament":      {"cho_modifier": 1.00, "intensity_override": "tournament",
+    # Same carb tier as a demanding game day (intensity_override "hard", same
+    # cho_modifier as "game") — a tournament's carb target used to be a flat
+    # 10 g/kg regardless of actual session length, disconnected from the
+    # calorie budget a short session actually generates. layout stays
+    # "tournament": the window-engine's multi-game scheduling is unaffected,
+    # only the nutrition math changed.
+    "tournament":      {"cho_modifier": 1.10, "intensity_override": "hard",
                         "is_sc_day": False, "layout": "tournament"},
     "speed_sprint":    {"cho_modifier": 1.10, "intensity_override": "hard",
                         "is_sc_day": False, "layout": "standard"},

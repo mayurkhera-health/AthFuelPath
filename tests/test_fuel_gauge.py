@@ -139,12 +139,16 @@ def test_event_day_has_all_five_metrics():
 
 
 def test_carb_monotonicity_practice_game_tournament():
-    """Training-load tiers: carbs game > practice, tournament > game (same intensity)."""
+    """Training-load tiers: carbs game > practice. Tournament now sits at the SAME
+    tier as a demanding game day, not higher — the event-type label "tournament"
+    used to force a flat, higher g/kg factor regardless of actual session length,
+    which could out-scale the calorie budget on a short session and drive the
+    residual fat calculation negative (Purvi, 2026-07-27 — root cause fix)."""
     a = _athlete()
     p = fg.compute_event_day_targets(a, [_event("practice", "medium")], "in_season", MILD)
     g = fg.compute_event_day_targets(a, [_event("game", "medium")], "in_season", MILD)
     t = fg.compute_event_day_targets(a, [_event("tournament", "medium")], "in_season", MILD)
-    assert p["carbs_g"] < g["carbs_g"] < t["carbs_g"]
+    assert p["carbs_g"] < g["carbs_g"] == t["carbs_g"]
 
 
 def test_body_weight_scaling_is_proportional():
