@@ -38,6 +38,11 @@ def get_coach_teams(coach_id: int) -> dict:
             "prior_week": { "players_above_threshold": int } | None,
             "attention_score": float, # (threshold_pct - current_pct) + drop*WEIGHT
             "needs_attention": bool,  # true if attention_score > _ATTENTION_FLAG_FLOOR
+                                      # AND this roster has at least one real log ever
+                                      # (see has_log_data) — a team with zero logging
+                                      # pipeline data is "no data yet", not "failing".
+            "has_log_data": bool,     # false if fueling_window_log has never had a
+                                      # row for anyone on this roster
           }
         ]
       }
@@ -89,6 +94,8 @@ def get_coach_teams(coach_id: int) -> dict:
             else:
                 attention_score = float(t["threshold_pct"])  # no snapshot → treat as fully below
 
+            has_log_data = _team_has_any_real_log_data(conn, t["id"])
+
             result.append({
                 "id": t["id"],
                 "name": t["name"],
@@ -104,7 +111,8 @@ def get_coach_teams(coach_id: int) -> dict:
                     "players_above_threshold": prior["players_above_threshold"],
                 } if prior else None,
                 "attention_score": round(attention_score, 1),
-                "needs_attention": attention_score > _ATTENTION_FLAG_FLOOR,
+                "needs_attention": has_log_data and attention_score > _ATTENTION_FLAG_FLOOR,
+                "has_log_data": has_log_data,
             })
 
         result.sort(key=lambda x: x["attention_score"], reverse=True)
@@ -164,6 +172,24 @@ def get_roster(team_id: int) -> list[dict]:
         return result
     finally:
         conn.close()
+
+
+def _team_has_any_real_log_data(conn, team_id: int) -> bool:
+    """Stopgap for the fact that fueling_window_log (what the snapshot job and
+    this file's per-athlete status reads) is fed by a logging pipeline that
+    doesn't exist in production yet — the real Today-tab confirm/unconfirm
+    flow writes to a different table (confirmations). Until the snapshot
+    pipeline is repointed at the real data (tracked separately — this isn't a
+    one-line table swap, since the old fixed 6-slot completion math doesn't
+    match the current variable-window-count engine), a roster with zero real
+    log rows, ever, is "no data yet", not a genuine attention-worthy team."""
+    row = conn.execute(
+        """SELECT 1 FROM fueling_window_log
+           WHERE athlete_id IN (SELECT athlete_id FROM roster_membership WHERE team_id = ?)
+           LIMIT 1""",
+        (team_id,),
+    ).fetchone()
+    return row is not None
 
 
 def _last_logged(conn, athlete_id: int) -> str | None:

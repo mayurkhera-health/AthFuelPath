@@ -61,6 +61,53 @@ def test_list_teams():
     assert teams[0]["threshold_pct"] == 80
 
 
+def test_team_with_zero_real_log_data_is_never_flagged_needs_attention():
+    """Regression (H26 stopgap): fueling_window_log — what attention_score
+    reads — has no production writer yet, so a brand-new roster with zero
+    real logging data used to always show a false 'needs attention' flag
+    (attention_score defaults to threshold_pct, which is > 0, whenever no
+    snapshot exists). has_log_data must be false here and needs_attention
+    must be suppressed regardless of the raw attention_score."""
+    r = client.get("/api/team-coach/teams/", headers=_auth())
+    assert r.status_code == 200
+    team = r.json()["teams"][0]
+    assert team["has_log_data"] is False
+    assert team["needs_attention"] is False
+    assert team["attention_score"] > 0  # the raw score would still flag it
+
+
+def test_team_with_real_log_data_can_still_be_flagged_needs_attention():
+    """Once a roster has at least one real fueling_window_log row, the
+    attention flag must work normally again — the stopgap only suppresses
+    the false positive for teams with NO data at all."""
+    from api.services.snapshot_job import generate_snapshot
+
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO fueling_window_log (athlete_id, date, window_slot, completed) "
+        "VALUES (1, '2026-07-20', 'everyday', 0)"
+    )
+    conn.commit()
+    conn.close()
+    generate_snapshot(1, week_start="2026-07-20")  # 0 completed of 6 slots → below threshold
+
+    try:
+        r = client.get("/api/team-coach/teams/", headers=_auth())
+        assert r.status_code == 200
+        team = r.json()["teams"][0]
+        assert team["has_log_data"] is True
+        assert team["needs_attention"] is True
+    finally:
+        # This test's inserted log/snapshot rows would otherwise bleed into
+        # later tests in this module (the seed() fixture only INSERT OR
+        # IGNOREs base rows, it never wipes fueling_window_log/snapshots).
+        conn = get_conn()
+        conn.execute("DELETE FROM fueling_window_log WHERE athlete_id = 1")
+        conn.execute("DELETE FROM team_engagement_snapshot WHERE team_id = 1")
+        conn.commit()
+        conn.close()
+
+
 def test_list_teams_no_auth_401():
     assert client.get("/api/team-coach/teams/").status_code == 401
 
