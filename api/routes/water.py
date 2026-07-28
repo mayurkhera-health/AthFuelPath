@@ -34,8 +34,13 @@ class WaterLogCreate(BaseModel):
 
 
 @router.get("/{athlete_id}/today")
-def get_water_today(athlete_id: int, identity=Depends(require_session)):
-    today = str(dt_date.today())
+def get_water_today(athlete_id: int, date: str | None = None, identity=Depends(require_session)):
+    if date is not None:
+        try:
+            dt_date.fromisoformat(date)
+        except ValueError:
+            raise HTTPException(400, f"date must be an ISO 8601 date (YYYY-MM-DD), got {date!r}")
+    today = date or str(dt_date.today())
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)

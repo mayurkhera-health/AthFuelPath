@@ -93,3 +93,33 @@ def test_get_today_reflects_logged_value(client):
     r = client.get(f"/api/water-log/{aid}/today", headers=headers)
     assert r.status_code == 200, r.text
     assert r.json()["cups"] == 3
+
+
+def test_get_today_accepts_a_client_supplied_local_date(client):
+    """Timezone Invariant: 'today' must be resolvable to the CLIENT's local
+    date, not the server's UTC date. A client past its local midnight but
+    before UTC midnight (or vice versa) needs to ask for a specific date."""
+    aid = _make_athlete(client)
+    headers = auth_headers("athlete", athlete_id=aid)
+    client.post("/api/water-log/", json={"athlete_id": aid, "cups": 5, "date": "2026-06-14"}, headers=headers)
+    r = client.get(f"/api/water-log/{aid}/today?date=2026-06-14", headers=headers)
+    assert r.status_code == 200, r.text
+    assert r.json() == {"athlete_id": aid, "date": "2026-06-14", "cups": 5}
+
+
+def test_get_today_with_no_date_param_still_defaults_to_server_today(client):
+    aid = _make_athlete(client)
+    headers = auth_headers("athlete", athlete_id=aid)
+    from datetime import date
+    today = str(date.today())
+    client.post("/api/water-log/", json={"athlete_id": aid, "cups": 2, "date": today}, headers=headers)
+    r = client.get(f"/api/water-log/{aid}/today", headers=headers)
+    assert r.status_code == 200, r.text
+    assert r.json() == {"athlete_id": aid, "date": today, "cups": 2}
+
+
+def test_get_today_rejects_malformed_date_param(client):
+    aid = _make_athlete(client)
+    headers = auth_headers("athlete", athlete_id=aid)
+    r = client.get(f"/api/water-log/{aid}/today?date=06/14/2026", headers=headers)
+    assert r.status_code == 400, r.text
