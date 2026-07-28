@@ -182,17 +182,6 @@ def _create_shopping_tables(conn):
             FOREIGN KEY (list_id) REFERENCES shopping_lists(id)
         )
     """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS food_submissions (
-            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-            name               TEXT NOT NULL,
-            suggested_category TEXT,
-            submitted_by       INTEGER NOT NULL,
-            status             TEXT NOT NULL DEFAULT 'pending',
-            created_at         TEXT NOT NULL DEFAULT (datetime('now'))
-        )
-    """)
-
 
 def _create_window_logs(conn):
     conn.execute("""

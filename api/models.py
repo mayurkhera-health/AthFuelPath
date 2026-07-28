@@ -385,7 +385,3 @@ class PersonalFood(BaseModel):
     category: str
 
 
-class FoodSubmission(BaseModel):
-    name: str
-    suggested_category: Optional[str] = None
-    submitted_by: int        # parent_id / athlete user id

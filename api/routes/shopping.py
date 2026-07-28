@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from api.database import get_conn
-from api.models import ShoppingItemCreate, ShoppingItemPatch, ShoppingPref, PersonalFood, FoodSubmission
+from api.models import ShoppingItemCreate, ShoppingItemPatch, ShoppingPref, PersonalFood
 from api.services.shopping_service import build_essentials, build_share_text, CATEGORY_ORDER, CATEGORY_LABELS
 from api.services.session_auth import require_session, assert_owns_athlete
 
@@ -189,49 +189,3 @@ def save_personal_food(data: PersonalFood, identity=Depends(require_session)):
         conn.close()
 
 
-@router.post("/food-submissions", status_code=201)
-def submit_food(data: FoodSubmission):
-    conn = get_conn()
-    try:
-        conn.execute(
-            "INSERT INTO food_submissions (name, suggested_category, submitted_by, status) "
-            "VALUES (?, ?, ?, 'pending')",
-            (data.name, data.suggested_category, data.submitted_by),
-        )
-        conn.commit()
-        row = conn.execute(
-            "SELECT * FROM food_submissions WHERE rowid = last_insert_rowid()"
-        ).fetchone()
-        return dict(row)
-    finally:
-        conn.close()
-
-
-@router.post("/admin/food-submissions/{submission_id}/approve")
-def approve_submission(submission_id: int):
-    conn = get_conn()
-    try:
-        row = conn.execute(
-            "SELECT * FROM food_submissions WHERE id = ?", (submission_id,)
-        ).fetchone()
-        if not row:
-            raise HTTPException(404, "Submission not found.")
-        sub = dict(row)
-        if sub["status"] != "pending":
-            raise HTTPException(400, f"Submission is already '{sub['status']}'.")
-        conn.execute(
-            """INSERT INTO fueling_foods (name, category, is_active)
-               VALUES (?, ?, 1)
-               ON CONFLICT(name) DO UPDATE SET
-                 category  = excluded.category,
-                 is_active = 1""",
-            (sub["name"], sub["suggested_category"] or "dinner_staple"),
-        )
-        conn.execute(
-            "UPDATE food_submissions SET status = 'approved' WHERE id = ?",
-            (submission_id,),
-        )
-        conn.commit()
-        return {"approved": True, "name": sub["name"]}
-    finally:
-        conn.close()

@@ -43,13 +43,6 @@ def test_shopping_list_items_table_exists(conn):
     assert row is not None
 
 
-def test_food_submissions_table_exists(conn):
-    row = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='food_submissions'"
-    ).fetchone()
-    assert row is not None
-
-
 def _csv_row_count() -> int:
     import csv
     from pathlib import Path
@@ -553,33 +546,3 @@ def test_my_foods_appears_in_suggestions(client):
     all_names = [f["name"] for g in ess.json()["groups"] for f in g["foods"]]
     assert "Homemade energy balls" in all_names
 
-
-def test_suggest_food_lands_as_pending(client):
-    aid = _make_athlete_route(client, "re11")
-    resp = client.post("/api/shopping/food-submissions", json={
-        "name": "Fancy new bar", "suggested_category": "pre_fuel", "submitted_by": aid
-    })
-    assert resp.status_code == 201
-    aid2 = _make_athlete_route(client, "re12")
-    ess = client.get(
-        f"/api/shopping/essentials?athlete_id={aid2}&week_start=2026-06-16",
-        headers=auth_headers("athlete", athlete_id=aid2),
-    )
-    all_names = [f["name"] for g in ess.json()["groups"] for f in g["foods"]]
-    assert "Fancy new bar" not in all_names
-
-
-def test_admin_approve_promotes_food(client):
-    aid = _make_athlete_route(client, "re13")
-    sub = client.post("/api/shopping/food-submissions", json={
-        "name": "New approved food", "suggested_category": "recovery", "submitted_by": aid
-    })
-    sub_id = sub.json()["id"]
-    approve = client.post(f"/api/shopping/admin/food-submissions/{sub_id}/approve")
-    assert approve.status_code == 200
-    from api.database import get_conn as _gc
-    c = _gc()
-    row = c.execute("SELECT * FROM fueling_foods WHERE name = 'New approved food'").fetchone()
-    c.close()
-    assert row is not None
-    assert row["category"] == "recovery"
