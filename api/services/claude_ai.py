@@ -538,56 +538,6 @@ Return ONLY valid JSON — no markdown, no preamble:
         }
 
 
-def prompt8_pantry_plan(athlete: dict, week_schedule: list, slot_plan: dict, safe_foods: list) -> dict:
-    """Fill the deterministic slot plan with specific foods, honoring the athlete's
-    food likes + cultural variety. Returns {"items":[{food_id,meal_context,must_have}],
-    "reasoning":str}. On any failure returns {"items":[],"reasoning":""} so the route
-    falls back to pantry_plan.fallback_select."""
-    compact = [
-        {"food_id": f["food_id"], "name": f["name"], "role": f.get("role"),
-         "gi_tier": f.get("gi_tier"), "diet_tags": f.get("diet_tags", [])}
-        for f in safe_foods
-    ]
-    slots_brief = [
-        {"meal_context": s["meal_context"], "count": s["count"], "roles": s.get("roles"),
-         "gi_tier": s.get("gi_tier"), "iron_priority": s.get("iron_priority", False),
-         "must_have": s.get("must_have", False)}
-        for s in slot_plan["slots"]
-    ]
-    likes = athlete.get("food_preferences") or "none specified"
-    restrictions = athlete.get("dietary_restrictions") or "none"
-    try:
-        result = _json_completion(f"""Build a youth athlete's weekly grocery list by FILLING these slots.
-
-ATHLETE: {athlete.get('first_name')}, age {athlete.get('age')}, {athlete.get('gender')}, season {athlete.get('season_phase')}
-FOOD LIKES / NOTES: {likes}
-DIETARY RESTRICTIONS (never pick a food that conflicts with these): {restrictions}
-WEEK SUMMARY: {slot_plan.get('week_summary')}
-
-SLOTS TO FILL (choose exactly `count` distinct foods per slot, matching its roles/gi_tier):
-{slots_brief}
-
-SAFE FOODS (ONLY use these food_id values — never invent an id):
-{compact}
-
-RULES:
-- Favor foods matching the athlete's LIKES and include cultural variety across the week.
-- For a slot with iron_priority=true, prefer iron-rich foods for that slot.
-- Do NOT repeat a food across slots.
-- Set each item's must_have to its slot's must_have.
-
-Return ONLY JSON:
-{{"items":[{{"food_id":"<id>","meal_context":"<slot meal_context>","must_have":<bool>}}],
-  "reasoning":"<one short warm-coach sentence for the parent about this week>"}}""",
-            max_tokens=1500, temperature=0.6)
-        items = result.get("items", [])
-        if not isinstance(items, list):
-            return {"items": [], "reasoning": ""}
-        return {"items": items, "reasoning": result.get("reasoning", "")}
-    except Exception:
-        return {"items": [], "reasoning": ""}
-
-
 def prompt_suggest_replacement(*, athlete: dict, excluded_food_name: str, meal_context: str,
                                safe_foods: list, current_food_ids: list) -> dict:
     """Pick ONE nutritionally-similar replacement food for `meal_context`, honoring the
