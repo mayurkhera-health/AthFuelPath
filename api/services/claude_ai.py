@@ -271,27 +271,6 @@ Return ONLY valid JSON, no prose:
         return {"plan": {}, "reasoning": "AI generation failed — please try again.", "variety_check": "failed"}
 
 
-def prompt7_estimate_macros(description: str, athlete: dict) -> dict:
-    """Prompt 7: Estimate macros from a free-text meal description."""
-    try:
-        return _json_completion(f"""Estimate the nutritional macros for this meal description.
-
-ATHLETE CONTEXT: age {athlete.get('age', 14)}, gender {athlete.get('gender', 'unknown')}, weight {athlete.get('weight_lbs', 130)}lbs — youth soccer athlete.
-
-MEAL DESCRIPTION: "{description}"
-
-Instructions:
-- Estimate a realistic single-serving portion for a youth athlete (not restaurant-sized).
-- If multiple items are listed (e.g. "chicken with pasta"), sum all components.
-- Be conservative and realistic — base estimates on USDA standard portions.
-- Round calories to nearest 10, macros to nearest 1g.
-- If the description is too vague to estimate (e.g. "lunch"), return confidence: "low".
-
-Return ONLY valid JSON:
-{{"calories": 0, "carbs_g": 0, "protein_g": 0, "fat_g": 0, "iron_mg": 0, "calcium_mg": 0, "confidence": "high|medium|low", "portion_note": "brief note on portion assumption, e.g. '2 cups pasta + 4oz chicken'"}}""", max_tokens=512)
-    except Exception:
-        return {"calories": 0, "carbs_g": 0, "protein_g": 0, "fat_g": 0, "iron_mg": 0, "calcium_mg": 0, "confidence": "low", "portion_note": "Could not parse"}
-
 
 def prompt0_athlete_blueprint(athlete: dict, targets_by_event: dict) -> dict:
     """

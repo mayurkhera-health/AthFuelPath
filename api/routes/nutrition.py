@@ -126,25 +126,3 @@ def get_meal_timing(athlete_id: int, date: str = None, event_type: str = None):
         return meal_timing.get_meal_timing_protocol(event_type, target_date, start_time)
     finally:
         conn.close()
-
-
-from pydantic import BaseModel
-from api.services import claude_ai
-
-class MacroEstimateRequest(BaseModel):
-    athlete_id: int
-    description: str
-
-@router.post("/estimate")
-def estimate_macros(data: MacroEstimateRequest):
-    if not data.description or len(data.description.strip()) < 3:
-        raise HTTPException(400, "Please provide a meal description.")
-    conn = get_conn()
-    try:
-        row = conn.execute("SELECT * FROM athletes WHERE id = ?", (data.athlete_id,)).fetchone()
-        if not row:
-            raise HTTPException(404, "Athlete not found.")
-        athlete = dict(row)
-    finally:
-        conn.close()
-    return claude_ai.prompt7_estimate_macros(data.description.strip(), athlete)
