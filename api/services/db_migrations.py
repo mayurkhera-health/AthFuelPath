@@ -55,6 +55,7 @@ def run_all():
         _add_phone_to_athletes(conn)
         _add_phone_to_parents(conn)
         _add_wind_down_dismissed_to_athletes(conn)
+        _create_dietitian_bookings(conn)
         _create_teamcoach_tables(conn)
         conn.commit()
     finally:
@@ -447,6 +448,22 @@ def _add_wind_down_dismissed_to_athletes(conn):
     cols = [r[1] for r in conn.execute("PRAGMA table_info(athletes)").fetchall()]
     if "wind_down_dismissed" not in cols:
         conn.execute("ALTER TABLE athletes ADD COLUMN wind_down_dismissed INTEGER DEFAULT 0")
+
+
+def _create_dietitian_bookings(conn):
+    """'Talk to a Dietitian' session requests (app/(app)/coach/dietitian.tsx).
+    Previously written only to on-device AsyncStorage and never sent anywhere —
+    this table + the emailed notification are the real persistence."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS dietitian_bookings (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            athlete_id     INTEGER NOT NULL REFERENCES athletes(id),
+            session_type   TEXT NOT NULL,
+            about_athlete  TEXT NOT NULL,
+            reason         TEXT,
+            created_at     TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
 
 
 def _create_admin_audit_log(conn):
