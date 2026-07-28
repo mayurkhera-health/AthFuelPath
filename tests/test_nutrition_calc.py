@@ -172,3 +172,24 @@ def test_double_training_day_no_longer_maps_to_tournament():
     # practice/training sessions, not a multi-game tournament.
     assert nc.normalize_event_type("double training day") != "tournament"
     assert nc.normalize_event_type("double training day") == "training"
+
+
+# ---- calc_age ----
+
+def test_calc_age_computes_from_valid_dob():
+    assert nc.calc_age(dob_str="2010-06-15", age_fallback=None) == float(
+        nc.date.today().year - 2010 - ((nc.date.today().month, nc.date.today().day) < (6, 15))
+    )
+
+
+def test_calc_age_falls_back_on_malformed_dob_instead_of_raising():
+    # A malformed date_of_birth (e.g. saved via an admin route with no format
+    # check) used to raise an uncaught ValueError here, 500ing every route
+    # that computes age for that athlete (e.g. Blueprint).
+    assert nc.calc_age(dob_str="06/15/2010", age_fallback=15) == 15.0
+
+
+def test_calc_age_raises_when_dob_malformed_and_no_fallback():
+    import pytest
+    with pytest.raises(ValueError):
+        nc.calc_age(dob_str="not-a-date", age_fallback=None)

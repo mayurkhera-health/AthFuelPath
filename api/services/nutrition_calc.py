@@ -1,8 +1,11 @@
+import logging
 from datetime import date
 from typing import Optional
 
 from api.services.activity_engine import get_activity_profile
 from api.services.activity_type_resolver import VALID_ACTIVITY_TYPES
+
+logger = logging.getLogger(__name__)
 
 EVENT_TYPE_MAP = {
     "soccer game": "game",
@@ -149,12 +152,16 @@ def calc_age(dob_str=None, age_fallback=None):
     # MIGRATION BRIDGE — remove fallback path once DOB capture rate >95%
     """
     if dob_str:
-        dob = date.fromisoformat(dob_str)
-        today = date.today()
-        return float(
-            today.year - dob.year -
-            ((today.month, today.day) < (dob.month, dob.day))
-        )
+        try:
+            dob = date.fromisoformat(dob_str)
+        except ValueError:
+            logger.warning("calc_age: malformed date_of_birth %r, falling back to age_fallback", dob_str)
+        else:
+            today = date.today()
+            return float(
+                today.year - dob.year -
+                ((today.month, today.day) < (dob.month, dob.day))
+            )
     if age_fallback is not None:
         return float(age_fallback)  # MIGRATION BRIDGE
     raise ValueError("calc_age requires either dob_str or age_fallback")
