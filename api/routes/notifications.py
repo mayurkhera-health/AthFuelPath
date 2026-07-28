@@ -1,8 +1,9 @@
 import os
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from api.database import get_conn
+from api.services.session_auth import require_session, assert_owns_athlete, assert_owns_parent
 
 router = APIRouter()
 
@@ -27,11 +28,19 @@ class ExpoTokenPayload(BaseModel):
 
 
 @router.post("/expo-token")
-def register_expo_token(data: ExpoTokenPayload):
+def register_expo_token(data: ExpoTokenPayload, identity=Depends(require_session)):
     if not data.athlete_id and not data.parent_id:
         return {"message": "No profile id provided."}
     conn = get_conn()
     try:
+        # Registering a token for a profile requires the caller's own session to
+        # actually be that profile — otherwise anyone who knows/guesses an
+        # athlete_id or parent_id could register their own device against it and
+        # silently start receiving that family's push notifications.
+        if data.athlete_id:
+            assert_owns_athlete(identity, data.athlete_id, conn)
+        if data.parent_id:
+            assert_owns_parent(identity, data.parent_id)
         # A push token belongs to a DEVICE, not a person — on a shared device (one
         # family tablet/phone used by both a parent and an athlete), the parent's
         # registration and the athlete's registration carry the SAME token. Since
