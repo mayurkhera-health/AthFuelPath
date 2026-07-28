@@ -98,3 +98,47 @@ def test_no_activity_type_unchanged():
     a = nc.calc_daily_targets(ATH, "game")
     b = nc.calc_daily_targets(ATH, "game", activity_type=None)
     assert a == b
+
+
+# ---- calc_daily_fat floor ----
+# A heavy athlete on a short tournament-tagged session: tournament's carb factor
+# is a flat 10 g/kg regardless of duration, so a SHORT session prescribes a
+# full-tournament carb load without the calorie budget (AEE) a longer day would
+# generate to pay for it. Real repro, run through the live code:
+# 210 lb / 6'2" 16-year-old boy, tournament, 60-minute session.
+HEAVY_ATH = {"weight_lbs": 210, "height_ft": 6, "height_in": 2, "gender": "boy", "age": 16}
+
+
+def test_fat_never_goes_negative_on_the_real_tournament_repro():
+    t = nc.calc_daily_targets(HEAVY_ATH, event_type="tournament", duration_min=60,
+                               activity_type="tournament")
+    assert t["fat_g"] >= 0
+    assert t["fat_g"] == t["fat_g_min"], "Floor should be the binding constraint here"
+    assert t["fat_flag"] == "FAT_LOW", "Flag must still fire even though fat_g is now clamped positive"
+
+
+def test_calc_daily_fat_clamps_a_negative_residual_to_the_floor():
+    # total_kcal deliberately too low for the given carb+protein grams — the raw
+    # residual is negative — floor must win, not the raw (negative) computation.
+    fat = nc.calc_daily_fat(total_kcal=2000, daily_cho_g=400, daily_prot_g=150, sex="male")
+    raw_residual_g = round((2000 - 400 * 4 - 150 * 4) / 9)
+    assert raw_residual_g < 0, "Test setup should produce a negative raw residual"
+    assert fat["fat_g"] == fat["fat_g_min"]
+    assert fat["fat_g"] > 0
+    assert fat["fat_flag"] == "FAT_LOW"
+
+
+def test_calc_daily_fat_unclamped_case_is_unaffected():
+    # A normal day where the residual comfortably clears the floor (and stays
+    # under the ceiling) — clamping must be a no-op, not change correct output.
+    fat = nc.calc_daily_fat(total_kcal=2800, daily_cho_g=350, daily_prot_g=130, sex="male")
+    raw_residual_g = round((2800 - 350 * 4 - 130 * 4) / 9)
+    assert fat["fat_g_min"] <= raw_residual_g <= fat["fat_g_max"]
+    assert fat["fat_g"] == raw_residual_g
+    assert fat["fat_flag"] is None
+
+
+def test_calc_daily_fat_high_flag_still_fires_above_the_ceiling():
+    # FAT_HIGH path must be untouched by the floor change.
+    fat = nc.calc_daily_fat(total_kcal=3000, daily_cho_g=100, daily_prot_g=50, sex="male")
+    assert fat["fat_flag"] == "FAT_HIGH"

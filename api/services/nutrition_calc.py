@@ -321,20 +321,30 @@ def calc_daily_protein(
 def calc_daily_fat(total_kcal: int, daily_cho_g: int, daily_prot_g: int, sex: str) -> dict:
     """Fat by residual — silent, never shown to athlete (hard rule).
 
-    fat_g    = (TDEE − CHO×4 − Protein×4) ÷ 9
+    fat_g    = (TDEE − CHO×4 − Protein×4) ÷ 9, floored at min_fat. On a day whose
+               carb+protein prescription already meets or exceeds the calorie
+               budget (e.g. a heavy athlete on a short tournament-tagged session —
+               tournament's carb factor doesn't scale down for a short session),
+               the raw residual can go to zero or negative; the floor guarantees
+               fat_g is always a realistic, positive number.
     min_fat  = 25 % of TDEE for females (hormonal health floor), 20 % for males
     max_fat  = 35 % of TDEE for all
 
     FAT_LOW triggers a parent-dashboard message only — never exposed in athlete UI.
+    Fires whenever the floor had to override the raw residual, not just when the
+    (now-clamped) fat_g is low — this is the signal that the day's carb+protein
+    prescription left no real room for fat, which matters even though the number
+    shown is always valid.
     FAT_HIGH is informational for the parent dashboard; not an error.
     """
-    fat_kcal = total_kcal - (daily_cho_g * 4) - (daily_prot_g * 4)
-    fat_g    = round(fat_kcal / 9)
-    min_pct  = 0.25 if sex == "female" else 0.20
-    min_fat  = round((total_kcal * min_pct) / 9)
-    max_fat  = round((total_kcal * 0.35) / 9)
-    flag = ("FAT_LOW"  if fat_g < min_fat else
-            "FAT_HIGH" if fat_g > max_fat else None)
+    fat_kcal  = total_kcal - (daily_cho_g * 4) - (daily_prot_g * 4)
+    raw_fat_g = round(fat_kcal / 9)
+    min_pct   = 0.25 if sex == "female" else 0.20
+    min_fat   = round((total_kcal * min_pct) / 9)
+    max_fat   = round((total_kcal * 0.35) / 9)
+    fat_g     = max(raw_fat_g, min_fat)
+    flag = ("FAT_LOW"  if raw_fat_g < min_fat else
+            "FAT_HIGH" if raw_fat_g > max_fat else None)
     return {
         "fat_g":          fat_g,
         "fat_g_min":      min_fat,
