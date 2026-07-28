@@ -12,6 +12,7 @@ from db.setup import init_db
 from api.services.db_migrations import run_all
 from api.database import get_conn
 from api.main import app
+from tests.conftest import auth_headers
 
 
 @pytest.fixture
@@ -47,19 +48,20 @@ def test_upsert_creates_a_new_row(client):
         "profile_type": "athlete", "profile_id": athlete_id,
         "training_days": False, "game_days": True,
         "quiet_hours_enabled": True, "quiet_start": "21:00", "quiet_end": "06:30",
-    })
+    }, headers=auth_headers("athlete", athlete_id=athlete_id))
     assert r.status_code == 200, r.text
     assert r.json() == {"ok": True}
 
 
 def test_upsert_updates_an_existing_row_in_place(client):
     athlete_id, _ = _make_athlete(client)
+    headers = auth_headers("athlete", athlete_id=athlete_id)
     client.patch("/api/notifications/prefs", json={
         "profile_type": "athlete", "profile_id": athlete_id, "training_days": True,
-    })
+    }, headers=headers)
     r = client.patch("/api/notifications/prefs", json={
         "profile_type": "athlete", "profile_id": athlete_id, "training_days": False,
-    })
+    }, headers=headers)
     assert r.status_code == 200, r.text
 
     conn = get_conn()
@@ -76,10 +78,10 @@ def test_athlete_and_parent_are_independent_profiles(client):
     athlete_id, parent_id = _make_athlete(client)
     client.patch("/api/notifications/prefs", json={
         "profile_type": "athlete", "profile_id": athlete_id, "quiet_hours_enabled": False,
-    })
+    }, headers=auth_headers("athlete", athlete_id=athlete_id))
     r = client.patch("/api/notifications/prefs", json={
         "profile_type": "parent", "profile_id": parent_id, "quiet_hours_enabled": True,
-    })
+    }, headers=auth_headers("parent", parent_id=parent_id))
     assert r.status_code == 200, r.text
 
     from api.services.notification_service import get_notification_prefs
@@ -94,12 +96,38 @@ def test_athlete_and_parent_are_independent_profiles(client):
 def test_unknown_athlete_id_404s(client):
     r = client.patch("/api/notifications/prefs", json={
         "profile_type": "athlete", "profile_id": 999999,
-    })
+    }, headers=auth_headers("athlete", athlete_id=999999))
     assert r.status_code == 404
 
 
 def test_invalid_profile_type_400s(client):
     r = client.patch("/api/notifications/prefs", json={
         "profile_type": "coach", "profile_id": 1,
-    })
+    }, headers=auth_headers("athlete", athlete_id=1))
     assert r.status_code == 400
+
+
+def test_no_session_token_rejected(client):
+    athlete_id, _ = _make_athlete(client)
+    r = client.patch("/api/notifications/prefs", json={
+        "profile_type": "athlete", "profile_id": athlete_id, "training_days": False,
+    })
+    assert r.status_code == 401
+
+
+def test_cannot_silence_another_athletes_notifications(client):
+    athlete_id, _ = _make_athlete(client)
+    other_athlete_id, _ = _make_athlete(client)
+    r = client.patch("/api/notifications/prefs", json={
+        "profile_type": "athlete", "profile_id": athlete_id, "training_days": False,
+    }, headers=auth_headers("athlete", athlete_id=other_athlete_id))
+    assert r.status_code == 403
+
+
+def test_cannot_set_another_parents_notification_prefs(client):
+    _, parent_id = _make_athlete(client)
+    _, other_parent_id = _make_athlete(client)
+    r = client.patch("/api/notifications/prefs", json={
+        "profile_type": "parent", "profile_id": parent_id, "quiet_hours_enabled": False,
+    }, headers=auth_headers("parent", parent_id=other_parent_id))
+    assert r.status_code == 403

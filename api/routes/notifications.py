@@ -129,7 +129,7 @@ class NotificationPrefsUpdate(BaseModel):
 
 
 @router.patch("/prefs")
-def update_notification_prefs(data: NotificationPrefsUpdate):
+def update_notification_prefs(data: NotificationPrefsUpdate, identity=Depends(require_session)):
     """Upsert per-profile Training/Game Day + Quiet Hours prefs (Settings →
     Notifications / Quiet Hours). An athlete and their parent each set their
     own row — they're silencing their own phone independently. Read by
@@ -144,6 +144,10 @@ def update_notification_prefs(data: NotificationPrefsUpdate):
         ).fetchone()
         if not exists:
             raise HTTPException(404, f"{data.profile_type.capitalize()} not found.")
+        if data.profile_type == "athlete":
+            assert_owns_athlete(identity, data.profile_id, conn)
+        else:
+            assert_owns_parent(identity, data.profile_id)
         conn.execute(
             """INSERT INTO notification_prefs
                    (profile_type, profile_id, training_days, game_days,
