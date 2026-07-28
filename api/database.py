@@ -40,7 +40,8 @@ def get_read_conn():
     """
     raw = os.getenv("DB_PATH", _DEFAULT_DB)
     if raw == ":memory:":
-        conn = sqlite3.connect("file::memory:?cache=shared", uri=True, check_same_thread=False)
+        uri = _test_db_uri or "file::memory:?cache=shared"
+        conn = sqlite3.connect(uri, uri=True, check_same_thread=False)
     else:
         conn = sqlite3.connect(f"file:{raw}?mode=ro", uri=True, check_same_thread=False)
     conn.row_factory = sqlite3.Row
