@@ -34,12 +34,28 @@ def get_targets(athlete_id: int, date: str = None, event_type: str = None):
         targets["target_date"] = target_date
 
         conn.execute(
-            """INSERT OR REPLACE INTO daily_targets
+            """INSERT INTO daily_targets
                (athlete_id, target_date, event_type, intensity, total_calories,
                 carbs_g_min, carbs_g_max, protein_g_min, protein_g_max,
                 fat_g_min, fat_g_max, iron_mg, calcium_mg,
                 hydration_oz_min, hydration_oz_max, lea_alert, targets_raw)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(athlete_id, target_date) DO UPDATE SET
+                 event_type       = excluded.event_type,
+                 intensity        = excluded.intensity,
+                 total_calories   = excluded.total_calories,
+                 carbs_g_min      = excluded.carbs_g_min,
+                 carbs_g_max      = excluded.carbs_g_max,
+                 protein_g_min    = excluded.protein_g_min,
+                 protein_g_max    = excluded.protein_g_max,
+                 fat_g_min        = excluded.fat_g_min,
+                 fat_g_max        = excluded.fat_g_max,
+                 iron_mg          = excluded.iron_mg,
+                 calcium_mg       = excluded.calcium_mg,
+                 hydration_oz_min = excluded.hydration_oz_min,
+                 hydration_oz_max = excluded.hydration_oz_max,
+                 lea_alert        = excluded.lea_alert,
+                 targets_raw      = excluded.targets_raw""",
             (athlete_id, target_date, targets["event_type"], targets.get("intensity"),
              targets["total_calories"],
              targets["carbs_g_min"], targets["carbs_g_max"],

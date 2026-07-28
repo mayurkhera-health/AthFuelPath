@@ -68,6 +68,7 @@ def run_all():
     # lifecycle in isolation and must never share the batch connection.
     _migrate_athlete_logins_unique()
     _fix_recipe_selections_unique_constraint()
+    _fix_daily_targets_unique_constraint()
 
 
 def _create_confirmations(conn):
@@ -347,6 +348,87 @@ def _add_intensity_to_daily_targets(conn):
     cols = [r[1] for r in conn.execute("PRAGMA table_info(daily_targets)").fetchall()]
     if "intensity" not in cols:
         conn.execute("ALTER TABLE daily_targets ADD COLUMN intensity TEXT")
+
+
+def _fix_daily_targets_unique_constraint():
+    """
+    daily_targets had no UNIQUE(athlete_id, target_date) — its only key was an
+    autoincrement id the route's INSERT OR REPLACE never supplied, so every
+    recalculation for the same athlete/day inserted a brand-new row instead of
+    replacing it. Downstream readers all do a plain .fetchone() with no
+    ORDER BY, so once duplicates existed the row returned was unspecified.
+
+    Dedupes existing rows (keeping the highest id — the most recently computed
+    row — per athlete_id/target_date) and rebuilds the table with the missing
+    UNIQUE constraint so the route's write can become a real upsert.
+
+    Runs on a dedicated connection after the batch has committed. Idempotent:
+    returns immediately once the new constraint exists.
+    """
+    conn = get_conn()
+    try:
+        if not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='daily_targets'"
+        ).fetchone():
+            return
+
+        for idx in conn.execute("PRAGMA index_list(daily_targets)").fetchall():
+            cols = [r[2] for r in conn.execute(f"PRAGMA index_info('{idx[1]}')").fetchall()]
+            if set(cols) == {"athlete_id", "target_date"}:
+                return  # Already correct — nothing to do
+
+        conn.isolation_level = None
+        try:
+            conn.execute("PRAGMA foreign_keys=OFF")
+            conn.execute("BEGIN")
+            conn.execute("""
+                DELETE FROM daily_targets
+                WHERE id NOT IN (
+                    SELECT MAX(id) FROM daily_targets GROUP BY athlete_id, target_date
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE daily_targets_new (
+                    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                    athlete_id        INTEGER REFERENCES athletes(id),
+                    target_date       TEXT NOT NULL,
+                    event_type        TEXT,
+                    total_calories    INTEGER,
+                    carbs_g_min       INTEGER,
+                    carbs_g_max       INTEGER,
+                    protein_g_min     INTEGER,
+                    protein_g_max     INTEGER,
+                    fat_g_min         INTEGER,
+                    fat_g_max         INTEGER,
+                    iron_mg           INTEGER,
+                    calcium_mg        INTEGER,
+                    hydration_oz_min  INTEGER,
+                    hydration_oz_max  INTEGER,
+                    lea_alert         BOOLEAN,
+                    targets_raw       TEXT,
+                    intensity         TEXT,
+                    UNIQUE (athlete_id, target_date)
+                )
+            """)
+            conn.execute("""
+                INSERT INTO daily_targets_new
+                SELECT id, athlete_id, target_date, event_type, total_calories,
+                       carbs_g_min, carbs_g_max, protein_g_min, protein_g_max,
+                       fat_g_min, fat_g_max, iron_mg, calcium_mg,
+                       hydration_oz_min, hydration_oz_max, lea_alert, targets_raw, intensity
+                FROM daily_targets
+            """)
+            conn.execute("DROP TABLE daily_targets")
+            conn.execute("ALTER TABLE daily_targets_new RENAME TO daily_targets")
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+        finally:
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.isolation_level = ""
+    finally:
+        conn.close()
 
 
 def _create_problem_reports(conn):
