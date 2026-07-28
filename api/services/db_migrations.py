@@ -55,6 +55,7 @@ def run_all():
         _add_phone_to_athletes(conn)
         _add_phone_to_parents(conn)
         _add_wind_down_dismissed_to_athletes(conn)
+        _create_account_deletion_requests(conn)
         _create_dietitian_bookings(conn)
         _create_teamcoach_tables(conn)
         conn.commit()
@@ -448,6 +449,22 @@ def _add_wind_down_dismissed_to_athletes(conn):
     cols = [r[1] for r in conn.execute("PRAGMA table_info(athletes)").fetchall()]
     if "wind_down_dismissed" not in cols:
         conn.execute("ALTER TABLE athletes ADD COLUMN wind_down_dismissed INTEGER DEFAULT 0")
+
+
+def _create_account_deletion_requests(conn):
+    """Delete Account no longer deletes anything in-app — it records the
+    request and notifies the team, who complete the deletion out-of-band.
+    See api/routes/parents.py::delete_parent_account."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS account_deletion_requests (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            parent_id      INTEGER NOT NULL REFERENCES parents(id),
+            parent_name    TEXT NOT NULL,
+            parent_email   TEXT NOT NULL,
+            athlete_names  TEXT,
+            created_at     TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
 
 
 def _create_dietitian_bookings(conn):

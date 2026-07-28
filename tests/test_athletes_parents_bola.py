@@ -22,6 +22,7 @@ def client():
     keepalive = get_conn()
     init_db()
     run_all()
+    keepalive.execute("DELETE FROM account_deletion_requests")
     keepalive.execute("DELETE FROM athletes")
     keepalive.execute("DELETE FROM parents")
     keepalive.commit()
@@ -135,13 +136,17 @@ def test_delete_parent_account_rejects_unrelated_parent(client):
 
 
 def test_delete_parent_account_allows_owner(client):
+    """Delete Account no longer deletes in-app (2026-07-27 product decision —
+    see test_account_deletion_request.py) — it records the request and the
+    owning parent can still submit it; the account itself is untouched here."""
     parent_id = make_parent("owner3@example.com")
     r = client.delete(
         f"/api/parents/{parent_id}",
         headers=auth_headers("parent", parent_id=parent_id),
     )
     assert r.status_code == 200
-    assert get_conn().execute("SELECT id FROM parents WHERE id=?", (parent_id,)).fetchone() is None
+    assert r.json()["received"] is True
+    assert get_conn().execute("SELECT id FROM parents WHERE id=?", (parent_id,)).fetchone() is not None
 
 
 # ── PATCH /api/parents/{id}/profile ───────────────────────────────────────────

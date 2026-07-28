@@ -6,7 +6,10 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from api.models import ParentCreate, ParentResponse, ParentProfileUpdate, OTPRequest, OTPVerify
 from api.database import get_conn
 from api.services.email import send_otp_email
+from api.services.email_service import send_email
 from api.services.session_auth import mint_session_token, require_session, assert_owns_parent, assert_owns_athlete
+
+_DELETION_RECIPIENT = "purvihshah@gmail.com"
 
 log = logging.getLogger(__name__)
 
@@ -160,33 +163,54 @@ def test_reset(email: str):
 
 @router.delete("/{parent_id}")
 def delete_parent_account(parent_id: int, identity=Depends(require_session)):
-    """Permanently delete a parent account and all associated athlete data.
-    Required for Apple App Store Guideline 5.1.1(v) in-app account deletion."""
+    """Record an account-deletion request and notify the team — the actual
+    deletion happens manually, out of the app, not here. (Product decision,
+    2026-07-27: the in-app cascade delete had a real bug — see the removed
+    version's history — and the team wants a human to handle every deletion
+    rather than an automated in-app cascade.) Required for Apple App Store
+    Guideline 5.1.1(v): the app must let the user INITIATE deletion without
+    leaving the app; it does not require the deletion itself be automatic."""
     assert_owns_parent(identity, parent_id)
     conn = get_conn()
     try:
-        row = conn.execute("SELECT id FROM parents WHERE id = ?", (parent_id,)).fetchone()
+        row = conn.execute(
+            "SELECT full_name, email FROM parents WHERE id = ?", (parent_id,)
+        ).fetchone()
         if not row:
             raise HTTPException(404, "Parent not found.")
+        parent = dict(row)
         athlete_rows = conn.execute(
-            "SELECT id FROM athletes WHERE parent_id = ?", (parent_id,)
+            "SELECT first_name FROM athletes WHERE parent_id = ?", (parent_id,)
         ).fetchall()
-        for a in athlete_rows:
-            aid = dict(a)["id"]
-            for table in (
-                "confirmations", "window_logs", "events", "daily_targets",
-                "meal_logs", "streak_state", "notification_log",
-                "pantry_list_items", "shopping_list_items",
-            ):
-                conn.execute(f"DELETE FROM {table} WHERE athlete_id = ?", (aid,))
-        conn.execute("DELETE FROM expo_push_tokens WHERE parent_id = ?", (parent_id,))
-        conn.execute("DELETE FROM otp_codes WHERE parent_id = ?", (parent_id,))
-        conn.execute("DELETE FROM athletes WHERE parent_id = ?", (parent_id,))
-        conn.execute("DELETE FROM parents WHERE id = ?", (parent_id,))
+        athlete_names = ", ".join(dict(a)["first_name"] for a in athlete_rows) or "(no athletes on file)"
+
+        cur = conn.execute(
+            """INSERT INTO account_deletion_requests (parent_id, parent_name, parent_email, athlete_names)
+               VALUES (?, ?, ?, ?)""",
+            (parent_id, parent["full_name"], parent["email"], athlete_names),
+        )
         conn.commit()
-        return {"deleted": True}
+        request_id = cur.lastrowid
     finally:
         conn.close()
+
+    # Best-effort notification — the request is already durably saved above
+    # regardless of email outcome.
+    subject = f"Account Deletion Request — {parent['full_name']}"
+    body = (
+        "A parent requested account deletion via the FuelUp app.\n\n"
+        f"Parent:       {parent['full_name']} <{parent['email']}> (id {parent_id})\n"
+        f"Athlete(s):   {athlete_names}\n\n"
+        "This account has NOT been deleted automatically. Please process the "
+        "deletion manually and confirm with the family once complete."
+    )
+    try:
+        email_sent = send_email(subject, body, [_DELETION_RECIPIENT])
+    except Exception:
+        logger.exception("account-deletion notification email failed (non-blocking)")
+        email_sent = False
+
+    return {"received": True, "id": request_id, "email_sent": email_sent}
 
 
 @router.patch("/{parent_id}/dismiss-schedule-reminder")
