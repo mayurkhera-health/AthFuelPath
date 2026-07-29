@@ -90,6 +90,8 @@ def unrecord_confirmation(
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)
+        if not conn.execute("SELECT id FROM athletes WHERE id = ?", (athlete_id,)).fetchone():
+            raise HTTPException(404, "Athlete not found.")
         conn.execute(
             "DELETE FROM confirmations WHERE athlete_id = ? AND window_key = ? AND log_date = ?",
             (athlete_id, window_key, log_date),

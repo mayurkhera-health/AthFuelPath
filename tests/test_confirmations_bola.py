@@ -167,6 +167,23 @@ def test_confirming_for_a_nonexistent_athlete_404s_even_with_a_matching_self_tok
         f"Expected 404 for a nonexistent athlete_id even with a matching self-token, "
         f"got {r.status_code}: {r.text}."
     )
+
+
+def test_unconfirming_for_a_nonexistent_athlete_404s_even_with_a_matching_self_token(client):
+    """DELETE's sibling of the POST-side regression above: the DELETE route
+    had no existence check at all, so it silently ran a no-op delete and
+    returned 200 {"deleted": true} for an athlete_id that doesn't exist,
+    instead of a clean 404."""
+    ghost_athlete_id = 999999
+    r = client.delete(
+        f"/api/athletes/{ghost_athlete_id}/confirmations",
+        params={"window_key": "breakfast", "log_date": "2026-07-26"},
+        headers=auth_headers("athlete", athlete_id=ghost_athlete_id),
+    )
+    assert r.status_code == 404, (
+        f"Expected 404 for a nonexistent athlete_id even with a matching self-token, "
+        f"got {r.status_code}: {r.text}."
+    )
     assert fetch_confirmation(ghost_athlete_id, "breakfast") is None, (
         "An orphaned confirmation row was inserted for an athlete_id that doesn't exist."
     )
