@@ -69,8 +69,8 @@ Choose exactly ONE path. Deciding question for recipe vs knowledge: did the user
   Set recipe_category to the best match:
   halftime | pre_game | post_game | breakfast | lunch | dinner | snack | hydration
 
-- "meal_macro" — The user describes a SPECIFIC meal/food they ATE (or are about to eat) AND explicitly asks for its nutrition breakdown — calories, protein, carbs, fat, or "macros"/"nutrition facts". Needs BOTH: (a) a real food description (not vague — "food" or "lunch" alone isn't enough, needs actual items like "eggs and toast"), AND (b) an explicit ask for the numbers ("how many calories", "what's the protein in", "macros for", "nutrition facts for", "how much carbs was that"). This is different from "knowledge" — merely mentioning what you have/ate without asking for a breakdown stays knowledge.
-  NOT meal_macro if they're asking for advice/evaluation about food without wanting exact numbers ("I have bananas and pretzels, which is better pre-game?") → knowledge
+- "meal_macro" — The user describes a SPECIFIC meal/food they ATE or are CURRENTLY eating — real food items, not vague ("food"/"lunch" alone isn't enough, needs actual items like "eggs and toast"). Route here automatically whenever they log/describe what they ate, EVEN IF they don't explicitly ask for calories/macros/nutrition — giving the breakdown is now the default response to "I ate X," not something that requires an explicit ask.
+  NOT meal_macro if they're asking for advice/evaluation/choice about food they HAVE or MIGHT eat, without describing something already eaten ("I have bananas and pretzels, which is better pre-game?", "what should I eat before practice?") → knowledge
   NOT meal_macro if no specific food is actually named (just "how many calories should I eat today?") → knowledge (that's a target/RDA question, not analyzing a described meal)
 
 - "restaurant" — The user names a SPECIFIC restaurant with a fixed, orderable menu (fast food or sit-down chain: McDonald's, Chipotle, Panda Express, Subway, etc.) and asks what to eat there, WITHOUT listing what's actually available/ordered. Extract the restaurant's name into restaurant_name.
@@ -104,11 +104,13 @@ recipe (explicit "recipe"/"recipes" or a specific named dish):
 - "Show me a pasta dish for the night before a game" → recipe, pre_game
 - "Any halftime snack recipes?" → recipe, halftime
 
-meal_macro (specific food described AND numbers explicitly requested):
+meal_macro (a specific meal actually eaten is described — number-ask is optional, not required):
+- "I had 2 eggs, toast, and orange juice for breakfast" → meal_macro (no explicit ask needed — describing what was eaten is enough)
+- "I just ate a bowl of pasta with meatballs" → meal_macro
+- "I'm eating a turkey sandwich and an apple right now" → meal_macro
 - "I had 2 eggs, toast, and orange juice for breakfast, how many calories was that?" → meal_macro
 - "What's the protein in a grilled chicken breast with brown rice?" → meal_macro
 - "Give me the macros for a turkey sandwich with an apple" → meal_macro
-- "I just ate a bowl of pasta with meatballs, what's the nutrition on that?" → meal_macro
 - "How many carbs were in the bagel and cream cheese I had?" → meal_macro
 
 knowledge (ALL other food/meal guidance — text answer, NO recipe card):
@@ -485,6 +487,43 @@ def _answer_with_recipe(question: str, athlete: dict, category: str, persona: st
     }
 
 
+_PORTION_CLARITY_SYSTEM = """You check whether a youth athlete's meal description has enough detail to compute an accurate nutrition estimate.
+
+"Enough detail" means: every food item either states or clearly implies a portion/quantity (e.g. "2 eggs", "a bowl of rice", "a slice of toast", "a banana" — a whole common item is a clear implied portion). It's NOT enough detail if a food is named with no quantity or size cue at all and no reasonable common-sense default applies (e.g. "some rice", "a bunch of pasta", "chicken and rice" with truly no sense of how much).
+
+When it's NOT enough detail, write ONE short, friendly, specific question asking only for what's missing (e.g. "About how much rice — like a cup, or more?"). Don't ask about foods that already have clear portions.
+
+Return ONLY valid JSON:
+{"clear": true | false, "clarification_question": null | "short question"}"""
+
+
+def _check_meal_portion_clarity(question: str) -> dict:
+    """Runs before the real FDC lookup — if the athlete's description is too
+    vague to estimate honestly (no portion/quantity cue), ask them back
+    instead of silently guessing. Fails open (treats as clear) if the LLM
+    call itself fails, so a transient error never blocks the whole feature."""
+    if not is_configured():
+        return {"clear": True, "clarification_question": None}
+    try:
+        text = converse_text(
+            system=_PORTION_CLARITY_SYSTEM,
+            user=f'Meal description: "{question.strip()}"',
+            max_tokens=150,
+            temperature=0.1,
+        )
+        parsed = parse_json_from_llm(text)
+    except Exception:
+        logger.exception("Meal portion clarity check failed for question=%r", question[:80])
+        return {"clear": True, "clarification_question": None}
+
+    if parsed.get("clear", True):
+        return {"clear": True, "clarification_question": None}
+    question_text = (parsed.get("clarification_question") or "").strip()
+    if not question_text:
+        return {"clear": True, "clarification_question": None}
+    return {"clear": False, "clarification_question": question_text}
+
+
 def _answer_with_meal_macro(question: str, athlete: dict, persona: str | None = None) -> dict:
     """A described meal's real macro breakdown, from a real food-database
     lookup (USDA FDC via voice_meal_analyzer/fdc_client — same engine
@@ -505,6 +544,10 @@ def _answer_with_meal_macro(question: str, athlete: dict, persona: str | None = 
             "calculation": None,
             "sources": list_sources(),
         }
+
+    clarity = _check_meal_portion_clarity(question)
+    if not clarity["clear"]:
+        return _fallback(clarity["clarification_question"])
 
     try:
         analysis = voice_meal_analyzer.analyze_voice(question, allergies=allergies)
