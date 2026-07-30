@@ -685,84 +685,33 @@ def test_coach_meal_macro_falls_back_gracefully_when_no_food_detected():
     assert "couldn't quite tell" in result["answer"].lower()
 
 
-def test_coach_meal_macro_asks_for_portion_details_when_vague():
-    """New behavior: when the description doesn't give enough portion/quantity
-    detail to estimate honestly, ask the athlete back instead of guessing —
-    and never touch the real FDC lookup for a vague description."""
-    from api.services.knowledge.answer import answer_with_knowledge
-
-    with patch("api.services.knowledge.answer._classify_coach_path", return_value={"path": "meal_macro", "recipe_category": None, "restaurant_name": None, "location_text": None}):
-        with patch("api.services.knowledge.answer.is_configured", return_value=True):
-            with patch(
-                "api.services.knowledge.answer.converse_text",
-                return_value='{"clear": false, "clarification_question": "About how much rice — like a cup, or more?"}',
-            ):
-                with patch("api.services.voice_meal_analyzer.analyze_voice") as mock_analyze:
-                    result = answer_with_knowledge(
-                        "I had some rice and chicken",
-                        {"id": 1, "first_name": "Alex", "age": 14, "gender": "female",
-                         "weight_lbs": 120, "allergies": "[]", "dietary_restrictions": None},
-                    )
-
-    mock_analyze.assert_not_called()
-    assert result["intent"] == "meal_macro"
-    assert result["meal_analysis"] is None
-    assert "how much rice" in result["answer"].lower()
-
-
-def test_coach_meal_macro_proceeds_when_portions_are_clear():
+def test_coach_meal_macro_states_assumed_portions_without_asking_back():
+    """Product decision 2026-07-29 (v2): no clarifying-question round-trip —
+    an earlier ask-first version was too naggy. Always proceeds straight to
+    the real lookup and states the assumed portions in the answer so the
+    athlete can correct them conversationally instead of being blocked."""
     from api.services.knowledge.answer import answer_with_knowledge
 
     mock_analysis = {
-        "foods": [{"name": "eggs", "estimated_portion_g": 100, "calories": 150,
-                    "protein_g": 12.0, "carbs_g": 1.0, "fat_g": 10.0, "fdc_id": 1, "fdc_description": "Eggs"}],
-        "totals": {"calories": 150, "protein_g": 12.0, "carbs_g": 1.0, "fat_g": 10.0},
-        "description": "eggs (~100g)",
-        "transcription": "I had 2 eggs for breakfast",
+        "foods": [{"name": "rice", "estimated_portion_g": 150, "calories": 200,
+                    "protein_g": 4.0, "carbs_g": 44.0, "fat_g": 0.5, "fdc_id": 1, "fdc_description": "Rice"}],
+        "totals": {"calories": 200, "protein_g": 4.0, "carbs_g": 44.0, "fat_g": 0.5},
+        "description": "rice (~150g)",
+        "transcription": "I had some rice and chicken",
     }
 
     with patch("api.services.knowledge.answer._classify_coach_path", return_value={"path": "meal_macro", "recipe_category": None, "restaurant_name": None, "location_text": None}):
-        with patch("api.services.knowledge.answer.is_configured", return_value=True):
-            with patch(
-                "api.services.knowledge.answer.converse_text",
-                return_value='{"clear": true, "clarification_question": null}',
-            ):
-                with patch("api.services.voice_meal_analyzer.analyze_voice", return_value=mock_analysis) as mock_analyze:
-                    result = answer_with_knowledge(
-                        "I had 2 eggs for breakfast",
-                        {"id": 1, "first_name": "Alex", "age": 14, "gender": "female",
-                         "weight_lbs": 120, "allergies": "[]", "dietary_restrictions": None},
-                    )
+        with patch("api.services.voice_meal_analyzer.analyze_voice", return_value=mock_analysis) as mock_analyze:
+            result = answer_with_knowledge(
+                "I had some rice and chicken",
+                {"id": 1, "first_name": "Alex", "age": 14, "gender": "female",
+                 "weight_lbs": 120, "allergies": "[]", "dietary_restrictions": None},
+            )
 
     mock_analyze.assert_called_once()
     assert result["meal_analysis"] == mock_analysis
-
-
-def test_coach_meal_macro_clarity_check_fails_open_on_error():
-    """If the clarity-check LLM call itself errors, don't block the whole
-    feature — proceed to the real lookup as if it were clear."""
-    from api.services.knowledge.answer import answer_with_knowledge
-
-    mock_analysis = {
-        "foods": [{"name": "eggs", "estimated_portion_g": 100, "calories": 150,
-                    "protein_g": 12.0, "carbs_g": 1.0, "fat_g": 10.0, "fdc_id": 1, "fdc_description": "Eggs"}],
-        "totals": {"calories": 150, "protein_g": 12.0, "carbs_g": 1.0, "fat_g": 10.0},
-        "description": "eggs (~100g)",
-        "transcription": "I had 2 eggs",
-    }
-
-    with patch("api.services.knowledge.answer._classify_coach_path", return_value={"path": "meal_macro", "recipe_category": None, "restaurant_name": None, "location_text": None}):
-        with patch("api.services.knowledge.answer.is_configured", return_value=True):
-            with patch("api.services.knowledge.answer.converse_text", side_effect=Exception("boom")):
-                with patch("api.services.voice_meal_analyzer.analyze_voice", return_value=mock_analysis) as mock_analyze:
-                    result = answer_with_knowledge(
-                        "I had 2 eggs",
-                        {"id": 1, "first_name": "Alex", "age": 14, "gender": "female",
-                         "weight_lbs": 120, "allergies": "[]", "dietary_restrictions": None},
-                    )
-
-    mock_analyze.assert_called_once()
-    assert result["meal_analysis"] == mock_analysis
+    assert "rice (~150g)" in result["answer"]
+    assert "bigger or smaller" in result["answer"].lower()
 
 
 def test_coach_skips_recipe_for_general_questions():

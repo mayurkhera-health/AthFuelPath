@@ -487,48 +487,19 @@ def _answer_with_recipe(question: str, athlete: dict, category: str, persona: st
     }
 
 
-_PORTION_CLARITY_SYSTEM = """You check whether a youth athlete's meal description has enough detail to compute an accurate nutrition estimate.
-
-"Enough detail" means: every food item either states or clearly implies a portion/quantity (e.g. "2 eggs", "a bowl of rice", "a slice of toast", "a banana" — a whole common item is a clear implied portion). It's NOT enough detail if a food is named with no quantity or size cue at all and no reasonable common-sense default applies (e.g. "some rice", "a bunch of pasta", "chicken and rice" with truly no sense of how much).
-
-When it's NOT enough detail, write ONE short, friendly, specific question asking only for what's missing (e.g. "About how much rice — like a cup, or more?"). Don't ask about foods that already have clear portions.
-
-Return ONLY valid JSON:
-{"clear": true | false, "clarification_question": null | "short question"}"""
-
-
-def _check_meal_portion_clarity(question: str) -> dict:
-    """Runs before the real FDC lookup — if the athlete's description is too
-    vague to estimate honestly (no portion/quantity cue), ask them back
-    instead of silently guessing. Fails open (treats as clear) if the LLM
-    call itself fails, so a transient error never blocks the whole feature."""
-    if not is_configured():
-        return {"clear": True, "clarification_question": None}
-    try:
-        text = converse_text(
-            system=_PORTION_CLARITY_SYSTEM,
-            user=f'Meal description: "{question.strip()}"',
-            max_tokens=150,
-            temperature=0.1,
-        )
-        parsed = parse_json_from_llm(text)
-    except Exception:
-        logger.exception("Meal portion clarity check failed for question=%r", question[:80])
-        return {"clear": True, "clarification_question": None}
-
-    if parsed.get("clear", True):
-        return {"clear": True, "clarification_question": None}
-    question_text = (parsed.get("clarification_question") or "").strip()
-    if not question_text:
-        return {"clear": True, "clarification_question": None}
-    return {"clear": False, "clarification_question": question_text}
-
-
 def _answer_with_meal_macro(question: str, athlete: dict, persona: str | None = None) -> dict:
     """A described meal's real macro breakdown, from a real food-database
     lookup (USDA FDC via voice_meal_analyzer/fdc_client — same engine
     analyze-voice uses) — never an LLM-invented number. Approved narrowly
     for this one surface: CLAUDE.md §14 rule 3 exception, 2026-07-29.
+
+    No clarifying-question round-trip: when a portion isn't stated,
+    voice_meal_analyzer's extraction already assumes a standard serving
+    (e.g. "a bowl of rice" ~150g) — same as the analyze-voice one-shot
+    flow. The assumed portion is stated plainly in the answer so the
+    athlete can correct it in their next message if it's off, instead of
+    being blocked by a forced question first (product decision
+    2026-07-29: an earlier ask-first version was too naggy in practice).
     """
     from api.services import voice_meal_analyzer
 
@@ -544,10 +515,6 @@ def _answer_with_meal_macro(question: str, athlete: dict, persona: str | None = 
             "calculation": None,
             "sources": list_sources(),
         }
-
-    clarity = _check_meal_portion_clarity(question)
-    if not clarity["clear"]:
-        return _fallback(clarity["clarification_question"])
 
     try:
         analysis = voice_meal_analyzer.analyze_voice(question, allergies=allergies)
@@ -565,9 +532,10 @@ def _answer_with_meal_macro(question: str, athlete: dict, persona: str | None = 
 
     totals = analysis["totals"]
     answer = (
-        f"Here's what I found for {analysis['description']}: "
+        f"Assuming {analysis['description']}: "
         f"**{totals['calories']} cal**, {totals['carbs_g']}g carbs, "
-        f"{totals['protein_g']}g protein, {totals['fat_g']}g fat."
+        f"{totals['protein_g']}g protein, {totals['fat_g']}g fat. "
+        f"Let me know if your portions were bigger or smaller and I'll adjust."
     )
     unmatched = [f["name"] for f in analysis["foods"] if "fdc_id" not in f]
     if unmatched:
