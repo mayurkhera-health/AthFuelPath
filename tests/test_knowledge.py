@@ -551,6 +551,18 @@ def test_classify_coach_path_restaurant_without_name_falls_back_to_out_of_scope(
     assert route == {"path": "out_of_scope", "recipe_category": None, "restaurant_name": None, "location_text": None}
 
 
+def test_classify_coach_path_parses_meal_macro_route():
+    from api.services.knowledge.answer import _classify_coach_path
+
+    with patch("api.services.knowledge.answer.is_configured", return_value=True):
+        with patch("api.services.knowledge.answer.converse_text", return_value='{"path": "meal_macro"}'):
+            route = _classify_coach_path(
+                "I had 2 eggs and toast for breakfast, how many calories was that?",
+                {"first_name": "Alex", "age": 14},
+            )
+    assert route == {"path": "meal_macro", "recipe_category": None, "restaurant_name": None, "location_text": None}
+
+
 def test_classify_coach_path_defaults_to_knowledge_on_bad_json():
     from api.services.knowledge.answer import _classify_coach_path
 
@@ -607,6 +619,56 @@ def test_coach_routes_recipe_requests():
     assert result["recipe"]["name"] == "Quick Halftime Bites"
     assert result["source_ingredients"] == ["Bananas, raw"]
     assert "halftime" in result["answer"].lower()
+
+
+def test_coach_routes_meal_macro_requests_to_real_food_lookup():
+    """A described meal + explicit macro ask should hit voice_meal_analyzer's
+    real USDA lookup, not the LLM inventing numbers."""
+    from api.services.knowledge.answer import answer_with_knowledge
+
+    mock_analysis = {
+        "foods": [
+            {"name": "scrambled eggs", "estimated_portion_g": 100, "calories": 150,
+             "protein_g": 12.0, "carbs_g": 1.0, "fat_g": 10.0, "fdc_id": 123, "fdc_description": "Eggs, scrambled"},
+            {"name": "toast", "estimated_portion_g": 30, "calories": 80,
+             "protein_g": 3.0, "carbs_g": 15.0, "fat_g": 1.0, "fdc_id": 456, "fdc_description": "Bread, toasted"},
+        ],
+        "totals": {"calories": 230, "protein_g": 15.0, "carbs_g": 16.0, "fat_g": 11.0},
+        "description": "scrambled eggs (~100g), toast (~30g)",
+        "transcription": "I had scrambled eggs and toast",
+    }
+
+    with patch("api.services.knowledge.answer._classify_coach_path", return_value={"path": "meal_macro", "recipe_category": None, "restaurant_name": None, "location_text": None}):
+        with patch("api.services.voice_meal_analyzer.analyze_voice", return_value=mock_analysis) as mock_analyze:
+            result = answer_with_knowledge(
+                "I had scrambled eggs and toast, how many calories was that?",
+                {"id": 1, "first_name": "Alex", "age": 14, "gender": "female",
+                 "weight_lbs": 120, "allergies": "[]", "dietary_restrictions": None},
+            )
+
+    mock_analyze.assert_called_once()
+    assert result["intent"] == "meal_macro"
+    assert result["meal_analysis"] == mock_analysis
+    assert "230" in result["answer"]
+    assert "16.0g carbs" in result["answer"]
+    assert "15.0g protein" in result["answer"]
+    assert "11.0g fat" in result["answer"]
+
+
+def test_coach_meal_macro_falls_back_gracefully_when_no_food_detected():
+    from api.services.knowledge.answer import answer_with_knowledge
+
+    with patch("api.services.knowledge.answer._classify_coach_path", return_value={"path": "meal_macro", "recipe_category": None, "restaurant_name": None, "location_text": None}):
+        with patch("api.services.voice_meal_analyzer.analyze_voice", side_effect=ValueError("No foods detected in the description.")):
+            result = answer_with_knowledge(
+                "how many calories was that",
+                {"id": 1, "first_name": "Alex", "age": 14, "gender": "female",
+                 "weight_lbs": 120, "allergies": "[]", "dietary_restrictions": None},
+            )
+
+    assert result["intent"] == "meal_macro"
+    assert result["meal_analysis"] is None
+    assert "couldn't quite tell" in result["answer"].lower()
 
 
 def test_coach_skips_recipe_for_general_questions():

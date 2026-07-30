@@ -69,6 +69,10 @@ Choose exactly ONE path. Deciding question for recipe vs knowledge: did the user
   Set recipe_category to the best match:
   halftime | pre_game | post_game | breakfast | lunch | dinner | snack | hydration
 
+- "meal_macro" — The user describes a SPECIFIC meal/food they ATE (or are about to eat) AND explicitly asks for its nutrition breakdown — calories, protein, carbs, fat, or "macros"/"nutrition facts". Needs BOTH: (a) a real food description (not vague — "food" or "lunch" alone isn't enough, needs actual items like "eggs and toast"), AND (b) an explicit ask for the numbers ("how many calories", "what's the protein in", "macros for", "nutrition facts for", "how much carbs was that"). This is different from "knowledge" — merely mentioning what you have/ate without asking for a breakdown stays knowledge.
+  NOT meal_macro if they're asking for advice/evaluation about food without wanting exact numbers ("I have bananas and pretzels, which is better pre-game?") → knowledge
+  NOT meal_macro if no specific food is actually named (just "how many calories should I eat today?") → knowledge (that's a target/RDA question, not analyzing a described meal)
+
 - "restaurant" — The user names a SPECIFIC restaurant with a fixed, orderable menu (fast food or sit-down chain: McDonald's, Chipotle, Panda Express, Subway, etc.) and asks what to eat there, WITHOUT listing what's actually available/ordered. Extract the restaurant's name into restaurant_name.
   NOT restaurant if it's a grocery/general store (Trader Joe's, Costco, Walmart) — those have no single fixed "menu" to look up → out_of_scope instead.
   NOT restaurant if the user already lists the specific items/options themselves → knowledge (evaluate what they gave you).
@@ -88,6 +92,7 @@ Choose exactly ONE path. Deciding question for recipe vs knowledge: did the user
   NOT out_of_scope if they explicitly ask for a recipe from our library → recipe
   NOT out_of_scope if they name a specific restaurant with a fixed menu → restaurant
   NOT out_of_scope if they want nearby restaurant ideas without naming one → restaurant_nearby
+  NOT out_of_scope if they describe a specific meal AND ask for its calories/macros/nutrition → meal_macro
 
 {_COACH_CAPABILITIES}
 
@@ -98,6 +103,13 @@ recipe (explicit "recipe"/"recipes" or a specific named dish):
 - "Recommend a breakfast recipe" → recipe, breakfast
 - "Show me a pasta dish for the night before a game" → recipe, pre_game
 - "Any halftime snack recipes?" → recipe, halftime
+
+meal_macro (specific food described AND numbers explicitly requested):
+- "I had 2 eggs, toast, and orange juice for breakfast, how many calories was that?" → meal_macro
+- "What's the protein in a grilled chicken breast with brown rice?" → meal_macro
+- "Give me the macros for a turkey sandwich with an apple" → meal_macro
+- "I just ate a bowl of pasta with meatballs, what's the nutrition on that?" → meal_macro
+- "How many carbs were in the bagel and cream cheese I had?" → meal_macro
 
 knowledge (ALL other food/meal guidance — text answer, NO recipe card):
 - "What should I eat before practice?" → knowledge
@@ -128,7 +140,7 @@ out_of_scope (grocery/general store, real-time data, non-nutrition, medical/weig
 - "What's healthy at Costco?" → out_of_scope
 
 Return ONLY valid JSON, no markdown:
-{{"path": "knowledge" | "recipe" | "restaurant" | "restaurant_nearby" | "out_of_scope", "recipe_category": null | "category_key", "restaurant_name": null | "restaurant name", "location_text": null | "zip/city/place from THIS message, only for restaurant_nearby"}}"""
+{{"path": "knowledge" | "recipe" | "meal_macro" | "restaurant" | "restaurant_nearby" | "out_of_scope", "recipe_category": null | "category_key", "restaurant_name": null | "restaurant name", "location_text": null | "zip/city/place from THIS message, only for restaurant_nearby"}}"""
 
 _OUT_OF_SCOPE_SYSTEM = f"""You are FuelUp's Nutrition Coach for youth soccer athletes ages 9-17.
 
@@ -198,9 +210,10 @@ def _detect_weight_input_flag(question: str) -> bool:
 
 def _classify_coach_path(question: str, athlete: dict) -> dict:
     """
-    LLM router: choose knowledge RAG vs recipe library selection vs restaurant
-    menu lookup vs nearby-restaurant discovery vs out-of-scope redirect.
-    Returns {"path": "knowledge"|"recipe"|"restaurant"|"restaurant_nearby"|"out_of_scope",
+    LLM router: choose knowledge RAG vs recipe library selection vs a described
+    meal's real macro breakdown vs restaurant menu lookup vs nearby-restaurant
+    discovery vs out-of-scope redirect.
+    Returns {"path": "knowledge"|"recipe"|"meal_macro"|"restaurant"|"restaurant_nearby"|"out_of_scope",
              "recipe_category": str|None, "restaurant_name": str|None,
              "location_text": str|None}. `location_text` is only ever set for
              "restaurant_nearby" — an explicit zip/city/place the athlete gave
@@ -227,11 +240,14 @@ def _classify_coach_path(question: str, athlete: dict) -> dict:
         return {"path": "knowledge", "recipe_category": None, "restaurant_name": None, "location_text": None}
 
     path = parsed.get("path", "knowledge")
-    if path not in ("knowledge", "recipe", "restaurant", "restaurant_nearby", "out_of_scope"):
+    if path not in ("knowledge", "recipe", "meal_macro", "restaurant", "restaurant_nearby", "out_of_scope"):
         path = "knowledge"
 
     if path == "out_of_scope":
         return {"path": "out_of_scope", "recipe_category": None, "restaurant_name": None, "location_text": None}
+
+    if path == "meal_macro":
+        return {"path": "meal_macro", "recipe_category": None, "restaurant_name": None, "location_text": None}
 
     if path == "restaurant_nearby":
         location_text = (parsed.get("location_text") or "").strip() or None
@@ -463,6 +479,65 @@ def _answer_with_recipe(question: str, athlete: dict, category: str, persona: st
         "recipe": result["recipe"],
         "recipes": result.get("recipes", []),
         "source_ingredients": result.get("source_ingredients", []),
+        "citations": [],
+        "calculation": None,
+        "sources": list_sources(),
+    }
+
+
+def _answer_with_meal_macro(question: str, athlete: dict, persona: str | None = None) -> dict:
+    """A described meal's real macro breakdown, from a real food-database
+    lookup (USDA FDC via voice_meal_analyzer/fdc_client — same engine
+    analyze-voice uses) — never an LLM-invented number. Approved narrowly
+    for this one surface: CLAUDE.md §14 rule 3 exception, 2026-07-29.
+    """
+    from api.services import voice_meal_analyzer
+
+    allergies = _parse_allergies(athlete.get("allergies"))
+
+    def _fallback(answer: str) -> dict:
+        return {
+            "answer": answer,
+            "format": "markdown",
+            "intent": "meal_macro",
+            "meal_analysis": None,
+            "citations": [],
+            "calculation": None,
+            "sources": list_sources(),
+        }
+
+    try:
+        analysis = voice_meal_analyzer.analyze_voice(question, allergies=allergies)
+    except ValueError:
+        return _fallback(
+            "I couldn't quite tell what food you meant there — try naming the "
+            "specific items, like \"2 eggs, toast, and orange juice.\""
+        )
+    except Exception:
+        logger.exception("Meal macro analysis failed for question=%r", question[:80])
+        return _fallback(
+            "Sorry, I couldn't look up the nutrition for that right now. "
+            "Try again in a moment."
+        )
+
+    totals = analysis["totals"]
+    answer = (
+        f"Here's what I found for {analysis['description']}: "
+        f"**{totals['calories']} cal**, {totals['carbs_g']}g carbs, "
+        f"{totals['protein_g']}g protein, {totals['fat_g']}g fat."
+    )
+    unmatched = [f["name"] for f in analysis["foods"] if "fdc_id" not in f]
+    if unmatched:
+        answer += (
+            f" (Couldn't find nutrition data for {', '.join(unmatched)} — "
+            "not counted above.)"
+        )
+
+    return {
+        "answer": answer,
+        "format": "markdown",
+        "intent": "meal_macro",
+        "meal_analysis": analysis,
         "citations": [],
         "calculation": None,
         "sources": list_sources(),
@@ -1084,6 +1159,13 @@ def _route_and_answer(
     route = _classify_coach_path(contextual_question, athlete)
     if route["path"] == "out_of_scope":
         return _answer_out_of_scope(contextual_question, athlete, persona=persona)
+
+    if route["path"] == "meal_macro":
+        # Bare `question`, not `contextual_question` — prior-turn food items
+        # (a previous meal asked about, or a restaurant search) must never
+        # bleed into THIS meal's analysis. Each meal_macro turn is a fresh,
+        # self-contained lookup, same reasoning as restaurant_nearby below.
+        return _answer_with_meal_macro(question, athlete, persona=persona)
 
     if route["path"] == "restaurant":
         meal_period = _derive_meal_period(now)
