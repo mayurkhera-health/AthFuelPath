@@ -92,11 +92,12 @@ async def submit_report(
         conn.close()
 
     # Best-effort notification — must never block or fail the 201.
-    subject = f"FuelUp — {category or 'Message'} from {role_hint or 'unknown'} (v{app_version or 'unknown'})"
+    subject = f"FuelUp — {category or 'Problem Report'} from {role_hint or 'unknown'} (v{app_version or 'unknown'})"
     body = (
         "A new problem report was submitted via the FuelUp app.\n\n"
         f"Name:        {reporter_name or 'not provided'}\n"
         f"Email:       {reporter_email or 'not provided'}\n"
+        f"Category:    {category or 'not provided'}\n"
         f"App version: {app_version or 'not provided'}\n"
         f"Platform:    {platform or 'not provided'}\n"
         f"Submitted:   {created_at} UTC\n\n"
