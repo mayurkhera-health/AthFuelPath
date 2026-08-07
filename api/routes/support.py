@@ -49,6 +49,7 @@ async def submit_report(
     app_version: str | None = Form(None),
     platform: str | None = Form(None),
     role_hint: str | None = Form(None),
+    category: str | None = Form(None),
     reporter_name: str | None = Form(None),
     reporter_email: str | None = Form(None),
     parent_id: int | None = Form(None),
@@ -65,9 +66,9 @@ async def submit_report(
     try:
         cur = conn.execute(
             """INSERT INTO problem_reports
-                   (description, screenshot_url, app_version, platform, role_hint)
-               VALUES (?, ?, ?, ?, ?)""",
-            (desc, screenshot_url, app_version, platform, role_hint),
+                   (description, screenshot_url, app_version, platform, role_hint, category)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (desc, screenshot_url, app_version, platform, role_hint, category),
         )
         conn.commit()
         report_id = cur.lastrowid
@@ -91,7 +92,7 @@ async def submit_report(
         conn.close()
 
     # Best-effort notification — must never block or fail the 201.
-    subject = f"FuelUp — Problem Report from {role_hint or 'unknown'} (v{app_version or 'unknown'})"
+    subject = f"FuelUp — {category or 'Message'} from {role_hint or 'unknown'} (v{app_version or 'unknown'})"
     body = (
         "A new problem report was submitted via the FuelUp app.\n\n"
         f"Name:        {reporter_name or 'not provided'}\n"

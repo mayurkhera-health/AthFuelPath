@@ -29,6 +29,7 @@ def run_all():
         _add_lifestyle_activity_to_athletes(conn)
         _add_diet_pref_to_athletes(conn)
         _create_problem_reports(conn)
+        _add_category_to_problem_reports(conn)
         _create_coach_feedback(conn)
         _create_instacart_handoff_feedback(conn)
         _create_pantry_list_items(conn)
@@ -443,6 +444,12 @@ def _create_problem_reports(conn):
             created_at     TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+
+def _add_category_to_problem_reports(conn):
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(problem_reports)").fetchall()]
+    if "category" not in cols:
+        conn.execute("ALTER TABLE problem_reports ADD COLUMN category TEXT")
 
 
 def _add_calendar_sync_to_athletes(conn):
