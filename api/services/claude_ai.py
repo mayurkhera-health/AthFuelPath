@@ -142,7 +142,7 @@ def prompt4_recipe_swap(athlete: dict, disliked_recipe: str, meal_timing_categor
         if r["name"].lower() != disliked_recipe.strip().lower()
     ]
     try:
-        result = _json_completion(f"""Select 3 alternative recipes from FuelUp's curated recipe library.
+        result = _json_completion(f"""Select 3 alternative recipes from AthFuelPath's curated recipe library.
 
 ATHLETE: {athlete['first_name']}, age {athlete['age']}, gender {athlete['gender']}, weight {athlete['weight_lbs']}lbs
 Allergies: {athlete.get('allergies','None')} | Diet restrictions: {athlete.get('dietary_restrictions','None')}
@@ -187,10 +187,10 @@ Return JSON:
             })
         return {
             "alternatives": alternatives,
-            "powered_by_note": "FuelUp curated recipe library",
+            "powered_by_note": "AthFuelPath curated recipe library",
         }
     except Exception:
-        return {"alternatives": [], "powered_by_note": "FuelUp curated recipe library"}
+        return {"alternatives": [], "powered_by_note": "AthFuelPath curated recipe library"}
 
 
 def prompt5_hydration(athlete: dict, event: dict, weather: dict, sweat_output: dict) -> dict:
@@ -236,7 +236,7 @@ Dairy-free: {dairy_free}
 TASK: Assign one recipe_id to every meal slot in the 7-day schedule below.
 Each slot maps to a specific clinical eating window — match the recipe to that window's nutritional requirements above.
 
-AVAILABLE RECIPES come from FuelUp's curated recipe library. You are selecting existing recipes — never inventing new meals.
+AVAILABLE RECIPES come from AthFuelPath's curated recipe library. You are selecting existing recipes — never inventing new meals.
 
 RULES:
 1. Only use recipe IDs from AVAILABLE RECIPES — never invent IDs or new dishes.

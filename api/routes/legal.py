@@ -18,7 +18,7 @@ SEED_DOCUMENTS = [
 
 ## Introduction
 
-FuelUp Youth ("we," "our," or "us"), operated by Food Explorers LLC of San Jose, California, is committed to protecting the privacy of young athletes and their families. This Privacy Policy explains how we collect, use, and safeguard information when you use the FuelUp Youth application.
+AthFuelPath ("we," "our," or "us"), operated by Food Explorers LLC of San Jose, California, is committed to protecting the privacy of young athletes and their families. This Privacy Policy explains how we collect, use, and safeguard information when you use the AthFuelPath application.
 
 ## Information We Collect
 
@@ -51,7 +51,7 @@ We may use aggregate, anonymized data (with no personally identifiable informati
 
 ## Children's Privacy
 
-FuelUp Youth is designed for youth athletes ages 13–17. All accounts are created and managed by a parent or guardian. We comply with applicable children's privacy laws including COPPA.
+AthFuelPath is designed for youth athletes ages 13–17. All accounts are created and managed by a parent or guardian. We comply with applicable children's privacy laws including COPPA.
 
 ## Data Deletion
 
@@ -71,11 +71,11 @@ Questions about this Privacy Policy? Contact us at **purvi@dietsandlife.com**.
 
 ## Acceptance of Terms
 
-By creating an account and using FuelUp Youth ("the App"), operated by Food Explorers LLC of San Jose, California, you agree to these Terms of Service. If you do not agree, please do not use the App.
+By creating an account and using AthFuelPath ("the App"), operated by Food Explorers LLC of San Jose, California, you agree to these Terms of Service. If you do not agree, please do not use the App.
 
 ## Description of Service
 
-FuelUp Youth provides educational food guidance and nutrition information for youth soccer athletes ages 13–17. All recommendations are based on published pediatric sports nutrition research.
+AthFuelPath provides educational food guidance and nutrition information for youth soccer athletes ages 13–17. All recommendations are based on published pediatric sports nutrition research.
 
 ## Account Eligibility
 
@@ -85,7 +85,7 @@ FuelUp Youth provides educational food guidance and nutrition information for yo
 
 ## Acceptable Use
 
-You agree to use FuelUp Youth only for its intended purpose: supporting the nutrition and fueling habits of a youth athlete. You agree **not** to:
+You agree to use AthFuelPath only for its intended purpose: supporting the nutrition and fueling habits of a youth athlete. You agree **not** to:
 
 - Create accounts for athletes outside the 13–17 age range
 - Share login credentials with unauthorized users
@@ -98,9 +98,9 @@ You agree to use FuelUp Youth only for its intended purpose: supporting the nutr
 
 ## Limitation of Liability
 
-FuelUp Youth provides **educational food guidance only** — not medical nutrition therapy. We are not responsible for health outcomes resulting from following or not following app recommendations. Always consult a licensed healthcare provider for medical concerns.
+AthFuelPath provides **educational food guidance only** — not medical nutrition therapy. We are not responsible for health outcomes resulting from following or not following app recommendations. Always consult a licensed healthcare provider for medical concerns.
 
-To the maximum extent permitted by law, FuelUp Youth's total liability for any claims arising from your use of the App shall not exceed the amount you paid for the App in the prior 12 months.
+To the maximum extent permitted by law, AthFuelPath's total liability for any claims arising from your use of the App shall not exceed the amount you paid for the App in the prior 12 months.
 
 ## Termination
 
@@ -124,15 +124,15 @@ Questions? Contact us at **purvi@dietsandlife.com**.
         "title": "Medical Disclaimer",
         "content": """# Medical Disclaimer
 
-**Please read this disclaimer carefully before using FuelUp Youth.**
+**Please read this disclaimer carefully before using AthFuelPath.**
 
 ## Not Medical Advice
 
-FuelUp Youth provides **educational food guidance only**. The information, recommendations, meal plans, nutrition targets, and hydration guidance provided by this application are for general educational purposes and do **not** constitute medical advice, medical nutrition therapy, or clinical dietary treatment.
+AthFuelPath provides **educational food guidance only**. The information, recommendations, meal plans, nutrition targets, and hydration guidance provided by this application are for general educational purposes and do **not** constitute medical advice, medical nutrition therapy, or clinical dietary treatment.
 
 ## No Doctor-Patient Relationship
 
-Use of FuelUp Youth does not create a doctor-patient relationship, dietitian-client relationship, or any other professional healthcare relationship between you and FuelUp Youth or its developers.
+Use of AthFuelPath does not create a doctor-patient relationship, dietitian-client relationship, or any other professional healthcare relationship between you and AthFuelPath or its developers.
 
 ## Consult a Healthcare Professional
 
@@ -147,7 +147,7 @@ Before making significant changes to your athlete's diet, especially if your ath
 
 ## Sources and Accuracy
 
-FuelUp Youth's nutrition recommendations are based on peer-reviewed research and guidelines from:
+AthFuelPath's nutrition recommendations are based on peer-reviewed research and guidelines from:
 
 - Everett MD 2025
 - American Academy of Pediatrics (AAP)
@@ -171,7 +171,7 @@ If an athlete experiences any of the following, **stop all activity and seek imm
 
 ## Limitation
 
-FuelUp Youth is not a substitute for professional medical care. The creators and operators of FuelUp Youth accept no liability for health outcomes based on the use or non-use of information provided in this application.
+AthFuelPath is not a substitute for professional medical care. The creators and operators of AthFuelPath accept no liability for health outcomes based on the use or non-use of information provided in this application.
 """,
     },
     {
@@ -179,9 +179,9 @@ FuelUp Youth is not a substitute for professional medical care. The creators and
         "title": "Youth Athlete Disclaimer",
         "content": """# Youth Athlete Disclaimer
 
-## Who FuelUp Youth Is For
+## Who AthFuelPath Is For
 
-FuelUp Youth is designed exclusively for youth soccer athletes between the ages of **13 and 17 years**. All accounts are created and managed by a parent or legal guardian.
+AthFuelPath is designed exclusively for youth soccer athletes between the ages of **13 and 17 years**. All accounts are created and managed by a parent or legal guardian.
 
 ## Parental Responsibility
 
@@ -189,30 +189,30 @@ By creating an account, the parent or guardian confirms:
 
 - Their athlete is between 13 and 17 years of age
 - They have read and accepted the Medical Disclaimer
-- They understand that FuelUp Youth provides educational food guidance — not medical treatment
+- They understand that AthFuelPath provides educational food guidance — not medical treatment
 - They will consult a healthcare professional for any medical nutrition concerns
 - They take responsibility for supervising their athlete's use of the App
 
 ## Age-Appropriate Guidance
 
-All nutrition recommendations, calorie targets, macronutrient ranges, and hydration guidance are calculated using evidence-based formulas for the pediatric population. FuelUp Youth does **not** apply adult nutrition guidelines to youth athletes.
+All nutrition recommendations, calorie targets, macronutrient ranges, and hydration guidance are calculated using evidence-based formulas for the pediatric population. AthFuelPath does **not** apply adult nutrition guidelines to youth athletes.
 
 Our recommendations account for:
 
 - Growth and development needs of athletes ages 13–17
 - The elevated energy demands of competitive youth soccer
 - Age-specific iron, calcium, and bone development requirements
-- Safe weight management principles — FuelUp Youth does not support caloric restriction for weight loss in youth athletes
+- Safe weight management principles — AthFuelPath does not support caloric restriction for weight loss in youth athletes
 
 ## Weight and Body Composition
 
-FuelUp Youth does **not** encourage, recommend, or support weight loss programs for youth athletes. Our calorie targets are set to support healthy performance, growth, and development.
+AthFuelPath does **not** encourage, recommend, or support weight loss programs for youth athletes. Our calorie targets are set to support healthy performance, growth, and development.
 
 If you have concerns about your athlete's weight or body composition, please consult a pediatrician or registered dietitian.
 
 ## Eating Concerns
 
-If you observe signs of disordered eating — including food restriction, binge behaviors, extreme weight loss, or excessive concern with body weight — please immediately consult a healthcare professional. FuelUp Youth is not equipped to address eating disorders.
+If you observe signs of disordered eating — including food restriction, binge behaviors, extreme weight loss, or excessive concern with body weight — please immediately consult a healthcare professional. AthFuelPath is not equipped to address eating disorders.
 
 ## Data Privacy for Minors
 
@@ -230,9 +230,9 @@ For questions about youth athlete guidelines: **purvi@dietsandlife.com**
 
 ## AI-Assisted Features
 
-FuelUp Youth uses artificial intelligence (AI) — specifically Anthropic's Claude — to generate personalized nutrition blueprints, meal suggestions, and recovery guidance. This disclaimer explains how AI is used and its limitations.
+AthFuelPath uses artificial intelligence (AI) — specifically Anthropic's Claude — to generate personalized nutrition blueprints, meal suggestions, and recovery guidance. This disclaimer explains how AI is used and its limitations.
 
-## What AI Does in FuelUp Youth
+## What AI Does in AthFuelPath
 
 AI is used to:
 
@@ -261,11 +261,11 @@ AI-generated content may occasionally:
 - Misinterpret complex individual health situations
 - Provide generic guidance that does not account for specific medical conditions
 
-**AI-generated content in FuelUp Youth is not a substitute for advice from a licensed registered dietitian, physician, or other qualified healthcare professional.**
+**AI-generated content in AthFuelPath is not a substitute for advice from a licensed registered dietitian, physician, or other qualified healthcare professional.**
 
 ## AI and Medical Decisions
 
-FuelUp Youth's AI is explicitly instructed to:
+AthFuelPath's AI is explicitly instructed to:
 
 - Never provide medical diagnoses
 - Never recommend supplements, medications, or treatments
@@ -274,7 +274,7 @@ FuelUp Youth's AI is explicitly instructed to:
 
 ## Knowledge Base
 
-FuelUp Youth's AI answers are grounded in an approved knowledge base of peer-reviewed nutrition content. The AI is constrained to answer only from this approved content and will state when it does not have sufficient information.
+AthFuelPath's AI answers are grounded in an approved knowledge base of peer-reviewed nutrition content. The AI is constrained to answer only from this approved content and will state when it does not have sufficient information.
 
 ## Questions
 

@@ -39,7 +39,7 @@ export default function AdminActionHub({ onLoggedOut, onNavigate }) {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
-        <h1 style={{ font: `800 26px ${FONT_DISPLAY}`, color: C.text1, margin: 0 }}>FuelUp Mission Control</h1>
+        <h1 style={{ font: `800 26px ${FONT_DISPLAY}`, color: C.text1, margin: 0 }}>AthFuelPath Mission Control</h1>
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
           <span style={{ font: `500 13px ${FONT_DISPLAY}`, color: C.text3 }}>as of {time}</span>
           <Button variant="ghost" onClick={() => load(true)} disabled={refreshing}>{refreshing ? "Refreshing…" : "Refresh"}</Button>

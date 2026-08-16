@@ -1224,8 +1224,8 @@ def request_otp(body: AdminOTPRequest):
     if aa.recently_sent(admin["id"]):
         raise HTTPException(429, "A code was already sent. Wait 60 seconds.")
     code = aa.create_otp(admin["id"])
-    send_email("FuelUp Admin login code",
-               f"Your FuelUp admin login code is {code}. It expires in 10 minutes.",
+    send_email("AthFuelPath Admin login code",
+               f"Your AthFuelPath admin login code is {code}. It expires in 10 minutes.",
                [admin["email"]])
     return {"message": "If that email is an admin, a code has been sent."}
 
@@ -1304,8 +1304,8 @@ def resend_invite(invite_id: int, admin=Depends(aa.require_admin)):
     email_sent = False
     if out.get("email"):
         email_sent = send_email(
-            "Your FuelUp invitation (reminder)",
-            "This is a reminder to finish setting up your FuelUp account.",
+            "Your AthFuelPath invitation (reminder)",
+            "This is a reminder to finish setting up your AthFuelPath account.",
             [out["email"]])
     return {**out, "email_sent": email_sent}
 
@@ -1351,7 +1351,7 @@ In the `lifespan` function (after `db_migrations.run_all()`), seed admins:
 
 - [ ] **Step 5: Align the test's OTP-parsing with the email body**
 
-The test extracts the code from the email body via `split("code is ")[1].split(".")[0]`. The body in `request_otp` is `f"Your FuelUp admin login code is {code}. It expires in 10 minutes."` — which matches. No change needed; this step is a verification that the substring contract holds.
+The test extracts the code from the email body via `split("code is ")[1].split(".")[0]`. The body in `request_otp` is `f"Your AthFuelPath admin login code is {code}. It expires in 10 minutes."` — which matches. No change needed; this step is a verification that the substring contract holds.
 
 - [ ] **Step 6: Run tests to verify they pass**
 
@@ -1551,7 +1551,7 @@ export default function AdminLogin({ onAuthed }) {
 
   return (
     <div style={{ maxWidth: 360, margin: "80px auto", fontFamily: "system-ui" }}>
-      <h2>FuelUp Admin</h2>
+      <h2>AthFuelPath Admin</h2>
       {stage === "email" ? (
         <>
           <input placeholder="admin email" value={email}
@@ -1598,7 +1598,7 @@ export default function AdminApp() {
   return (
     <div style={{ fontFamily: "system-ui", padding: 16 }}>
       <header style={{ display: "flex", gap: 12, alignItems: "center", borderBottom: "1px solid #ddd", paddingBottom: 8 }}>
-        <strong>FuelUp Admin</strong>
+        <strong>AthFuelPath Admin</strong>
         {Object.keys(TABS).map((t) => (
           <button key={t} onClick={() => setTab(t)}
                   style={{ fontWeight: t === tab ? 700 : 400 }}>{t}</button>

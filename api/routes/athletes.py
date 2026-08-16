@@ -98,7 +98,7 @@ def _persist_blueprint(conn, athlete_id: int, blueprint: dict) -> None:
 @router.post("/", response_model=AthleteResponse, status_code=201)
 def create_athlete(data: AthleteCreate, background_tasks: BackgroundTasks):
     if not (13 <= data.age <= 17):
-        raise HTTPException(400, "FuelUp Youth is designed for athletes ages 13-17.")
+        raise HTTPException(400, "AthFuelPath is designed for athletes ages 13-17.")
     conn = get_conn()
     try:
         parent = conn.execute(
@@ -149,7 +149,7 @@ def update_athlete(
     identity=Depends(require_session),
 ):
     if not (13 <= data.age <= 17):
-        raise HTTPException(400, "FuelUp Youth is designed for athletes ages 13-17.")
+        raise HTTPException(400, "AthFuelPath is designed for athletes ages 13-17.")
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)

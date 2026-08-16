@@ -141,10 +141,10 @@ def test_mapping_never_includes_client_supplied_base_url_or_headers():
 
 
 def test_partner_linkback_url_comes_from_env_not_request(monkeypatch):
-    monkeypatch.setenv("INSTACART_PARTNER_LINKBACK_URL", "https://fuelup.example.com/back")
+    monkeypatch.setenv("INSTACART_PARTNER_LINKBACK_URL", "https://athfuelpath.example.com/back")
     req = _req()
     payload = _map_to_instacart_payload(req)
-    assert payload["landing_page_configuration"]["partner_linkback_url"] == "https://fuelup.example.com/back"
+    assert payload["landing_page_configuration"]["partner_linkback_url"] == "https://athfuelpath.example.com/back"
 
 
 # ── Response URL validation ──────────────────────────────────────────────────

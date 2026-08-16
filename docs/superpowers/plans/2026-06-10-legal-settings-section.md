@@ -214,14 +214,14 @@ git commit -m "feat(settings): add Legal document detail view"
 
 In one terminal:
 ```bash
-cd /Users/mayurkhera/FuelUpYouth
+cd /Users/mayurkhera/AthFuelPath
 source venv/bin/activate && python db/setup.py
 uvicorn api.main:app --reload --port 8000
 ```
 
 In a second terminal:
 ```bash
-cd /Users/mayurkhera/FuelUpYouth/frontend
+cd /Users/mayurkhera/AthFuelPath/frontend
 npm run dev
 ```
 

@@ -53,7 +53,7 @@ def _no_real_email(monkeypatch):
     used for manual dev testing) — with no guard here, any test that exercises a
     route sending a transactional email (onboarding welcome, calendar-sync digest,
     founder alerts' email fallback, etc.) sends a REAL message via smtplib. This
-    already happened in production: dozens of real "Welcome to FuelUp" emails went
+    already happened in production: dozens of real "Welcome to AthFuelPath" emails went
     out to the test fixture address (tests/test_login_alerts.py's pat@example.com)
     from every full test-suite run on a machine with real Gmail creds configured.
 

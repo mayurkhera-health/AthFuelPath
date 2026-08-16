@@ -3,7 +3,7 @@
 **Status:** Phase 0 complete. **No code written.** Awaiting founder review before Phase 1.
 **Date:** 2026-06-23
 **Companion docs:** `fuel_gauge_design.md`, `fuel_gauge_implementation_plan.md`
-**Repos audited:** backend `~/FuelUpYouth`, frontend `~/FuelUpYouth_Mobile/fuelup-mobile`
+**Repos audited:** backend `~/AthFuelPath`, frontend `~/AthFuelPath_Mobile/fuelup-mobile`
 
 This doc resolves every `[VERIFY]` in the design and surfaces decisions that must be
 made **before** Phase 1, because the live code differs from the design's assumptions in

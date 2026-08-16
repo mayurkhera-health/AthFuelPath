@@ -96,7 +96,7 @@ export default function AppShell({ athlete: initialAthlete, parent, initialTab =
         {/* Top bar */}
         <div style={s.topBar}>
           <div>
-            <div style={s.logo}>⚽ FuelUp Youth</div>
+            <div style={s.logo}>⚽ AthFuelPath</div>
             <div style={s.athleteLabel}>{athlete.first_name} {athlete.last_name}</div>
           </div>
           <button

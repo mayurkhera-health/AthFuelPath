@@ -3,8 +3,8 @@ Health alerting — fires only on meaningful transitions, push-first to the
 founder's device with email strictly as fallback.
 
 Rules:
-  down     = green|unknown -> red   → "🔴 [FuelUp] <check> failed: <detail>"
-  recovery = red -> green           → "✅ [FuelUp] <check> recovered"
+  down     = green|unknown -> red   → "🔴 [AthFuelPath] <check> failed: <detail>"
+  recovery = red -> green           → "✅ [AthFuelPath] <check> recovered"
   (unknown -> green never alerts.)
 
 Cooldown: repeated DOWN alerts for the same check are suppressed for 3h (flap
@@ -54,8 +54,8 @@ def _mark_alerted(conn, check_name):
 
 def _message(check_name, direction, detail):
     if direction == "down":
-        return f"🔴 [FuelUp] {check_name} failed", f"{check_name} failed: {detail}"
-    return f"✅ [FuelUp] {check_name} recovered", f"{check_name} recovered."
+        return f"🔴 [AthFuelPath] {check_name} failed", f"{check_name} failed: {detail}"
+    return f"✅ [AthFuelPath] {check_name} recovered", f"{check_name} recovered."
 
 
 def dispatch(conn, check_name, from_status, to_status, detail):

@@ -90,7 +90,7 @@ def fetch_ics_text(url: str) -> str:
         host = urlparse(fetch_url).hostname
         if not host or not _is_public_host(host):
             raise ValueError(f"Calendar URL host is not allowed: {host!r}")
-        resp = httpx.get(fetch_url, timeout=15, headers={"User-Agent": "FuelUp/1.0"},
+        resp = httpx.get(fetch_url, timeout=15, headers={"User-Agent": "AthFuelPath/1.0"},
                          follow_redirects=False)
         if resp.status_code in (301, 302, 303, 307, 308):
             location = resp.headers.get("location")
@@ -105,7 +105,7 @@ def fetch_ics_text(url: str) -> str:
 
 # ─── Parsing ──────────────────────────────────────────────────────────────────
 def guess_event_type(summary: str) -> str:
-    """Map a VEVENT summary to a FuelUp event_type. Kept in lockstep with
+    """Map a VEVENT summary to a AthFuelPath event_type. Kept in lockstep with
     guessEventType in mobile utils/icsImport.ts so client + server agree."""
     s = (summary or "").lower()
     if "game" in s or "match" in s:

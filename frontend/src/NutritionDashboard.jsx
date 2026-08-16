@@ -83,7 +83,7 @@ export default function NutritionDashboard({ athlete }) {
           <WeeklyHeatmap days={summary.days} heatmap={summary.heatmap} />
           <ParentReport athleteId={athlete.id} weekStart={weekStart} />
           <p style={s.disclaimer}>
-            FuelUp provides food education guidance — not medical nutrition
+            AthFuelPath provides food education guidance — not medical nutrition
             therapy. Consult your physician or a licensed RDN for medical
             nutrition concerns.
           </p>

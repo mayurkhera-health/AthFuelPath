@@ -198,7 +198,7 @@ def delete_parent_account(parent_id: int, identity=Depends(require_session)):
     # regardless of email outcome.
     subject = f"Account Deletion Request — {parent['full_name']}"
     body = (
-        "A parent requested account deletion via the FuelUp app.\n\n"
+        "A parent requested account deletion via the AthFuelPath app.\n\n"
         f"Parent:       {parent['full_name']} <{parent['email']}> (id {parent_id})\n"
         f"Athlete(s):   {athlete_names}\n\n"
         "This account has NOT been deleted automatically. Please process the "
@@ -368,7 +368,7 @@ def _send_blueprint_summary(parent: dict, athletes: list, viewed_at: str) -> Non
 
         body = "\n".join(lines)
         send_email(
-            subject=f"🎯 FuelUp Blueprint View — {first} ({email})",
+            subject=f"🎯 AthFuelPath Blueprint View — {first} ({email})",
             body=body,
             to=["mayurkhera@gmail.com"],
         )

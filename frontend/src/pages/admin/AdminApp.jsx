@@ -124,7 +124,7 @@ export default function AdminApp() {
               padding: "6px 13px", cursor: "pointer",
             }}
           >{menuOpen ? "✕" : "☰"}</button>
-          <span style={{ font: `800 17px ${FONT_DISPLAY}`, color: C.sidebarText }}>FuelUp Admin</span>
+          <span style={{ font: `800 17px ${FONT_DISPLAY}`, color: C.sidebarText }}>AthFuelPath Admin</span>
         </header>
         {menuOpen && (
           <nav style={{
@@ -152,7 +152,7 @@ export default function AdminApp() {
         flexShrink: 0, display: "flex", flexDirection: "column",
       }}>
         <div style={{ font: `800 18px ${FONT_DISPLAY}`, color: C.sidebarText, padding: "0 12px 22px" }}>
-          FuelUp Admin
+          AthFuelPath Admin
         </div>
         {navItems}
         <div style={{ flex: 1 }} />

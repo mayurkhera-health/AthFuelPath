@@ -1,4 +1,4 @@
-"""AWS Bedrock Converse API client for FuelUp AI calls."""
+"""AWS Bedrock Converse API client for AthFuelPath AI calls."""
 import base64
 import json
 import os

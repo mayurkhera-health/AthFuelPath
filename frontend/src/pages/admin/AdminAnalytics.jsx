@@ -150,7 +150,7 @@ function FounderSummary({ overview, funnel }) {
   const asOf = (overview.as_of || "").slice(11, 16);
 
   const rows = [
-    { ok: true, text: `${families} ${families === 1 ? "family" : "families"} using FuelUp` },
+    { ok: true, text: `${families} ${families === 1 ? "family" : "families"} using AthFuelPath` },
     {
       ok: active > 0,
       text: active > 0 ? `${active} ${active === 1 ? "athlete" : "athletes"} active this week` : "No athletes active this week",

@@ -29,8 +29,8 @@ from api.services.activity_engine import get_activity_profile
 
 router = APIRouter()
 
-_PHOTOS_DIR = Path("/tmp/fuelup_photos")
-_AUDIO_DIR  = Path("/tmp/fuelup_audio")
+_PHOTOS_DIR = Path("/tmp/athfuelpath_photos")
+_AUDIO_DIR  = Path("/tmp/athfuelpath_audio")
 
 
 async def _store_meal_photo(photo: UploadFile, athlete_id: int, slot_name: str):

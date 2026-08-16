@@ -1,4 +1,4 @@
-"""Recipe selection from the FuelUp curated recipe library via agent choice."""
+"""Recipe selection from the AthFuelPath curated recipe library via agent choice."""
 
 import json
 
@@ -73,12 +73,12 @@ def _choose_recipes_with_agent(
     user_request = question or f"Suggest a {profile['label'].lower()} recipe."
     pick_count = min(max(count, 1), len(candidates))
 
-    prompt = f"""You are FuelUp's recipe selector for youth soccer athletes ages 9-17.
+    prompt = f"""You are AthFuelPath's recipe selector for youth soccer athletes ages 9-17.
 
-FuelUp provides food education guidance — not medical nutrition therapy.
+AthFuelPath provides food education guidance — not medical nutrition therapy.
 Never recommend supplements for athletes under 18.
 
-You are selecting existing recipes from FuelUp's curated recipe library — not writing new ones.
+You are selecting existing recipes from AthFuelPath's curated recipe library — not writing new ones.
 
 USER REQUEST: {user_request}
 

@@ -13,7 +13,7 @@ export default function MissionItem({ item, isDone, cameraAvailable, onPhoto, on
 
   const tagStyle = {
     DONE:     { background: "rgba(45,106,79,.10)", color: "#2d6a4f" },
-    NOW:      { background: "rgba(180,83,9,.12)",  color: "#b45309", animation: "fuelup-pulse 1.4s infinite" },
+    NOW:      { background: "rgba(180,83,9,.12)",  color: "#b45309", animation: "athfuelpath-pulse 1.4s infinite" },
     BOOST:    { background: "rgba(37,99,235,.10)", color: "#1d4ed8" },
     UPCOMING: { background: "#f4f8f5",             color: "#4a6358" },
   };

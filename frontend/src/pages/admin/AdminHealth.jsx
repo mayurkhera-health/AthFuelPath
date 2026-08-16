@@ -415,7 +415,7 @@ export default function AdminHealth({ onLoggedOut }) {
         </div>
       </div>
       <p style={{ font: `400 13px ${FONT_DISPLAY}`, color: C.text3, margin: "0 0 18px" }}>
-        Live status of the services FuelUp depends on. “Pending” checks simply haven’t run since the last deploy — not a problem.
+        Live status of the services AthFuelPath depends on. “Pending” checks simply haven’t run since the last deploy — not a problem.
       </p>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 14, marginBottom: 24 }}>

@@ -4,7 +4,7 @@ Performance Plate — per-window plate shapes + food-option selection.
 Two data tables, both RDN-editable:
   PLATE_TIMINGS   — the 5 plate *shapes* (canonical 4 sections: carbs/protein/
                     veg/fat), transcribed from the RDN prototype
-                    (fuelup_performance_plate_v2_1.html). `pct` is plate AREA
+                    (athfuelpath_performance_plate_v2_1.html). `pct` is plate AREA
                     (visual emphasis), NOT a gram ratio.
   WINDOW_TO_PLATE — maps each real fueling-window key → (shape, title, subtitle,
                     recipe profile). ⚠️ RDN-tunable; the shape/window pairing and

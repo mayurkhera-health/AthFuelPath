@@ -6,7 +6,7 @@
 
 **Architecture:** The live window engine (`window_engine_v2.py`, enabled in prod via `EVENT_RELATIVE_WINDOWS=true`) *generates* card titles and subtitle tags at runtime; the active web tabs and mobile cards render those strings, so they inherit renames automatically. Only three places hold hardcoded user-facing strings: the engine itself, `notification_service.py` push copy, and a handful of mobile screens. Plus one explicitly-requested internal rename: the mobile Fuel Finder `food-catalog.ts` kebab keys.
 
-**Tech Stack:** Python 3.11 / FastAPI / pytest (backend, repo `/Users/mayurkhera/FuelUpYouth`); React Native / Expo SDK 54 / TypeScript / jest (mobile, repo `/Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile`, **not a git repo**).
+**Tech Stack:** Python 3.11 / FastAPI / pytest (backend, repo `/Users/mayurkhera/AthFuelPath`); React Native / Expo SDK 54 / TypeScript / jest (mobile, repo `/Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile`, **not a git repo**).
 
 ---
 
@@ -137,14 +137,14 @@ Expected: **no output** — confirms no persisted/contract key or factor constan
 
 ## Task 4: Mobile — Fuel Finder tab labels
 
-**Repo:** `/Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile`
+**Repo:** `/Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile`
 
 **Files:**
 - Modify: `app/(app)/fuel-finder/index.tsx` (CATEGORIES array, lines 38, 41, 42 — labels only)
 
 - [ ] **Step 1: Snapshot the non-git mobile repo (safety net)**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && cp -r . ../fuelup-mobile.backup-2026-06-24` (skip if a snapshot/branch already exists)
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && cp -r . ../fuelup-mobile.backup-2026-06-24` (skip if a snapshot/branch already exists)
 Expected: a sibling backup directory created. (This repo has no git; this is the rollback path.)
 
 - [ ] **Step 2: Rename the tab `label` strings (NOT the `id`s in this task)**
@@ -161,7 +161,7 @@ Leave `top-up` ("Top-Up"), `during` ("During"), `hydration`, `label-check` label
 
 - [ ] **Step 3: Typecheck**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && npx tsc --noEmit 2>&1 | grep -v node_modules`
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && npx tsc --noEmit 2>&1 | grep -v node_modules`
 Expected: no new errors.
 
 - [ ] **Step 4: Commit-equivalent checkpoint**
@@ -249,7 +249,7 @@ Leave `windowLabel: "Breakfast"` / `categoryLabel: "Everyday"` (230/233) and `__
 
 - [ ] **Step 2: Run the mobile test suite**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && npm test -- --watchAll=false 2>&1 | tail -30`
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && npm test -- --watchAll=false 2>&1 | tail -30`
 Expected: PASS. Fix any assertion still referencing an old label.
 
 - [ ] **Step 3: Typecheck (whole app)**
@@ -270,12 +270,12 @@ Expected: correct labels; no blank Fuel Finder tabs (blank = a kebab id mismatch
 
 - [ ] **Step 1: Confirm active web tabs render backend labels (no hardcoded titles)**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth/frontend && grep -rnE 'Recovery (Snack|Meal|Breakfast)|Pre-Game Meal|Pre-Training Meal' src/pages/Today.jsx src/MealPlannerScreen.jsx src/NutritionDashboard.jsx`
+Run: `cd /Users/mayurkhera/AthFuelPath/frontend && grep -rnE 'Recovery (Snack|Meal|Breakfast)|Pre-Game Meal|Pre-Training Meal' src/pages/Today.jsx src/MealPlannerScreen.jsx src/NutritionDashboard.jsx`
 Expected: **no output** — active tabs pull `label`/`category_label` from the API, so they inherit the rename. (Legacy `HomeScreen.jsx`/`RecipesScreen.jsx` are intentionally out of scope and not in the `TABS` nav.)
 
 - [ ] **Step 2: Web build + lint**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth/frontend && npm run build && npm run lint`
+Run: `cd /Users/mayurkhera/AthFuelPath/frontend && npm run build && npm run lint`
 Expected: build succeeds, lint clean (no changes were made to web; this confirms nothing broke).
 
 - [ ] **Step 3: End-to-end label check against a running backend (optional but recommended)**
@@ -286,7 +286,7 @@ Expected: new vocabulary in the live API response.
 - [ ] **Step 4: Final commit (backend repo) + branch wrap**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth
+cd /Users/mayurkhera/AthFuelPath
 git add -A && git commit -m "chore(windows): finalize vocabulary rename regression checks" --allow-empty
 ```
 Then follow the finishing-a-development-branch flow (open PR for `feat/window-vocab-rename`). For the mobile repo (no git), package the diff against `../fuelup-mobile.backup-2026-06-24` for review.

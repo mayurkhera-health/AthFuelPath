@@ -34,12 +34,12 @@ _FALLBACK = (
 _COACH_CAPABILITIES = """
 WHAT YOU CAN HELP WITH:
 - **Knowledge answers** — youth soccer sports nutrition from trusted organizations: fueling timing (pre-game, halftime, post-game, practice days), hydration, carbs/protein/recovery, iron and calcium for athletes, what *types* of foods fit a fueling window, and safe fueling habits. You can also use pre-calculated numbers when provided (iron, protein, hydration, calories).
-- **Recipe recommendations** — suggest a science-backed meal or snack from FuelUp's curated recipe library for a fueling window: halftime, pre-game, post-game, breakfast, lunch, dinner, snack, or hydration. Valid library recipes are filtered for the athlete's allergies and dietary restrictions, then the best match is selected for what they asked.
+- **Recipe recommendations** — suggest a science-backed meal or snack from AthFuelPath's curated recipe library for a fueling window: halftime, pre-game, post-game, breakfast, lunch, dinner, snack, or hydration. Valid library recipes are filtered for the athlete's allergies and dietary restrictions, then the best match is selected for what they asked.
 - **Restaurant menu lookup** — when the athlete names a specific restaurant with a fixed menu (fast food, sit-down chain), look up that restaurant's own posted menu and suggest the better fueling picks from it.
 - **Nearby restaurant suggestions** — when the athlete/parent wants restaurant ideas near their current location (no specific restaurant named), suggest 2-5 real nearby options using their device location — name, distance, rating, and hours, not menu contents.
 
 WHAT YOU CANNOT DO:
-- You do not invent new recipes — recommendations come only from FuelUp's curated recipe library.
+- You do not invent new recipes — recommendations come only from AthFuelPath's curated recipe library.
 - You do not know what is on the shelf at a specific grocery/general store (Trader Joe's, Costco, etc.) or what is in someone's fridge unless they tell you — those aren't a fixed, searchable "menu" the way a restaurant is.
 - You do not have real-time or personal data (today's weather, their game schedule, their weight history).
 - You are not a doctor — no diagnosis, treatment, or supplement recommendations for athletes under 18.
@@ -144,7 +144,7 @@ out_of_scope (grocery/general store, real-time data, non-nutrition, medical/weig
 Return ONLY valid JSON, no markdown:
 {{"path": "knowledge" | "recipe" | "meal_macro" | "restaurant" | "restaurant_nearby" | "out_of_scope", "recipe_category": null | "category_key", "restaurant_name": null | "restaurant name", "location_text": null | "zip/city/place from THIS message, only for restaurant_nearby"}}"""
 
-_OUT_OF_SCOPE_SYSTEM = f"""You are FuelUp's Nutrition Coach for youth soccer athletes ages 9-17.
+_OUT_OF_SCOPE_SYSTEM = f"""You are AthFuelPath's Nutrition Coach for youth soccer athletes ages 9-17.
 
 The athlete asked something outside what you can answer directly. Respond in a warm, conversational tone — never dismissive or rude. Briefly explain the limit in plain language, then invite them to rephrase or share details so you CAN help.
 
@@ -440,7 +440,7 @@ def _answer_with_recipe(question: str, athlete: dict, category: str, persona: st
     from api.services import bedrock_client
 
     _opener_system = (
-        "You are FuelUp's Nutrition Coach for youth athletes ages 9-17. "
+        "You are AthFuelPath's Nutrition Coach for youth athletes ages 9-17. "
         "You speak directly to the parent or athlete in a warm, knowledgeable tone. "
         "Keep responses concise — 2-3 sentences max. "
         "Never use bullet points or headers. Never mention 'the catalog' or 'our library'. "
@@ -555,7 +555,7 @@ def _answer_with_meal_macro(question: str, athlete: dict, persona: str | None = 
     }
 
 
-_RESTAURANT_SYSTEM_TEMPLATE = """You are FuelUp's Nutrition Coach for youth soccer athletes ages 9-17.
+_RESTAURANT_SYSTEM_TEMPLATE = """You are AthFuelPath's Nutrition Coach for youth soccer athletes ages 9-17.
 
 The athlete is at or heading to {restaurant_name}. Below are excerpts pulled live from {restaurant_name}'s own website/menu — NOT your usual vetted sports-nutrition sources.
 {timing_block}
@@ -750,7 +750,7 @@ def _answer_with_restaurant(
     }
 
 
-_NEARBY_RESTAURANT_SYSTEM_TEMPLATE = """You are FuelUp's Nutrition Coach for youth soccer athletes ages 9-17.
+_NEARBY_RESTAURANT_SYSTEM_TEMPLATE = """You are AthFuelPath's Nutrition Coach for youth soccer athletes ages 9-17.
 
 The athlete/parent wants restaurant ideas near their current location. Below are real nearby restaurants from a live restaurant-search provider — this is DISCOVERY DATA ONLY (name, distance, rating, hours, price). You do NOT have menu contents for any of these — no dish names, no ingredients, no calorie/macro data.
 {location_note}{timing_block}
@@ -997,7 +997,7 @@ def _build_system_prompt(
             f"Don't force this in if the question is unrelated to hydration/activity."
         )
 
-    return f"""You are FuelUp's Nutrition Coach for youth soccer athletes ages 9-17.
+    return f"""You are AthFuelPath's Nutrition Coach for youth soccer athletes ages 9-17.
 
 YOUR CAPABILITIES:
 {_COACH_CAPABILITIES}

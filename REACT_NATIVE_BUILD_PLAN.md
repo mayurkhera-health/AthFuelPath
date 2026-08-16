@@ -1,4 +1,4 @@
-# FuelUp Youth — React Native / Expo Mobile Build Plan
+# AthFuelPath — React Native / Expo Mobile Build Plan
 
 **Prepared by:** Senior Mobile React Engineer audit  
 **Date:** 2026-06-11  
@@ -13,7 +13,7 @@
 
 ### Why NOT a monorepo with the current backend repo
 
-The current repo (`FuelUpYouth/`) is a tightly coupled Python/React web monolith:
+The current repo (`AthFuelPath/`) is a tightly coupled Python/React web monolith:
 
 - The Dockerfile builds the Vite web bundle INTO the Python container. The mobile app has no relationship with that build pipeline.
 - React Native requires Expo CLI, Metro bundler, EAS Build, and `node_modules` entirely different from the web frontend's Vite setup. Mixing them creates tooling conflicts.
@@ -24,12 +24,12 @@ The current repo (`FuelUpYouth/`) is a tightly coupled Python/React web monolith
 ### Recommended structure
 
 ```
-FuelUpYouth/                  ← existing repo (unchanged)
+AthFuelPath/                  ← existing repo (unchanged)
   api/
   frontend/
   ...
 
-FuelUpYouth-mobile/           ← new repo
+AthFuelPath-mobile/           ← new repo
   app/
   components/
   services/
@@ -133,7 +133,7 @@ Update `.env.local` with that IP. Note: it changes if you move networks or your 
 
 Only switch to a local backend when you are **actively building or modifying a backend endpoint** before deploying it. The workflow is:
 
-1. Make the backend change in the `FuelUpYouth/` repo.
+1. Make the backend change in the `AthFuelPath/` repo.
 2. Start the local server: `source venv/bin/activate && uvicorn api.main:app --reload --port 8000`
 3. Switch `.env.local` to your local address (see table above for your device type).
 4. Restart Metro: `npx expo start --clear`
@@ -318,7 +318,7 @@ Font:            Nunito (headings) + DM Sans (body)
 
 ### Steps
 
-1. Create new GitHub repo: `FuelUpYouth-mobile`
+1. Create new GitHub repo: `AthFuelPath-mobile`
 2. Scaffold project:
    ```bash
    npx create-expo-app@latest fuelup-mobile --template blank-typescript
@@ -333,7 +333,7 @@ Font:            Nunito (headings) + DM Sans (body)
    npm install @expo/vector-icons
    ```
 4. Configure `app.json`:
-   - `scheme: "fuelup"`
+   - `scheme: "athfuelpath"`
    - `bundleIdentifier: "com.fuelupyouth.app"` (iOS)
    - `package: "com.fuelupyouth.app"` (Android)
    - Expo Router `experiments.typedRoutes: true`
@@ -348,7 +348,7 @@ Font:            Nunito (headings) + DM Sans (body)
 
 ### Verifiable result
 - `npx expo start` → app opens in Expo Go on a physical device or simulator
-- Screen shows "FuelUp" heading and `{"status": "healthy"}` returned from the API
+- Screen shows "AthFuelPath" heading and `{"status": "healthy"}` returned from the API
 - No TypeScript errors
 
 ---
@@ -455,7 +455,7 @@ Each icon uses `@expo/vector-icons/Ionicons`. Active tab uses `#2d6a4f`. Inactiv
 ### Header component
 
 Every tab has a shared header showing:
-- FuelUp logo text (left)
+- AthFuelPath logo text (left)
 - Athlete name chip (center) — tappable to switch athlete
 - Settings gear icon (right)
 
@@ -850,7 +850,7 @@ app/(app)/library/
 
 ### Knowledge Q&A (optional, Phase 9b)
 
-- Chat-style input: "Ask FuelUp..."
+- Chat-style input: "Ask AthFuelPath..."
 - `POST /api/knowledge/ask { question, athlete_id }` → returns science-grounded answer. Note: this is POST not GET.
 - Rendered in a scrollable chat bubble list
 
@@ -1075,7 +1075,7 @@ Error: Haptics.notificationAsync(NotificationFeedbackType.Error)
 
 ### Pull-to-refresh
 
-Every primary list and the Today tab support `RefreshControl` with FuelUp green spinner.
+Every primary list and the Today tab support `RefreshControl` with AthFuelPath green spinner.
 
 ### EAS Build setup
 
@@ -1290,7 +1290,7 @@ fuelup-mobile/
 Add this file to the new mobile repo root so Claude Code has context:
 
 ```markdown
-# CLAUDE.md — FuelUp Mobile (React Native / Expo)
+# CLAUDE.md — AthFuelPath Mobile (React Native / Expo)
 
 ## Dev commands
 npx expo start               # Start Metro bundler (scan QR with Expo Go)
@@ -1319,5 +1319,5 @@ Client state: Zustand (store/authStore.ts).
 ## Science rules
 Same rules as backend CLAUDE.md apply to any copy shown in the app.
 Never use Harris-Benedict. Never recommend supplements for under-18.
-Always show disclaimer: "FuelUp provides food education guidance — not medical nutrition therapy."
+Always show disclaimer: "AthFuelPath provides food education guidance — not medical nutrition therapy."
 ```

@@ -33,7 +33,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'fuelupy.urls'
+ROOT_URLCONF = 'athfuelpathy.urls'
 
 TEMPLATES = [
     {
@@ -50,7 +50,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'fuelupy.wsgi.application'
+WSGI_APPLICATION = 'athfuelpathy.wsgi.application'
 
 # ── Database ──────────────────────────────────────────────────────────────────
 DATABASES = {
@@ -82,17 +82,17 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# ── FuelUp — External API Keys ───────────────────────────────────────────────
+# ── AthFuelPath — External API Keys ───────────────────────────────────────────────
 AWS_REGION            = os.getenv('AWS_REGION', 'us-east-1')
 BEDROCK_MODEL_ID      = os.getenv('BEDROCK_MODEL_ID', 'mistral.ministral-3-8b-instruct')
 OPENWEATHERMAP_API_KEY = os.getenv('OPENWEATHERMAP_API_KEY')
 
-# ── FuelUp — Web Push (VAPID) ────────────────────────────────────────────────
+# ── AthFuelPath — Web Push (VAPID) ────────────────────────────────────────────────
 VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY')
 VAPID_PUBLIC_KEY  = os.getenv('VAPID_PUBLIC_KEY')
 VAPID_CONTACT     = os.getenv('VAPID_CONTACT', 'mailto:purvi@dietsandlife.com')
 
-# ── FuelUp — App Config ───────────────────────────────────────────────────────
-FUELUP_DB_PATH     = BASE_DIR / 'fuelup.db'
-FUELUP_LAUNCH_DATE = '2026-06-16'
-FUELUP_DISCLAIMER  = 'FuelUp provides educational food guidance — not medical nutrition therapy.'
+# ── AthFuelPath — App Config ───────────────────────────────────────────────────────
+ATHFUELPATH_DB_PATH     = BASE_DIR / 'fuelup.db'
+ATHFUELPATH_LAUNCH_DATE = '2026-06-16'
+ATHFUELPATH_DISCLAIMER  = 'AthFuelPath provides educational food guidance — not medical nutrition therapy.'

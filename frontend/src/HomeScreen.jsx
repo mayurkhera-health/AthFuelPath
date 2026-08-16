@@ -662,7 +662,7 @@ export default function HomeScreen({ athlete, onNavigate }) {
           <span style={{ fontSize: "27px" }}>📅</span>
           <div style={{ flex: 1 }}>
             <div style={s.nudgeHead}>Add your schedule to unlock meal times</div>
-            <div style={s.nudgeSub}>FuelUp calculates exact windows from your event's kick-off time.</div>
+            <div style={s.nudgeSub}>AthFuelPath calculates exact windows from your event's kick-off time.</div>
           </div>
           <button style={{ ...s.nudgeBtn, background: day.color }} onClick={() => onNavigate("schedule")}>Add →</button>
         </div>
@@ -707,7 +707,7 @@ export default function HomeScreen({ athlete, onNavigate }) {
         </div>
       )}
 
-      <p style={s.disclaimer}>FuelUp provides educational food guidance — not medical nutrition therapy.</p>
+      <p style={s.disclaimer}>AthFuelPath provides educational food guidance — not medical nutrition therapy.</p>
     </div>
   );
 }

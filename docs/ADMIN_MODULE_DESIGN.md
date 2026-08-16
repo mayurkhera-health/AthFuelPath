@@ -1,4 +1,4 @@
-# FuelUp Youth — Admin Module Architecture & Design
+# AthFuelPath — Admin Module Architecture & Design
 
 **Version:** 0.1 (Design — for review)
 **Date:** 2026-06-22
@@ -16,7 +16,7 @@
 ## 1. Executive Summary
 
 ### What is being built
-An **Admin Module** for FuelUp Youth (branded *Fueling2Win*): an internal-only console plus a small
+An **Admin Module** for AthFuelPath (branded *Fueling2Win*): an internal-only console plus a small
 set of protected `/api/admin/*` endpoints that give the founding team operational visibility and
 support capabilities over the live product. It is delivered in phases:
 
@@ -804,7 +804,7 @@ view where relationships matter most. All three reuse the same SPA host and fetc
 **Dashboard**
 ```
 ┌───────────────────────────────────────────────────────────────────────┐
-│ FuelUp Admin            Dashboard  Users  Families  Invites  Analytics  │
+│ AthFuelPath Admin            Dashboard  Users  Families  Invites  Analytics  │
 │                         AI Insights  Audit              [admin@…  ⏻]    │
 ├───────────────────────────────────────────────────────────────────────┤
 │  ┌Total Users┐ ┌Parents┐ ┌Athletes┐ ┌Incomplete┐ ┌Pending Invites┐     │
@@ -984,7 +984,7 @@ graph TD
 
 ## 18. Privacy & Youth Data Considerations
 
-FuelUp serves minors (9–17); every admin decision is filtered through that.
+AthFuelPath serves minors (9–17); every admin decision is filtered through that.
 
 - **Parental consent** remains the gate; the console *surfaces* consent state but never bypasses it.
 - **Athlete data protection:** default views show first name + id, not full DOB/contact; no athlete
@@ -1125,7 +1125,7 @@ used, AI questions asked, issues to investigate.
 
 **Email format example (plain text — matches existing email style):**
 ```
-Subject: FuelUp Daily — 2026-06-22
+Subject: AthFuelPath Daily — 2026-06-22
 
 YESTERDAY
   New signups: 23   Activated: 14   Onboarding done: 11   WAU: 88

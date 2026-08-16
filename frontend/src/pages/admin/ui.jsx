@@ -102,7 +102,7 @@ export function Spinner({ size = 22 }) {
   return (
     <div style={{
       width: size, height: size, border: `3px solid ${C.brandPale}`,
-      borderTopColor: C.brand, borderRadius: "50%", animation: "fuelup-spin 0.8s linear infinite",
+      borderTopColor: C.brand, borderRadius: "50%", animation: "athfuelpath-spin 0.8s linear infinite",
     }} />
   );
 }
@@ -120,7 +120,7 @@ export function Skeleton({ height = 16, width = "100%", style }) {
   return (
     <div style={{
       height, width, borderRadius: 8, background: C.surface2,
-      animation: "fuelup-pulse 1.4s ease-in-out infinite", ...style,
+      animation: "athfuelpath-pulse 1.4s ease-in-out infinite", ...style,
     }} />
   );
 }

@@ -113,7 +113,7 @@ breakfast title + subtitle), `374/377` (rebuild meal title + subtitle). The
   (meal-log), `RecipesScreen` (recipes), `MealPlannerScreen` (meal-plan) all
   render.
 
-### 6.3 Mobile (`FuelUpYouth_Mobile/fuelup-mobile`) — largest surface, NOT a git repo
+### 6.3 Mobile (`AthFuelPath_Mobile/fuelup-mobile`) — largest surface, NOT a git repo
 - `app/(app)/fuel-finder/index.tsx` — tab labels + internal kebab ids
   (`pre-game-meal`→`fuel-before`, `recovery-snack`→`recharge-snack`,
   `recovery-meal`→`rebuild-meal`, `top-up` unchanged) + `tabForSlot`.

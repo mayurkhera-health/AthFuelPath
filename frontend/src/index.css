@@ -1,4 +1,4 @@
-/* ── FuelUp Youth — Design Tokens ────────────────────────────────────────────── */
+/* ── AthFuelPath — Design Tokens ────────────────────────────────────────────── */
 :root {
   /* Brand greens */
   --brand-deep:  #1b4332;
@@ -87,7 +87,7 @@ p { margin: 0; }
   to { transform: rotate(360deg); }
 }
 
-@keyframes fuelup-spin {
+@keyframes athfuelpath-spin {
   to { transform: rotate(360deg); }
 }
 
@@ -106,7 +106,7 @@ p { margin: 0; }
   50%       { transform: scale(1.05); box-shadow: 0 0 0 12px rgba(74,143,196,0);   }
 }
 
-@keyframes fuelup-pulse {
+@keyframes athfuelpath-pulse {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.45; }
 }

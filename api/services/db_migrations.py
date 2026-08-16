@@ -563,7 +563,7 @@ def _create_dietitian_bookings(conn):
 
 def _create_admin_audit_log(conn):
     # Admin Module audit trail. This schema intentionally matches the richer table
-    # already present in production from the earlier FuelUp-Admin deployment (46
+    # already present in production from the earlier AthFuelPath-Admin deployment (46
     # historical rows on the volume) so both coexist and CREATE IF NOT EXISTS is a
     # no-op there. actor_*/action/target_type/target_id are NOT NULL; the detail
     # blob (cascade counts, changed fields) is stored as JSON text in after_state.

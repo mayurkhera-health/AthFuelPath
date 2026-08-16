@@ -209,7 +209,7 @@ export default function AthleteDetail({ team, athlete: athleteStub, onBack }) {
                 padding: '10px 20px',
                 fontSize: 12, color: T.muted, fontStyle: 'italic',
               }}>
-                Joined FuelUp {fmtJoined(detail.joined_at)}
+                Joined AthFuelPath {fmtJoined(detail.joined_at)}
               </div>
             )}
           </div>

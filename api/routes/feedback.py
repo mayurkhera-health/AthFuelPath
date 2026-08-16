@@ -68,9 +68,9 @@ def submit_feature_request(payload: FeatureRequest):
         conn.close()
 
     # Best-effort notification — must never block or fail the 200.
-    subject = "FuelUp — New Feature Suggestion"
+    subject = "AthFuelPath — New Feature Suggestion"
     body = (
-        "A new feature suggestion was submitted via the FuelUp app.\n\n"
+        "A new feature suggestion was submitted via the AthFuelPath app.\n\n"
         f"From:        {payload.email or 'not provided'}\n"
         f"Athlete ID:  {payload.athlete_id if payload.athlete_id is not None else 'not provided'}\n"
         f"Submitted:   {submitted_at}\n\n"

@@ -359,4 +359,4 @@ Proportionate to an MVP — test the logic, not the pixels.
 
 ---
 
-*All claims in this spec are derived from the FuelUpYouth codebase as of 2026-06-21 and the HLD v1.2.*
+*All claims in this spec are derived from the AthFuelPath codebase as of 2026-06-21 and the HLD v1.2.*

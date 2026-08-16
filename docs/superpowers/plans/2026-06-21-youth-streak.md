@@ -32,9 +32,9 @@
 | `components/today/StreakStrip.tsx` *(mobile repo)* | **Create** | Renders flame count + 7-dot week strip + best + no-shame empty state. |
 | `app/(app)/today/index.tsx` *(mobile repo)* | **Modify** | Render `<StreakStrip>` below the hero; fire celebration toast/haptic on milestone. |
 
-> **Repo note:** The backend lives in `/Users/mayurkhera/FuelUpYouth`. The mobile app lives in `/Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile`. Mobile paths in this plan are relative to the mobile repo root. Run mobile commands from that directory.
+> **Repo note:** The backend lives in `/Users/mayurkhera/AthFuelPath`. The mobile app lives in `/Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile`. Mobile paths in this plan are relative to the mobile repo root. Run mobile commands from that directory.
 
-> **Backend test command:** from `/Users/mayurkhera/FuelUpYouth`, run `source venv/bin/activate` once, then the `pytest` commands below.
+> **Backend test command:** from `/Users/mayurkhera/AthFuelPath`, run `source venv/bin/activate` once, then the `pytest` commands below.
 
 ---
 
@@ -737,7 +737,7 @@ git commit -m "feat(streak): add streak block to GET /today response"
 **Files:**
 - Modify: `hooks/useTodayView.ts` *(mobile repo)*
 
-> Run mobile commands from `/Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile`.
+> Run mobile commands from `/Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile`.
 
 - [ ] **Step 1: Add the `TodayStreak` interface and field**
 

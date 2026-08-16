@@ -63,7 +63,7 @@ Mobile app opens the URL via Linking.openURL — user finishes on Instacart
 sequenceDiagram
     participant U as User (mobile app)
     participant M as Mobile app
-    participant B as FuelUp backend
+    participant B as AthFuelPath backend
     participant I as Instacart Developer Platform
 
     U->>M: Tap "Shop this list on Instacart"
@@ -111,7 +111,7 @@ body, log line, or client bundle.
 | `INSTACART_SHOPPING_LIST_ENABLED` | Feature flag. `false` until a real key is configured — ships dark. |
 | `INSTACART_ENV` | `development` (default) → `connect.dev.instacart.tools`, `production` → `connect.instacart.com`. |
 | `INSTACART_API_KEY` | Bearer token from the dashboard. Required whenever the flag is on. |
-| `INSTACART_PARTNER_LINKBACK_URL` | Optional — our own URL shown as a link back to FuelUp on the Instacart page. Operator-configured only; never taken from a request body. |
+| `INSTACART_PARTNER_LINKBACK_URL` | Optional — our own URL shown as a link back to AthFuelPath on the Instacart page. Operator-configured only; never taken from a request body. |
 
 Mobile: `constants/featureFlags.ts` → `INSTACART_SHOPPING_LIST_ENABLED` (client
 gate for the button; independent of, and must be flipped alongside, the

@@ -5,7 +5,7 @@
 
 ## Overview
 
-Add a "Legal" section to the Settings drawer in FuelUp Youth. The section lists five legal documents fetched from the existing `/api/legal` backend and lets users read any document inline within the same drawer.
+Add a "Legal" section to the Settings drawer in AthFuelPath. The section lists five legal documents fetched from the existing `/api/legal` backend and lets users read any document inline within the same drawer.
 
 ## Background
 

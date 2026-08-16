@@ -117,7 +117,7 @@ def test_food_submissions_table_exists(conn):
 - [ ] **Step 2: Run tests to confirm they all fail**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth
+cd /Users/mayurkhera/AthFuelPath
 pytest tests/test_shopping.py -v
 ```
 Expected: 5 × `FAILED` with "no such table"
@@ -188,7 +188,7 @@ Expected: 5 × `PASSED`
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth
+cd /Users/mayurkhera/AthFuelPath
 git add db/setup.py tests/test_shopping.py
 git commit -m "feat(shopping): add five schema tables for fueling essentials feature"
 ```
@@ -201,7 +201,7 @@ git commit -m "feat(shopping): add five schema tables for fueling essentials fea
 - Modify: `db/setup.py`
 - Test: `tests/test_shopping.py`
 
-CSV path: `/Users/mayurkhera/FuelUpYouth/fueling_foods_seed.csv`  
+CSV path: `/Users/mayurkhera/AthFuelPath/fueling_foods_seed.csv`  
 Columns: `name, category, role, allergen_tags, soft_hint`  
 Allergen separator: `;`
 
@@ -741,7 +741,7 @@ def build_share_text(week_start: str, groups: list[dict], items: list[dict]) -> 
     except Exception:
         header_date = week_start
 
-    lines = [f"FuelUp Shopping List — Week of {header_date}", ""]
+    lines = [f"AthFuelPath Shopping List — Week of {header_date}", ""]
 
     # Group items by category using the display order
     by_cat: dict[str, list] = {c: [] for c in CATEGORY_ORDER}
@@ -824,7 +824,7 @@ class FoodSubmission(BaseModel):
 - [ ] **Step 2: Verify import**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth
+cd /Users/mayurkhera/AthFuelPath
 python3 -c "from api.models import ShoppingItemCreate, ShoppingItemPatch, ShoppingPref, PersonalFood, FoodSubmission; print('OK')"
 ```
 Expected: `OK`
@@ -1509,7 +1509,7 @@ export function useSuggestFood() {
 - [ ] **Step 3: Verify TypeScript**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile
+cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile
 npx tsc --noEmit 2>&1 | grep -v node_modules | head -20
 ```
 Expected: no errors mentioning `useShoppingEssentials` or `useShoppingList`
@@ -1695,7 +1695,7 @@ export function FuelingEssentials({ weekStart }: Props) {
       </TouchableOpacity>
 
       <Text style={s.disclaimer}>
-        FuelUp provides food education guidance — not medical nutrition therapy.
+        AthFuelPath provides food education guidance — not medical nutrition therapy.
       </Text>
     </View>
   );
@@ -1736,7 +1736,7 @@ const s = StyleSheet.create({
 - [ ] **Step 2: TypeScript check**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile
+cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile
 npx tsc --noEmit 2>&1 | grep -v node_modules | grep "FuelingEssentials" | head -10
 ```
 Expected: no errors
@@ -1963,7 +1963,7 @@ export default function ShoppingListScreen() {
         </View>
 
         <Text style={s.disclaimer}>
-          FuelUp provides food education guidance — not medical nutrition therapy.
+          AthFuelPath provides food education guidance — not medical nutrition therapy.
         </Text>
       </ScrollView>
     </View>
@@ -2011,7 +2011,7 @@ Open `fuelup-mobile/app/(app)/_layout.tsx`. In the tab navigator configuration, 
 - [ ] **Step 3: TypeScript check**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile
+cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile
 npx tsc --noEmit 2>&1 | grep -v node_modules | head -10
 ```
 Expected: no errors
@@ -2098,7 +2098,7 @@ git commit -m "feat(shopping): add personal save and suggest-for-everyone flows 
 - [ ] **Step 1: Run the full test suite**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth
+cd /Users/mayurkhera/AthFuelPath
 pytest tests/ -v 2>&1 | tail -20
 ```
 Expected: all tests pass, no regressions.
@@ -2124,14 +2124,14 @@ For each criterion, confirm with a curl or by reading the test:
 
 ```bash
 grep -E "[0-9]+(oz|g|mg|cal|cups|servings|lbs|kg)" \
-  /Users/mayurkhera/FuelUpYouth/fueling_foods_seed.csv
+  /Users/mayurkhera/AthFuelPath/fueling_foods_seed.csv
 ```
 Expected: no matches (all hints use plain words).
 
 - [ ] **Step 4: Final commit**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth
+cd /Users/mayurkhera/AthFuelPath
 git add -A
 git commit -m "feat: Fueling Essentials + Shopping List — all phases complete"
 ```

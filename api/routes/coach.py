@@ -90,7 +90,7 @@ def post_dietitian_booking(body: DietitianBookingRequest, identity=Depends(requi
     )
     subject = f"New Dietitian Session Request — {athlete['first_name']}"
     body_text = (
-        "A new 'Talk to a Dietitian' request was submitted via the FuelUp app.\n\n"
+        "A new 'Talk to a Dietitian' request was submitted via the AthFuelPath app.\n\n"
         f"Athlete:     {athlete['first_name']} (id {body.athlete_id})\n"
         f"Session:     {_SESSION_LABELS[body.session_type]}\n"
         f"Submitted:   {created_at}\n\n"

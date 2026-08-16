@@ -133,7 +133,7 @@ export default function SettingsScreen({ athlete, parent, onSave, onSignOut, onC
       <div style={s.sectionLabel}>About</div>
       <div style={s.infoRow}>
         <span style={s.infoLabel}>App</span>
-        <span style={s.infoVal}>FuelUp Youth v1.0</span>
+        <span style={s.infoVal}>AthFuelPath v1.0</span>
       </div>
       <div style={s.infoRow}>
         <span style={s.infoLabel}>Powered by</span>
@@ -148,7 +148,7 @@ export default function SettingsScreen({ athlete, parent, onSave, onSignOut, onC
       <button style={s.signOutBtn} onClick={onSignOut}>Sign Out</button>
 
       <p style={s.disclaimer}>
-        FuelUp provides educational food guidance — not medical nutrition therapy.<br />
+        AthFuelPath provides educational food guidance — not medical nutrition therapy.<br />
         Always consult a registered dietitian for individualized advice.
       </p>
     </div>

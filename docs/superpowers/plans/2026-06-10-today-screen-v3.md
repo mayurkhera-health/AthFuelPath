@@ -6,7 +6,7 @@
 
 **Architecture:** Python adds `calculate_performance_forecast()` and `get_mission_items()` to `today_service.py`, both exposed through the existing `/api/athletes/{id}/daily-summary` endpoint. React replaces 9 old components with 6 new focused components wired into a rewritten `Today.jsx` page shell. All numbers are calculated by Python — never on the client.
 
-**Tech Stack:** Python 3.12, FastAPI, pytest, React 18 (hooks, inline styles), Nunito + DM Sans fonts, existing FuelUp green palette (#2d6a4f, #1b3a2a, #52b788).
+**Tech Stack:** Python 3.12, FastAPI, pytest, React 18 (hooks, inline styles), Nunito + DM Sans fonts, existing AthFuelPath green palette (#2d6a4f, #1b3a2a, #52b788).
 
 ---
 
@@ -134,7 +134,7 @@ def test_forecast_caps_at_100():
 - [ ] **Step 3: Run tests to confirm they fail**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth && source venv/bin/activate && pytest tests/test_today_service.py::test_forecast_returns_four_keys -v 2>&1 | tail -10
+cd /Users/mayurkhera/AthFuelPath && source venv/bin/activate && pytest tests/test_today_service.py::test_forecast_returns_four_keys -v 2>&1 | tail -10
 ```
 
 Expected: `ImportError: cannot import name 'calculate_performance_forecast'`
@@ -782,7 +782,7 @@ export default function BroadcastCard({ athlete, events, trafficLight, fuelScore
 const bc = {
   card:          { background: "#fff", borderBottom: "1px solid #dce8e0" },
   ticker:        { background: "#f4f8f5", borderBottom: "1px solid #dce8e0", height: "34px", padding: "0 14px", display: "flex", alignItems: "center", gap: "8px" },
-  liveDot:       { width: "6px", height: "6px", borderRadius: "50%", background: "#e05a4a", animation: "fuelup-pulse 1.4s infinite", flexShrink: 0 },
+  liveDot:       { width: "6px", height: "6px", borderRadius: "50%", background: "#e05a4a", animation: "athfuelpath-pulse 1.4s infinite", flexShrink: 0 },
   liveLabel:     { fontSize: "9px", textTransform: "uppercase", letterSpacing: ".1em", fontWeight: "700", color: "#e05a4a" },
   tickerSep:     { width: "1px", height: "12px", background: "#dce8e0" },
   tickerEvent:   { fontSize: "10px", textTransform: "uppercase", letterSpacing: ".04em", color: "#8aa898", fontWeight: "300", flex: 1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" },
@@ -811,7 +811,7 @@ Open `frontend/index.html`. Add inside `<head>`:
 
 ```html
 <style>
-  @keyframes fuelup-pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  @keyframes athfuelpath-pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 </style>
 ```
 
@@ -936,7 +936,7 @@ export default function MissionItem({ item, isDone, onToggle }) {
 
   const tagStyle = {
     DONE:     { background: "rgba(45,106,79,.10)",  color: "#2d6a4f" },
-    NOW:      { background: "rgba(180,83,9,.12)",   color: "#b45309", animation: "fuelup-pulse 1.4s infinite" },
+    NOW:      { background: "rgba(180,83,9,.12)",   color: "#b45309", animation: "athfuelpath-pulse 1.4s infinite" },
     "FIX THIS": { background: "rgba(184,58,58,.10)", color: "#b83a3a" },
     UPCOMING: { background: "#f4f8f5",               color: "#8aa898" },
   };
@@ -1488,7 +1488,7 @@ export default function Today({ athlete, onNavigate }) {
         </div>
 
         <p style={s.disclaimer}>
-          FuelUp provides food education guidance — not medical nutrition therapy.
+          AthFuelPath provides food education guidance — not medical nutrition therapy.
           Consult your physician or a licensed RDN for medical nutrition concerns.
         </p>
       </div>
@@ -1558,7 +1558,7 @@ git commit -m "feat(today): wire up Today v3 — BroadcastCard, Mission, Science
 
 ```bash
 lsof -ti:8000 | xargs kill -9 2>/dev/null; sleep 1
-source venv/bin/activate && uvicorn api.main:app --port 8000 > /tmp/fuelup-api.log 2>&1 &
+source venv/bin/activate && uvicorn api.main:app --port 8000 > /tmp/athfuelpath-api.log 2>&1 &
 sleep 2 && curl -s http://localhost:8000/api/info | python3 -c "import json,sys; print('API up:', json.load(sys.stdin)['app'])"
 ```
 

@@ -3,7 +3,7 @@ Window Templates Engine — SINGLE source of truth for all fuel window generatio
 Both the Today tab and Meal Plan tab read from this engine.
 Never duplicate this logic elsewhere.
 
-Spec: FUELUP_WINDOW_TEMPLATES_SPEC.md
+Spec: ATHFUELPATH_WINDOW_TEMPLATES_SPEC.md
 """
 from datetime import datetime, date, time, timedelta
 

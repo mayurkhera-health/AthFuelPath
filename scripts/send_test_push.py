@@ -28,7 +28,7 @@ def main() -> None:
     token = sys.argv[1]
     message = {
         "to": token,
-        "title": "FuelUp test ✅",
+        "title": "AthFuelPath test ✅",
         "body": "If you see this, push delivery works.",
         "sound": "default",
     }

@@ -91,7 +91,7 @@ export default function Login({ onLogin, onNewAccount }) {
         {/* Left: hero — hidden on mobile */}
         {!isMobile && (
           <div style={s.hero}>
-            <div style={s.wordmark}>⚽ FuelUp<span style={s.wordmarkYouth}>Youth</span></div>
+            <div style={s.wordmark}>⚽ AthFuelPath<span style={s.wordmarkYouth}>Youth</span></div>
             <h1 style={s.headline}>
               The Complete Sports Performance platform for every competitive soccer Athlete
             </h1>
@@ -117,7 +117,7 @@ export default function Login({ onLogin, onNewAccount }) {
         {/* Right: sign-in card — full width on mobile */}
         <div style={{ ...s.panel, ...(isMobile ? s.panelMobile : {}) }}>
           <div style={s.card}>
-            <div style={s.cardLogo}>⚽ FuelUp</div>
+            <div style={s.cardLogo}>⚽ AthFuelPath</div>
             <h2 style={s.cardTitle}>Welcome back</h2>
             <p style={s.cardDesc}>Sign in with your parent or guardian account.</p>
 
@@ -138,7 +138,7 @@ export default function Login({ onLogin, onNewAccount }) {
             </form>
 
             <p style={s.disclaimer}>
-              FuelUp provides educational food guidance — not medical nutrition therapy.
+              AthFuelPath provides educational food guidance — not medical nutrition therapy.
             </p>
           </div>
         </div>
@@ -156,7 +156,7 @@ export default function Login({ onLogin, onNewAccount }) {
         {/* ── SCREEN 1: Welcome / Value Proposition ── */}
         {screen === "welcome" && (
           <div style={s.cCard} key="welcome">
-            <div style={s.cLogo}>⚽ <span style={s.cLogoGreen}>FuelUp</span></div>
+            <div style={s.cLogo}>⚽ <span style={s.cLogoGreen}>AthFuelPath</span></div>
 
             <h1 style={s.bigHeadline}>Fuel your game.</h1>
             <p style={s.heroSub}>
@@ -172,20 +172,20 @@ export default function Login({ onLogin, onNewAccount }) {
               <button style={s.inlineLink} onClick={() => go("signin")}>Sign In</button>
             </p>
             <p style={s.disclaimer}>
-              FuelUp provides educational food guidance — not medical nutrition therapy.
+              AthFuelPath provides educational food guidance — not medical nutrition therapy.
             </p>
           </div>
         )}
 
-        {/* ── SCREEN 2: Who is setting up FuelUp? ── */}
+        {/* ── SCREEN 2: Who is setting up AthFuelPath? ── */}
         {screen === "who" && (
           <div style={s.cCard} key="who">
             <button style={s.backBtn} onClick={() => { go("welcome"); setSelectedRole(null); }}>
               ← Back
             </button>
-            <div style={s.cLogo}>⚽ <span style={s.cLogoGreen}>FuelUp</span></div>
+            <div style={s.cLogo}>⚽ <span style={s.cLogoGreen}>AthFuelPath</span></div>
 
-            <h2 style={s.screenHeading}>Who is setting up FuelUp?</h2>
+            <h2 style={s.screenHeading}>Who is setting up AthFuelPath?</h2>
             <p style={s.screenSub}>
               We'll personalize the experience based on who's using the app.
             </p>
@@ -193,7 +193,7 @@ export default function Login({ onLogin, onNewAccount }) {
             <div style={s.roleRow}>
               {[
                 { id: "parent",  emoji: "👨‍👩‍👧", title: "Parent / Guardian", desc: "I manage my athlete's nutrition and profile." },
-                { id: "athlete", emoji: "⚽",     title: "Athlete",           desc: "I'm a soccer player using FuelUp with my family." },
+                { id: "athlete", emoji: "⚽",     title: "Athlete",           desc: "I'm a soccer player using AthFuelPath with my family." },
               ].map(r => (
                 <button
                   key={r.id}
@@ -212,7 +212,7 @@ export default function Login({ onLogin, onNewAccount }) {
               <div style={s.infoBox}>
                 <span style={{ fontSize: "21px", flexShrink: 0, lineHeight: 1 }}>ℹ️</span>
                 <p style={s.infoText}>
-                  FuelUp is built for young athletes, but a parent or guardian needs to create
+                  AthFuelPath is built for young athletes, but a parent or guardian needs to create
                   the main account first.
                 </p>
               </div>
@@ -248,9 +248,9 @@ export default function Login({ onLogin, onNewAccount }) {
         {screen === "create" && (
           <div style={s.cCard} key="create">
             <button style={s.backBtn} onClick={() => go("who")}>← Back</button>
-            <div style={s.cLogo}>⚽ <span style={s.cLogoGreen}>FuelUp</span></div>
+            <div style={s.cLogo}>⚽ <span style={s.cLogoGreen}>AthFuelPath</span></div>
 
-            <h2 style={s.screenHeading}>Create your FuelUp account</h2>
+            <h2 style={s.screenHeading}>Create your AthFuelPath account</h2>
             <p style={s.screenSub}>
               Use a parent or guardian account to safely manage your athlete's experience.
             </p>
@@ -281,7 +281,7 @@ export default function Login({ onLogin, onNewAccount }) {
               <button style={s.inlineLink} onClick={() => go("signin")}>Sign In</button>
             </p>
             <p style={s.disclaimer}>
-              FuelUp provides educational food guidance — not medical nutrition therapy.
+              AthFuelPath provides educational food guidance — not medical nutrition therapy.
             </p>
           </div>
         )}

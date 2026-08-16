@@ -141,7 +141,7 @@ def list_recipes(category: Optional[str] = None, dietary: Optional[str] = None, 
     dietary_list = dietary.split(",") if dietary else None
     allergen_list = avoid_allergens.split(",") if avoid_allergens else None
     recipes = recipe_db.get_recipes(category=category, dietary=dietary_list, allergens_to_avoid=allergen_list)
-    return {"recipes": recipes, "count": len(recipes), "powered_by": "FuelUp Recipe Library"}
+    return {"recipes": recipes, "count": len(recipes), "powered_by": "AthFuelPath Recipe Library"}
 
 
 @router.get("/categories")
@@ -500,7 +500,7 @@ def get_recipe(recipe_id: str):
     recipe = recipe_db.get_recipe_by_id(recipe_id.upper())
     if not recipe:
         raise HTTPException(404, f"Recipe {recipe_id} not found.")
-    return {**recipe, "powered_by": "FuelUp Recipe Library"}
+    return {**recipe, "powered_by": "AthFuelPath Recipe Library"}
 
 
 @router.post("/swap")
@@ -518,7 +518,7 @@ def picky_eater_swap(req: RecipeSwapRequest):
         result = claude_ai.prompt4_recipe_swap(
             dict(row), req.disliked_recipe, req.meal_timing_category, candidates,
         )
-        result["attribution"] = "FuelUp curated recipe library"
+        result["attribution"] = "AthFuelPath curated recipe library"
         return result
     finally:
         conn.close()

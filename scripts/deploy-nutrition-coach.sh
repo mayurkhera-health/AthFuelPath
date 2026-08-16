@@ -4,7 +4,7 @@
 set -euo pipefail
 
 APP="${FLY_APP:-fuelup-youth}"
-ENV_FILE="${ENV_FILE:-../FuelUpYouth_Mobile/.env}"
+ENV_FILE="${ENV_FILE:-../AthFuelPath_Mobile/.env}"
 
 if ! command -v flyctl >/dev/null 2>&1; then
   echo "flyctl not found. Install: curl -L https://fly.io/install.sh | sh"

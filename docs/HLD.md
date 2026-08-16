@@ -1,4 +1,4 @@
-# FuelUpYouth — High-Level Design
+# AthFuelPath — High-Level Design
 
 **Version:** 1.3  
 **Date:** 2026-06-22  
@@ -44,7 +44,7 @@
 
 ## 1. System Overview
 
-FuelUpYouth (branded **Fueling2Win**) is a science-backed pediatric sports nutrition platform targeting youth soccer athletes aged 13–17. It provides:
+AthFuelPath (branded **Fueling2Win**) is a science-backed pediatric sports nutrition platform targeting youth soccer athletes aged 13–17. It provides:
 
 - Personalised nutrition targets computed from the Everett MD 2025 RMR formula
 - AI-generated nutrition blueprints, meal analysis, weekly reports, and meal plans
@@ -396,7 +396,7 @@ sequenceDiagram
     alt description blank
         API-->>App: 400
     end
-    API->>API: store screenshot to /tmp/fuelup_reports (if present)
+    API->>API: store screenshot to /tmp/athfuelpath_reports (if present)
     API->>DB: INSERT problem_reports
     API->>Email: send_email(subject, body, [team], attachment=screenshot)
     Note over API,Email: best-effort — failure logged, never blocks
@@ -406,7 +406,7 @@ sequenceDiagram
 **Design rules:**
 - **Report persists regardless of email outcome** — the DB insert + `201` happen first; email is best-effort. This closes a prior gap where the form POSTed to a non-existent endpoint (405) and silently dropped every report.
 - **Email** — `email_service.send_email()` uses Gmail SMTP (`smtplib.SMTP_SSL`). Recipients are the team (`mayurkhera@gmail.com`, `purvihshah@gmail.com`). The screenshot is attached as an image; the body stays plain text. Returns `False` (no-op) if `GMAIL_USER`/`GMAIL_APP_PASSWORD` are unset — the report still saves.
-- **Screenshot storage** — written to `/tmp/fuelup_reports` (ephemeral, same pattern as meal photos); the durable copy is the email attachment.
+- **Screenshot storage** — written to `/tmp/athfuelpath_reports` (ephemeral, same pattern as meal photos); the durable copy is the email attachment.
 
 ---
 
@@ -1231,4 +1231,4 @@ On milestone: `Haptics.NotificationFeedbackType.Success` + toast `"7-day streak!
 
 ---
 
-*Document generated from source: `/Users/mayurkhera/FuelUpYouth`. All technical claims are derived directly from the codebase as of 2026-06-22.*
+*Document generated from source: `/Users/mayurkhera/AthFuelPath`. All technical claims are derived directly from the codebase as of 2026-06-22.*

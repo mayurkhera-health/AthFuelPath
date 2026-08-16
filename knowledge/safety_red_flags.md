@@ -27,7 +27,7 @@ Call 911 or go to an emergency room for any of these.
 
 ## Eating and Eating Disorders — When to Seek Help
 
-FuelUp provides food education guidance only. The following signs may indicate a serious health issue that requires a qualified professional:
+AthFuelPath provides food education guidance only. The following signs may indicate a serious health issue that requires a qualified professional:
 
 - Athlete is consistently avoiding entire food groups (not due to allergy)
 - Significant unintentional weight loss over weeks
@@ -36,7 +36,7 @@ FuelUp provides food education guidance only. The following signs may indicate a
 - Signs of binge-purge behaviors
 - Athlete reports feeling dizzy, cold all the time, or losing hair
 
-If you observe any of these signs, please consult a registered dietitian (RD), the athlete's physician, or a mental health professional. **FuelUp is not equipped to address eating disorders.** Early intervention is critical and effective.
+If you observe any of these signs, please consult a registered dietitian (RD), the athlete's physician, or a mental health professional. **AthFuelPath is not equipped to address eating disorders.** Early intervention is critical and effective.
 
 ## Iron Deficiency Anemia — When to Test
 
@@ -57,12 +57,12 @@ RED-S (previously called the Female Athlete Triad) occurs when an athlete does n
 - Declining performance despite consistent training
 - Frequent illness or slow healing
 
-This requires evaluation by a sports medicine physician and registered dietitian. FuelUp can support healthy fueling habits but cannot treat RED-S.
+This requires evaluation by a sports medicine physician and registered dietitian. AthFuelPath can support healthy fueling habits but cannot treat RED-S.
 
-## What FuelUp Can and Cannot Do
+## What AthFuelPath Can and Cannot Do
 
-**FuelUp provides:** Educational food guidance, meal timing recommendations, hydration targets, and evidence-based nutrition information for healthy youth athletes.
+**AthFuelPath provides:** Educational food guidance, meal timing recommendations, hydration targets, and evidence-based nutrition information for healthy youth athletes.
 
-**FuelUp cannot:** Diagnose medical conditions, treat eating disorders, prescribe supplements, replace a doctor or registered dietitian, or provide medical advice.
+**AthFuelPath cannot:** Diagnose medical conditions, treat eating disorders, prescribe supplements, replace a doctor or registered dietitian, or provide medical advice.
 
 When in doubt, consult a qualified professional.

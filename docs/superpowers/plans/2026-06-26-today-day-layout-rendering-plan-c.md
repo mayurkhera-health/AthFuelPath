@@ -6,7 +6,7 @@
 
 **Architecture:** Backend: thread the client's local datetime into `build_today_view` → `day_layout` (fixes the 2-hour activity-type resolver's UTC skew); attach Keep-Going oz/packets labels in `day_layout`; emit Keep-Going + event as visible non-tappable nudges and populate per-window open/close times in `cards_to_template_windows`/`build_today_view`. Mobile: send the client datetime, and render the event marker and Keep-Going nudge rows in `DayTimeline`. Per the product decision (1A) new cards show the SAME gram chips existing cards already show — no gram-visibility change. Role-gating is OUT of scope (separate task, decision 2A). `DAY_LAYOUT_V2` stays OFF — the user flips it after QA.
 
-**Tech Stack:** Backend: Python 3.12 / FastAPI / SQLite / pytest. Mobile: React Native / Expo SDK 54 (never `npx expo`) / TypeScript / jest + ts-jest. Backend repo root: `/Users/mayurkhera/FuelUpYouth`. Mobile repo root: `/Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile`.
+**Tech Stack:** Backend: Python 3.12 / FastAPI / SQLite / pytest. Mobile: React Native / Expo SDK 54 (never `npx expo`) / TypeScript / jest + ts-jest. Backend repo root: `/Users/mayurkhera/AthFuelPath`. Mobile repo root: `/Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile`.
 
 ---
 
@@ -32,7 +32,7 @@
 
 **Mobile today fetch** (`hooks/useTodayView.ts`): `getLocalDateStr()` → `GET /api/athletes/:id/today?date=<localDate>`.
 
-**Test conventions:** Backend `python3 -m pytest tests/test_x.py -v` from `/Users/mayurkhera/FuelUpYouth`; functions needing "now" take it as a param (never call `datetime.now()` inside pure logic). Mobile `npx jest <path>` + `npx tsc --noEmit 2>&1 | grep -v node_modules` from the mobile root. KNOWN pre-existing failures to ignore: backend `test_today_service.py::test_mission_items_iron_critical_for_girls` + the dirty-tree suites; mobile `coachThreadStore.test.ts` + `onboardingWizardV2.{events,athletes}Parity.test.tsx`.
+**Test conventions:** Backend `python3 -m pytest tests/test_x.py -v` from `/Users/mayurkhera/AthFuelPath`; functions needing "now" take it as a param (never call `datetime.now()` inside pure logic). Mobile `npx jest <path>` + `npx tsc --noEmit 2>&1 | grep -v node_modules` from the mobile root. KNOWN pre-existing failures to ignore: backend `test_today_service.py::test_mission_items_iron_critical_for_girls` + the dirty-tree suites; mobile `coachThreadStore.test.ts` + `onboardingWizardV2.{events,athletes}Parity.test.tsx`.
 
 ---
 
@@ -94,7 +94,7 @@ def test_build_today_view_uses_client_now_for_2h_resolver(monkeypatch):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_day_layout_today_integration.py::test_build_today_view_uses_client_now_for_2h_resolver -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_day_layout_today_integration.py::test_build_today_view_uses_client_now_for_2h_resolver -v`
 Expected: FAIL — `build_today_view() got an unexpected keyword argument 'now'`.
 
 - [ ] **Step 3: Implement the `now` parameter**
@@ -136,13 +136,13 @@ def get_today_view(athlete_id: int, date: str = Query(None), v2: bool = False, n
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_day_layout_today_integration.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_day_layout_today_integration.py -v`
 Expected: PASS (existing + new). Also confirm flag-OFF unaffected: `python3 -m pytest tests/test_today_service.py -q` — only the known pre-existing failure remains.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth
+cd /Users/mayurkhera/AthFuelPath
 git add api/routes/today.py api/services/today_service.py tests/test_day_layout_today_integration.py
 git commit -m "feat: thread client-local now into day_layout 2h resolver (timezone fix)"
 ```
@@ -181,7 +181,7 @@ def test_keep_going_renders_as_oz_packets_nudge():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_day_layout_today_integration.py::test_keep_going_renders_as_oz_packets_nudge -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_day_layout_today_integration.py::test_keep_going_renders_as_oz_packets_nudge -v`
 Expected: FAIL — keep_going card has no `athlete_label` / category isn't "keep_going".
 
 - [ ] **Step 3: Implement — attach the oz/packets label in `build_day_layout`**
@@ -264,13 +264,13 @@ In `api/services/today_service.py`, inside `build_today_view`'s nudge branch (`i
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_day_layout_today_integration.py tests/test_day_layout.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_day_layout_today_integration.py tests/test_day_layout.py -v`
 Expected: all pass (the new keep_going test + existing day_layout tests still green — note `cards_to_template_windows` now takes an optional `date_str`, default None, so existing single-arg callers in tests still work).
 
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth
+cd /Users/mayurkhera/AthFuelPath
 git add api/services/day_layout.py api/services/today_service.py tests/test_day_layout_today_integration.py
 git commit -m "feat: Keep-Going renders as oz/packets nudge (never grams); event marker stays nudge"
 ```
@@ -317,7 +317,7 @@ def test_cards_to_template_windows_open_close_none_without_date():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_day_layout_today_integration.py::test_cards_to_template_windows_populates_open_close_from_date -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_day_layout_today_integration.py::test_cards_to_template_windows_populates_open_close_from_date -v`
 Expected: FAIL — open_dt is None even when date_str given.
 
 - [ ] **Step 3: Implement open/close population**
@@ -346,13 +346,13 @@ In `api/services/today_service.py`, the flag branch calls `cards_to_template_win
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_day_layout_today_integration.py tests/test_day_layout.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_day_layout_today_integration.py tests/test_day_layout.py -v`
 Expected: all pass.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth
+cd /Users/mayurkhera/AthFuelPath
 git add api/services/day_layout.py api/services/today_service.py tests/test_day_layout_today_integration.py
 git commit -m "feat: populate day_layout window open/close times from event date"
 ```
@@ -383,7 +383,7 @@ describe("getLocalDateTimeStr", () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && npx jest __tests__/components/todayNow.test.ts`
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && npx jest __tests__/components/todayNow.test.ts`
 Expected: FAIL — `getLocalDateTimeStr` is not exported.
 
 - [ ] **Step 3: Implement**
@@ -419,13 +419,13 @@ export function useTodayView() {
 
 - [ ] **Step 4: Run test + typecheck**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && npx jest __tests__/components/todayNow.test.ts` → PASS.
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && npx tsc --noEmit 2>&1 | grep useTodayView` → no output.
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && npx jest __tests__/components/todayNow.test.ts` → PASS.
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && npx tsc --noEmit 2>&1 | grep useTodayView` → no output.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile
+cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile
 git add hooks/useTodayView.ts __tests__/components/todayNow.test.ts
 git commit -m "feat(mobile): send client-local datetime to /today (now param)"
 ```
@@ -488,7 +488,7 @@ NOTE: if `@testing-library/react-native` is not installed, mirror the project's 
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && npx jest __tests__/components/dayTimeline.render.test.tsx`
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && npx jest __tests__/components/dayTimeline.render.test.tsx`
 Expected: FAIL — the event marker currently renders a confirm button (status "event" falls through to the tappable branch).
 
 - [ ] **Step 3: Widen the TodayWindow union**
@@ -534,13 +534,13 @@ The Keep-Going nudge already renders via the existing `isNudge` branch (status "
 
 - [ ] **Step 5: Run test + typecheck**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && npx jest __tests__/components/dayTimeline.render.test.tsx` → PASS.
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && npx tsc --noEmit 2>&1 | grep -E "DayTimeline|useTodayView"` → no output.
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && npx jest __tests__/components/dayTimeline.render.test.tsx` → PASS.
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && npx tsc --noEmit 2>&1 | grep -E "DayTimeline|useTodayView"` → no output.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile
+cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile
 git add hooks/useTodayView.ts components/today/DayTimeline.tsx __tests__/components/dayTimeline.render.test.tsx
 git commit -m "feat(mobile): render event marker + Keep-Going oz/packets nudge in DayTimeline"
 ```
@@ -553,17 +553,17 @@ git commit -m "feat(mobile): render event marker + Keep-Going oz/packets nudge i
 
 - [ ] **Step 1: Backend — day-layout + today suites**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_day_layout.py tests/test_day_layout_today_integration.py tests/test_today_service.py -q`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_day_layout.py tests/test_day_layout_today_integration.py tests/test_today_service.py -q`
 Expected: all pass except the known pre-existing `test_mission_items_iron_critical_for_girls`. No NEW failures.
 
 - [ ] **Step 2: Mobile — Plan C tests + typecheck**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && npx jest __tests__/components/todayNow.test.ts __tests__/components/dayTimeline.render.test.tsx` → all pass.
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && npx tsc --noEmit 2>&1 | grep -v node_modules` → no NEW errors from Plan C files.
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && npx jest __tests__/components/todayNow.test.ts __tests__/components/dayTimeline.render.test.tsx` → all pass.
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && npx tsc --noEmit 2>&1 | grep -v node_modules` → no NEW errors from Plan C files.
 
 - [ ] **Step 3: Mobile — full suite, confirm no new regressions**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && npx jest 2>&1 | tail -6`
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && npx jest 2>&1 | tail -6`
 Expected: the only failures are the known pre-existing 3 suites (coachThreadStore + 2 onboardingWizardV2). No new failures.
 
 - [ ] **Step 4: No commit** (verification only). Fix under the relevant task if anything surfaces.

@@ -336,7 +336,7 @@ def init_db():
     # shared-cache in-memory database (used in tests).
     if conn is not _persistent_memory_conn:
         conn.close()
-    print("FuelUp database initialized.")
+    print("AthFuelPath database initialized.")
 
 def seed_fueling_foods(conn=None):
     """

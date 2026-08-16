@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 _FETCH_TIMEOUT = 10
 _MAX_PAGE_CHARS = 1800
 _MAX_FETCH_PAGES = 4
-_USER_AGENT = "FuelUpYouth-NutritionCoach/1.0 (+https://fuelup-youth.fly.dev)"
+_USER_AGENT = "AthFuelPath-NutritionCoach/1.0 (+https://fuelup-youth.fly.dev)"
 
 # Empirically calibrated against live results for "Panda Express": the
 # restaurant's own pages scored 0.57-0.70, unrelated "giant panda the animal"

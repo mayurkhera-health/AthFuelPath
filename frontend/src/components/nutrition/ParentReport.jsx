@@ -170,7 +170,7 @@ const s = {
     margin: "0 auto 12px",
     border: "3px solid #dce8e0",
     borderTopColor: "#2d6a4f",
-    animation: "fuelup-spin 0.8s linear infinite",
+    animation: "athfuelpath-spin 0.8s linear infinite",
   },
   loadingText: {
     fontSize: "14px",

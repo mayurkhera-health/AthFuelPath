@@ -188,7 +188,7 @@ def test_double_day_calorie_boost_flag():
 - [ ] **Step 3: Run tests to confirm they all fail**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth && source venv/bin/activate && pytest tests/test_meal_timing.py -v 2>&1 | head -40
+cd /Users/mayurkhera/AthFuelPath && source venv/bin/activate && pytest tests/test_meal_timing.py -v 2>&1 | head -40
 ```
 
 Expected: all tests fail with `ImportError: cannot import name 'compute_meal_slots'`.
@@ -424,7 +424,7 @@ def compute_meal_slots(
 - [ ] **Step 5: Run the tests**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth && source venv/bin/activate && pytest tests/test_meal_timing.py -v
+cd /Users/mayurkhera/AthFuelPath && source venv/bin/activate && pytest tests/test_meal_timing.py -v
 ```
 
 Expected: all tests PASS.
@@ -552,7 +552,7 @@ def _build_week(athlete_id: int, week_start: date, conn) -> list:
 - [ ] **Step 2: Verify the API still starts**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth && source venv/bin/activate && python -c "from api.routes.meal_plans import router; print('OK')"
+cd /Users/mayurkhera/AthFuelPath && source venv/bin/activate && python -c "from api.routes.meal_plans import router; print('OK')"
 ```
 
 Expected: `OK`
@@ -1097,7 +1097,7 @@ Find the `return (` statement (starts with the import banner) and replace the en
 
       <p style={s.disclaimer}>
         Meal plans are suggestions based on event type and nutrition targets.
-        FuelUp provides educational food guidance — not medical nutrition therapy.
+        AthFuelPath provides educational food guidance — not medical nutrition therapy.
       </p>
     </div>
   );
@@ -1165,12 +1165,12 @@ git commit -m "feat(meal-planner): wire up Day View timeline layout with WeekDot
 
 Terminal 1:
 ```bash
-cd /Users/mayurkhera/FuelUpYouth && source venv/bin/activate && python db/setup.py && uvicorn api.main:app --reload --port 8000
+cd /Users/mayurkhera/AthFuelPath && source venv/bin/activate && python db/setup.py && uvicorn api.main:app --reload --port 8000
 ```
 
 Terminal 2:
 ```bash
-cd /Users/mayurkhera/FuelUpYouth/frontend && npm run dev
+cd /Users/mayurkhera/AthFuelPath/frontend && npm run dev
 ```
 
 - [ ] **Step 2: Verify the API timing output**

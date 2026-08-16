@@ -23,7 +23,7 @@ def complete_onboarding(data: OnboardingComplete, background_tasks: BackgroundTa
     if not p.consent_confirmed:
         raise HTTPException(400, "Parental consent must be confirmed before creating an account.")
     if not (13 <= a.age <= 17):
-        raise HTTPException(400, "FuelUp Youth is designed for athletes ages 13-17.")
+        raise HTTPException(400, "AthFuelPath is designed for athletes ages 13-17.")
 
     conn = get_conn()
     try:
@@ -76,7 +76,7 @@ def complete_onboarding(data: OnboardingComplete, background_tasks: BackgroundTa
         athlete_name = athlete.get("first_name") or "your athlete"
         text, html = email_templates.welcome_email(parent_first, athlete_name)
         send_email(
-            f"Welcome to FuelUp! Let's fuel {athlete_name} 🏃",
+            f"Welcome to AthFuelPath! Let's fuel {athlete_name} 🏃",
             text, [parent["email"]], html=html, bcc=["mayurkhera@gmail.com"],
         )
     except Exception:

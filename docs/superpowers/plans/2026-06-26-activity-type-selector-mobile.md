@@ -6,7 +6,7 @@
 
 **Architecture:** A pure helper module (`utils/activityType.ts`) holds the 7-option list, labels, and the PATCH request builder (unit-tested). A reusable `ActivityTypeSheet` modal presents the one-tap picker. The Add-Event form sets `activity_type` at create time; the Schedule list's `EventCard` shows the tagged type as a chip or, when untagged, a "Tap to set activity" nudge that opens the sheet and calls a new `useTagActivityType` mutation (`PATCH /api/events/:id/activity-type`).
 
-**Tech Stack:** React Native / Expo SDK 54 (HARD-PINNED — use `./node_modules/.bin/expo`, never `npx expo`), TypeScript, @tanstack/react-query, jest + ts-jest + @testing-library/react-native. Repo root for all paths: `/Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile`.
+**Tech Stack:** React Native / Expo SDK 54 (HARD-PINNED — use `./node_modules/.bin/expo`, never `npx expo`), TypeScript, @tanstack/react-query, jest + ts-jest + @testing-library/react-native. Repo root for all paths: `/Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile`.
 
 ---
 
@@ -30,7 +30,7 @@ This is **Plan B of two mobile plans.** It covers the **Activity-Type Selector &
 - `app/(app)/schedule/index.tsx` — `EventCard({ item, onDelete })` at line ~376 renders each event (uses `EVENT_TYPES[item.event_type]`).
 - `services/api.ts` — thin wrapper exposing `api.get/post/put/delete`. **Verify it exposes `api.patch`; if not, this plan adds it (Task 2 Step 0).**
 
-**Test conventions:** Tests live in `__tests__/` (e.g. `__tests__/components/icsImport.test.ts` for pure logic, `__tests__/components/fuelUpUi.render.test.tsx` for render tests). Run a single file with `npx jest <path>`. Typecheck with `npx tsc --noEmit 2>&1 | grep -v node_modules` (expect no output for touched files). Pure-logic TDD is the norm here; component wiring is verified by a render test + tsc.
+**Test conventions:** Tests live in `__tests__/` (e.g. `__tests__/components/icsImport.test.ts` for pure logic, `__tests__/components/afpUi.render.test.tsx` for render tests). Run a single file with `npx jest <path>`. Typecheck with `npx tsc --noEmit 2>&1 | grep -v node_modules` (expect no output for touched files). Pure-logic TDD is the norm here; component wiring is verified by a render test + tsc.
 
 **Design system:** Use `DS.*` tokens from `constants/colors.ts` (e.g. `DS.primary`, `DS.surfaceContainerLowest`, `DS.outlineVariant`, `DS.amber`). Older schedule screens use the `Colors.*` aliases — match the file you're editing. Card radius ≤ 12, pill radius 20–999. No new colors.
 
@@ -113,7 +113,7 @@ describe("activity type helper", () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && npx jest __tests__/components/activityType.test.ts`
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && npx jest __tests__/components/activityType.test.ts`
 Expected: FAIL — cannot find module `../../utils/activityType`.
 
 - [ ] **Step 3: Implement**
@@ -170,13 +170,13 @@ export function buildTagActivityTypeRequest(eventId: number, key: string): {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && npx jest __tests__/components/activityType.test.ts`
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && npx jest __tests__/components/activityType.test.ts`
 Expected: PASS (5 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile
+cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile
 git add utils/activityType.ts __tests__/components/activityType.test.ts
 git commit -m "feat(mobile): activityType helper — 7 options, labels, PATCH request builder"
 ```
@@ -218,7 +218,7 @@ describe("AthleteEvent activity_type field", () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && npx jest __tests__/components/activityType.test.ts`
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && npx jest __tests__/components/activityType.test.ts`
 Expected: FAIL — TS error: `activity_type` does not exist on `AthleteEvent`.
 
 - [ ] **Step 3: Implement**
@@ -256,13 +256,13 @@ export function useTagActivityType() {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && npx jest __tests__/components/activityType.test.ts`
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && npx jest __tests__/components/activityType.test.ts`
 Expected: PASS (6 tests). Also run `npx tsc --noEmit 2>&1 | grep -v node_modules` — expect no errors referencing useSchedule.ts / api.ts.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile
+cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile
 git add services/api.ts hooks/useSchedule.ts __tests__/components/activityType.test.ts
 git commit -m "feat(mobile): useTagActivityType hook + AthleteEvent.activity_type + api.patch"
 ```
@@ -310,7 +310,7 @@ describe("ActivityTypeSheet", () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && npx jest __tests__/components/activityTypeSheet.render.test.tsx`
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && npx jest __tests__/components/activityTypeSheet.render.test.tsx`
 Expected: FAIL — cannot find module `ActivityTypeSheet`.
 
 - [ ] **Step 3: Implement**
@@ -384,13 +384,13 @@ const styles = StyleSheet.create({
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && npx jest __tests__/components/activityTypeSheet.render.test.tsx`
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && npx jest __tests__/components/activityTypeSheet.render.test.tsx`
 Expected: PASS (2 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile
+cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile
 git add components/schedule/ActivityTypeSheet.tsx __tests__/components/activityTypeSheet.render.test.tsx
 git commit -m "feat(mobile): ActivityTypeSheet — one-tap 7-option activity picker"
 ```
@@ -444,18 +444,18 @@ import { activityTypeLabel } from "../../../utils/activityType";
 
 - [ ] **Step 2: Typecheck**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && npx tsc --noEmit 2>&1 | grep -v node_modules`
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && npx tsc --noEmit 2>&1 | grep -v node_modules`
 Expected: no errors referencing `add-event.tsx`.
 
 - [ ] **Step 3: Run the full mobile test suite to confirm nothing broke**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && npx jest __tests__/components/activityType.test.ts __tests__/components/activityTypeSheet.render.test.tsx`
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && npx jest __tests__/components/activityType.test.ts __tests__/components/activityTypeSheet.render.test.tsx`
 Expected: all pass.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile
+cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile
 git add "app/(app)/schedule/add-event.tsx"
 git commit -m "feat(mobile): set activity_type when adding an event"
 ```
@@ -519,13 +519,13 @@ Add the styles to the screen's existing `StyleSheet` block for `card` (or wherev
 
 - [ ] **Step 2: Typecheck**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && npx tsc --noEmit 2>&1 | grep -v node_modules`
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && npx tsc --noEmit 2>&1 | grep -v node_modules`
 Expected: no errors referencing `schedule/index.tsx`.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile
+cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile
 git add "app/(app)/schedule/index.tsx"
 git commit -m "feat(mobile): tag activity_type from Schedule list (chip + untagged nudge)"
 ```
@@ -538,17 +538,17 @@ git commit -m "feat(mobile): tag activity_type from Schedule list (chip + untagg
 
 - [ ] **Step 1: Full typecheck**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && npx tsc --noEmit 2>&1 | grep -v node_modules`
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && npx tsc --noEmit 2>&1 | grep -v node_modules`
 Expected: no NEW errors from this plan's files (`utils/activityType.ts`, `hooks/useSchedule.ts`, `services/api.ts`, `components/schedule/ActivityTypeSheet.tsx`, `app/(app)/schedule/add-event.tsx`, `app/(app)/schedule/index.tsx`). Pre-existing unrelated errors elsewhere are out of scope — report them but do not fix.
 
 - [ ] **Step 2: Run this plan's tests**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && npx jest __tests__/components/activityType.test.ts __tests__/components/activityTypeSheet.render.test.tsx`
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && npx jest __tests__/components/activityType.test.ts __tests__/components/activityTypeSheet.render.test.tsx`
 Expected: all pass (8 tests total).
 
 - [ ] **Step 3: Run the existing mobile suite to confirm no regression**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth_Mobile/fuelup-mobile && npx jest 2>&1 | tail -15`
+Run: `cd /Users/mayurkhera/AthFuelPath_Mobile/fuelup-mobile && npx jest 2>&1 | tail -15`
 Expected: the existing tests still pass; only the two new test files are added. Report any pre-existing failures (do not fix — they're out of scope).
 
 - [ ] **Step 4: No commit** (verification only). If any step surfaced a real issue, fix it under the relevant task and re-run.

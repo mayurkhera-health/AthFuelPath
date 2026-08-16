@@ -245,7 +245,7 @@ def test_empty_schedule_is_none_status(ctx):
 
 
 def test_hard_deleted_parents_excluded_from_list(ctx):
-    # Simulate the prod schema: the old FuelUp-Admin soft-delete adds
+    # Simulate the prod schema: the old AthFuelPath-Admin soft-delete adds
     # parents.account_status and anonymizes rows to 'hard_deleted'.
     c, ids, ka = ctx
     if "account_status" not in [r[1] for r in ka.execute("PRAGMA table_info(parents)").fetchall()]:

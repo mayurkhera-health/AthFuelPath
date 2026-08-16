@@ -119,12 +119,12 @@ export default function NotificationsScreen({ athlete }) {
           <div style={s.mainCardTitle}>Push Notifications</div>
           <div style={s.mainCardDesc}>
             {subscribed
-              ? "Notifications are active. FuelUp will remind you about meals, hydration, and meal logging."
+              ? "Notifications are active. AthFuelPath will remind you about meals, hydration, and meal logging."
               : "Enable browser push notifications to get meal timing reminders for " + athlete.first_name + "."}
           </div>
           {permission === "denied" && (
             <div style={s.deniedNote}>
-              Notifications are blocked in your browser. Go to browser Settings → Site Settings → Notifications to allow FuelUp.
+              Notifications are blocked in your browser. Go to browser Settings → Site Settings → Notifications to allow AthFuelPath.
             </div>
           )}
         </div>

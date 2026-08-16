@@ -127,7 +127,7 @@ export default function Login({ onLogin }) {
       <div style={s.card}>
         <div style={s.logoRow}>
           <div style={s.logoMark}>F</div>
-          <span style={s.brand}>FuelUp Coach</span>
+          <span style={s.brand}>AthFuelPath Coach</span>
         </div>
         <div style={s.sub}>Coach dashboard · Sign in to continue</div>
         <form onSubmit={handleSubmit}>

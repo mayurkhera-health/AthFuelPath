@@ -6,7 +6,7 @@
 
 **Architecture:** Add an optional `activity_type` override to `calc_daily_targets` that drives the activity-engine profile (cho_modifier / intensity_override / is_sc_day) when supplied, falling back to the existing `event_type`→profile derivation when not. In `build_today_view`, the flag-ON branch computes the target inputs from the primary event's real `event_type` and its resolved `activity_type`; the legacy branch keeps using the engine `day_type` label exactly as today. The new `activity_type` param defaults to `None`, so the legacy call is unchanged.
 
-**Tech Stack:** Python 3.12 / FastAPI / SQLite / pytest. Backend repo root: `/Users/mayurkhera/FuelUpYouth`. No mobile changes. No new dependencies.
+**Tech Stack:** Python 3.12 / FastAPI / SQLite / pytest. Backend repo root: `/Users/mayurkhera/AthFuelPath`. No mobile changes. No new dependencies.
 
 ---
 
@@ -37,7 +37,7 @@ _daily_targets = calc_daily_targets(athlete, event_type_for_targets, _intensity,
 
 **`build_today_view` flag branch (post-Plan-C)** computes `effective_now` and `events` before the target block, and has the `today_str`. The target block (`~line 988-996`) reads `_ev0 = events[0] if events else {}`, `_dur_min`, `_intensity`.
 
-**Test conventions:** `python3 -m pytest tests/test_x.py -v` from `/Users/mayurkhera/FuelUpYouth`. Pure functions take `now` explicitly. KNOWN pre-existing failures to ignore: `test_today_service.py::test_mission_items_iron_critical_for_girls` and the dirty-tree suites.
+**Test conventions:** `python3 -m pytest tests/test_x.py -v` from `/Users/mayurkhera/AthFuelPath`. Pure functions take `now` explicitly. KNOWN pre-existing failures to ignore: `test_today_service.py::test_mission_items_iron_critical_for_girls` and the dirty-tree suites.
 
 ---
 
@@ -97,7 +97,7 @@ def test_no_activity_type_unchanged():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_nutrition_calc.py::test_activity_type_override_drives_profile -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_nutrition_calc.py::test_activity_type_override_drives_profile -v`
 Expected: FAIL — `calc_daily_targets() got an unexpected keyword argument 'activity_type'`.
 
 - [ ] **Step 3: Implement the override**
@@ -135,13 +135,13 @@ Replace the activity-profile line (currently `act = get_activity_profile(_to_act
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_nutrition_calc.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_nutrition_calc.py -v`
 Expected: PASS (the 5 new tests + the existing nutrition_calc tests still green).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth
+cd /Users/mayurkhera/AthFuelPath
 git add api/services/nutrition_calc.py tests/test_nutrition_calc.py
 git commit -m "feat: calc_daily_targets activity_type override (per-type modifiers; None = unchanged)"
 ```
@@ -235,7 +235,7 @@ def test_flag_off_legacy_targets_unchanged(monkeypatch):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_day_layout_today_integration.py::test_flag_on_targets_use_real_event_type_and_resolved_tag -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_day_layout_today_integration.py::test_flag_on_targets_use_real_event_type_and_resolved_tag -v`
 Expected: FAIL — flag-ON currently passes the `"standard"` day_type label and no activity_type (the spy sees `event_type=="standard"`, `activity_type is None`).
 
 - [ ] **Step 3: Implement the flag-ON target inputs**
@@ -287,18 +287,18 @@ READ the current target block first to splice this in exactly (preserve `_ev0`/`
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_day_layout_today_integration.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_day_layout_today_integration.py -v`
 Expected: PASS (both new tests + existing).
 
 - [ ] **Step 5: Confirm the legacy (flag-OFF) path is unchanged**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_today_service.py -q`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_today_service.py -q`
 Expected: same result as before — only the known pre-existing `test_mission_items_iron_critical_for_girls` fails; NO new failures. (The legacy branch now sets `event_type_for_targets = event_type` and `activity_type_for_targets = None`, so `calc_daily_targets(..., activity_type=None)` is byte-for-byte the prior behavior.)
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth
+cd /Users/mayurkhera/AthFuelPath
 git add api/services/today_service.py tests/test_day_layout_today_integration.py
 git commit -m "feat: flag-ON Today targets use real event_type + resolved activity_type (legacy unchanged)"
 ```
@@ -311,14 +311,14 @@ git commit -m "feat: flag-ON Today targets use real event_type + resolved activi
 
 - [ ] **Step 1: Full backend day-layout + nutrition + today suites**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_nutrition_calc.py tests/test_day_layout.py tests/test_day_layout_today_integration.py tests/test_today_service.py -q`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_nutrition_calc.py tests/test_day_layout.py tests/test_day_layout_today_integration.py tests/test_today_service.py -q`
 Expected: all pass except the known pre-existing `test_mission_items_iron_critical_for_girls`. No NEW failures.
 
 - [ ] **Step 2: Sanity-print the flag-ON targets by day type (not committed)**
 
 Run:
 ```bash
-cd /Users/mayurkhera/FuelUpYouth && python3 -c "
+cd /Users/mayurkhera/AthFuelPath && python3 -c "
 from api.services.nutrition_calc import calc_daily_targets, lbs_to_kg
 ATH={'weight_lbs':120,'height_ft':5,'height_in':4,'gender':'boy','age':14}
 wt=lbs_to_kg(120)

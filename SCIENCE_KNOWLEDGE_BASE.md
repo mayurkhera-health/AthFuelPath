@@ -1,4 +1,4 @@
-# FuelUp Science Knowledge Base
+# AthFuelPath Science Knowledge Base
 **Compiled from 7 primary sources — June 2026**
 *Reference this file when writing Claude prompts, nutrition formulas, UI copy, and meal timing logic.*
 
@@ -287,7 +287,7 @@ Whole foods provide synergistic nutrients that isolated supplements cannot repli
 - Creatine: insufficient safety data for youth under 18
 - Caffeine: cardiovascular risk in developing athletes; contraindicated
 - Energy drinks: explicitly contraindicated — multiple adverse event reports in youth
-- **FuelUp policy: No supplements recommended. Food-first. RD referral for any supplement questions.**
+- **AthFuelPath policy: No supplements recommended. Food-first. RD referral for any supplement questions.**
 
 ### Tournament / Multi-Day Event Nutrition (S2, S3)
 - Most neglected area in youth sports nutrition

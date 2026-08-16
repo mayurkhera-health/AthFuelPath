@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CLI for running FuelUp AI agents locally (voice meal, recipe selector).
+CLI for running AthFuelPath AI agents locally (voice meal, recipe selector).
 
 Requires AWS credentials in .env or environment. Voice meal analysis also uses FDC_API_KEY.
 
@@ -152,7 +152,7 @@ def cmd_demo(args):
     meal = args.meal or "grilled chicken breast with brown rice and steamed broccoli"
     category = args.category or "halftime"
     print(_hr("═"))
-    print("  FuelUp Agent Pipeline Demo")
+    print("  AthFuelPath Agent Pipeline Demo")
     print(_hr("═"))
     print(f"  Mode:            {'MOCK (no API calls)' if args.mock else 'LIVE'}")
     print(f'  Meal transcript: "{meal}"')
@@ -178,7 +178,7 @@ def cmd_demo(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run FuelUp AI agents locally")
+    parser = argparse.ArgumentParser(description="Run AthFuelPath AI agents locally")
     sub = parser.add_subparsers(dest="command", required=True)
 
     voice = sub.add_parser("voice", help="Analyze a meal description (voice/text)")

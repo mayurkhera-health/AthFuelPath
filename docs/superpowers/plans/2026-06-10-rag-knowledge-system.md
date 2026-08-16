@@ -181,7 +181,7 @@ Open `db/setup.py`. Inside the `cursor.executescript("""...""")` block, before t
 python db/setup.py
 ```
 
-Expected: `FuelUp database initialized.`
+Expected: `AthFuelPath database initialized.`
 
 - [ ] **Step 5: Run tests — expect PASS**
 
@@ -644,7 +644,7 @@ Call 911 or go to an emergency room for any of these.
 
 ## Eating and Eating Disorders — When to Seek Help
 
-FuelUp provides food education guidance only. The following signs may indicate a serious health issue that requires a qualified professional:
+AthFuelPath provides food education guidance only. The following signs may indicate a serious health issue that requires a qualified professional:
 
 - Athlete is consistently avoiding entire food groups (not due to allergy)
 - Significant unintentional weight loss over weeks
@@ -653,7 +653,7 @@ FuelUp provides food education guidance only. The following signs may indicate a
 - Signs of binge-purge behaviors
 - Athlete reports feeling dizzy, cold all the time, or losing hair
 
-If you observe any of these signs, please consult a registered dietitian (RD), the athlete's physician, or a mental health professional. **FuelUp is not equipped to address eating disorders.** Early intervention is critical and effective.
+If you observe any of these signs, please consult a registered dietitian (RD), the athlete's physician, or a mental health professional. **AthFuelPath is not equipped to address eating disorders.** Early intervention is critical and effective.
 
 ## Iron Deficiency Anemia — When to Test
 
@@ -674,13 +674,13 @@ RED-S (previously called the Female Athlete Triad) occurs when an athlete does n
 - Declining performance despite consistent training
 - Frequent illness or slow healing
 
-This requires evaluation by a sports medicine physician and registered dietitian. FuelUp can support healthy fueling habits but cannot treat RED-S.
+This requires evaluation by a sports medicine physician and registered dietitian. AthFuelPath can support healthy fueling habits but cannot treat RED-S.
 
-## What FuelUp Can and Cannot Do
+## What AthFuelPath Can and Cannot Do
 
-**FuelUp provides:** Educational food guidance, meal timing recommendations, hydration targets, and evidence-based nutrition information for healthy youth athletes.
+**AthFuelPath provides:** Educational food guidance, meal timing recommendations, hydration targets, and evidence-based nutrition information for healthy youth athletes.
 
-**FuelUp cannot:** Diagnose medical conditions, treat eating disorders, prescribe supplements, replace a doctor or registered dietitian, or provide medical advice.
+**AthFuelPath cannot:** Diagnose medical conditions, treat eating disorders, prescribe supplements, replace a doctor or registered dietitian, or provide medical advice.
 
 When in doubt, consult a qualified professional.
 ```
@@ -1603,7 +1603,7 @@ def _build_system_prompt(chunks: list[KnowledgeChunk], calc_result: Optional[dic
     if calc_result and "error" not in calc_result:
         calc_text = f"\n\nCALCULATION RESULT (use this exact value — do not invent numbers):\n{calc_result.get('explanation_hint', str(calc_result))}\nSource: {calc_result.get('source', '')}"
 
-    return f"""You are FuelUp's nutrition assistant for youth soccer athletes ages 9–17.
+    return f"""You are AthFuelPath's nutrition assistant for youth soccer athletes ages 9–17.
 
 STRICT RULES — follow these exactly:
 1. Answer ONLY from the knowledge excerpts provided below. Never invent nutritional values, formulas, or dosages not present in the excerpts.
@@ -1713,7 +1713,7 @@ git commit -m "feat(knowledge): add RAG answer orchestration with Claude, safety
 ```python
 #!/usr/bin/env python3
 """
-CLI for ingesting knowledge files into the FuelUp knowledge base.
+CLI for ingesting knowledge files into the AthFuelPath knowledge base.
 
 Usage:
   python scripts/ingest_knowledge.py --all
@@ -1730,7 +1730,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 def main():
-    parser = argparse.ArgumentParser(description="FuelUp knowledge base ingestion")
+    parser = argparse.ArgumentParser(description="AthFuelPath knowledge base ingestion")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--all", action="store_true", help="Ingest all approved files in /knowledge")
     group.add_argument("--file", type=str, help="Ingest a single file")

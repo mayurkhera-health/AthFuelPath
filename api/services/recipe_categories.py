@@ -1,4 +1,4 @@
-"""Meal-timing category profiles for filtering and selecting recipes from the FuelUp library."""
+"""Meal-timing category profiles for filtering and selecting recipes from the AthFuelPath library."""
 
 # Aliases map backend timing categories and mobile keys to profile keys.
 CATEGORY_ALIASES = {

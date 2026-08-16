@@ -32,7 +32,7 @@ export default function AdminLogin({ onAuth }) {
         background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
         boxShadow: C.shadowMd, padding: 32, width: 360, maxWidth: "100%",
       }}>
-        <div style={{ font: `800 22px ${FONT_DISPLAY}`, color: C.text1 }}>FuelUp Admin</div>
+        <div style={{ font: `800 22px ${FONT_DISPLAY}`, color: C.text1 }}>AthFuelPath Admin</div>
         <div style={{ font: `400 14px ${FONT_DISPLAY}`, color: C.text3, marginTop: 4, marginBottom: 22 }}>
           Enter the admin password to continue.
         </div>

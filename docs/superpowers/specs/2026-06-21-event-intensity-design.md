@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-21
 **Status:** Approved
-**Author:** Principal-engineer design pass (FuelUpYouth)
+**Author:** Principal-engineer design pass (AthFuelPath)
 
 ---
 

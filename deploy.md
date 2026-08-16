@@ -1,4 +1,4 @@
-# FuelUp — Fly.io Deployment Guide
+# AthFuelPath — Fly.io Deployment Guide
 
 ## Architecture
 
@@ -88,7 +88,7 @@ Run this once after the first successful deploy:
 fly ssh console -C "python db/setup.py"
 ```
 
-Expected output: `FuelUp database initialized.`
+Expected output: `AthFuelPath database initialized.`
 
 ### Step 6 — Verify
 

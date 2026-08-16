@@ -130,7 +130,7 @@ def require_admin(authorization: str = Header(None)) -> bool:
 # Single-admin (founder) product: there is no per-user identity beyond the
 # password, so the actor is a fixed super-admin. These fill the NOT NULL actor_*
 # columns of the shared admin_audit_log table. actor_id=1 matches the historical
-# FuelUp-Admin rows on the production volume.
+# AthFuelPath-Admin rows on the production volume.
 ACTOR_ID = 1
 ACTOR_EMAIL = os.getenv("ADMIN_EMAIL", "admin")
 ACTOR_ROLE = "super_admin"

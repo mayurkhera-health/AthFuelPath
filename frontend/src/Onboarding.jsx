@@ -4,13 +4,13 @@ const API = import.meta.env.VITE_API_URL ?? "";
 
 const CONSENT_TEXT = `I confirm my athlete is between 9 and 17 years of age.
 
-I understand FuelUp is an educational food guidance tool — NOT medical nutrition therapy.
+I understand AthFuelPath is an educational food guidance tool — NOT medical nutrition therapy.
 
 All recommendations are based on published pediatric sports nutrition research, including Everett MD 2025, AAP guidelines, and Boston Children's Hospital RDN recommendations.
 
-FuelUp collects the athlete's name, age, gender, height, weight, food allergies, dietary restrictions, and game schedule for the sole purpose of generating personalized nutrition guidance.
+AthFuelPath collects the athlete's name, age, gender, height, weight, food allergies, dietary restrictions, and game schedule for the sole purpose of generating personalized nutrition guidance.
 
-This data is never sold or shared with third parties. It is used only to deliver FuelUp's nutrition guidance service.
+This data is never sold or shared with third parties. It is used only to deliver AthFuelPath's nutrition guidance service.
 
 I can request complete data deletion at any time by emailing purvi@dietsandlife.com.
 
@@ -87,8 +87,8 @@ export default function Onboarding({ onComplete }) {
   function handleAgeCheck() {
     const age = parseInt(athleteAge);
     if (!age) return setAgeError("Please enter the athlete's age.");
-    if (age < 9) return setAgeError("FuelUp is designed for youth athletes ages 9–17. Please consult your child's physician for nutrition guidance.");
-    if (age > 17) return setAgeError("FuelUp is designed for youth athletes ages 9–17. For athletes 18+, we recommend consulting a CSSD-credentialed sports dietitian.");
+    if (age < 9) return setAgeError("AthFuelPath is designed for youth athletes ages 9–17. Please consult your child's physician for nutrition guidance.");
+    if (age > 17) return setAgeError("AthFuelPath is designed for youth athletes ages 9–17. For athletes 18+, we recommend consulting a CSSD-credentialed sports dietitian.");
     setAgeError("");
     setAthlete((a) => ({ ...a, age }));
     setStep(1);
@@ -186,7 +186,7 @@ export default function Onboarding({ onComplete }) {
       <div style={styles.card}>
         {/* Header */}
         <div style={styles.header}>
-          <div style={styles.logo}>⚽ FuelUp</div>
+          <div style={styles.logo}>⚽ AthFuelPath</div>
           <div style={styles.subtitle}>Youth Sports Performance Nutrition Platform</div>
         </div>
 
@@ -214,9 +214,9 @@ export default function Onboarding({ onComplete }) {
         {/* ── Step 0: Age Gate ── */}
         {step === 0 && (
           <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>Welcome to FuelUp!</h2>
+            <h2 style={styles.sectionTitle}>Welcome to AthFuelPath!</h2>
             <p style={styles.sectionDesc}>
-              Before we begin, please confirm your athlete's age. FuelUp is built exclusively for youth athletes ages 9–17.
+              Before we begin, please confirm your athlete's age. AthFuelPath is built exclusively for youth athletes ages 9–17.
             </p>
             <label style={styles.label}>Athlete's Age</label>
             <input
@@ -234,7 +234,7 @@ export default function Onboarding({ onComplete }) {
               Continue →
             </button>
             <p style={styles.disclaimer}>
-              FuelUp provides educational food guidance — not medical nutrition therapy.
+              AthFuelPath provides educational food guidance — not medical nutrition therapy.
             </p>
           </div>
         )}
@@ -426,9 +426,9 @@ export default function Onboarding({ onComplete }) {
         {step === 3 && (
           <div style={{ ...styles.section, textAlign: "center" }}>
             <div style={styles.successIcon}>🏆</div>
-            <h2 style={styles.sectionTitle}>Welcome to FuelUp!</h2>
+            <h2 style={styles.sectionTitle}>Welcome to AthFuelPath!</h2>
             <p style={styles.sectionDesc}>
-              Your athlete's profile is set up. FuelUp will now generate science-backed, personalized nutrition targets based on their training schedule every single day.
+              Your athlete's profile is set up. AthFuelPath will now generate science-backed, personalized nutrition targets based on their training schedule every single day.
             </p>
             <div style={styles.summaryBox}>
               <div style={styles.summaryRow}><span>Parent ID</span><strong>#{parentId}</strong></div>
@@ -444,7 +444,7 @@ export default function Onboarding({ onComplete }) {
               </button>
             )}
             <p style={styles.disclaimer}>
-              FuelUp provides educational food guidance — not medical nutrition therapy. Consult your child's physician for medical concerns.
+              AthFuelPath provides educational food guidance — not medical nutrition therapy. Consult your child's physician for medical concerns.
             </p>
           </div>
         )}

@@ -162,7 +162,7 @@ Early-stage deficiency (depleted stores, normal hemoglobin) has no visible sympt
 
 Yes — if your athlete shows any of the signs above, or if she's a female athlete with a heavy training load, an annual iron panel (serum ferritin + hemoglobin) is a smart preventive step. Ask your pediatrician at the next sports physical.
 
-**FuelUp does not recommend iron supplementation without confirmed deficiency on a blood test.** Over-supplementation can cause toxicity, and supplementing without knowing baseline levels can mask the actual problem.
+**AthFuelPath does not recommend iron supplementation without confirmed deficiency on a blood test.** Over-supplementation can cause toxicity, and supplementing without knowing baseline levels can mask the actual problem.
 
 ## The Bottom Line
 

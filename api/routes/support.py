@@ -23,7 +23,7 @@ router = APIRouter()
 
 # Screenshots are written here — same ephemeral /tmp pattern as meal photos
 # (api/routes/today.py). Acceptable: the report row + email carry the content.
-_REPORTS_DIR = Path("/tmp/fuelup_reports")
+_REPORTS_DIR = Path("/tmp/athfuelpath_reports")
 
 _REPORT_RECIPIENTS = ["mayurkhera@gmail.com", "purvihshah@gmail.com"]
 
@@ -92,9 +92,9 @@ async def submit_report(
         conn.close()
 
     # Best-effort notification — must never block or fail the 201.
-    subject = f"FuelUp — {category or 'Problem Report'} from {role_hint or 'unknown'} (v{app_version or 'unknown'})"
+    subject = f"AthFuelPath — {category or 'Problem Report'} from {role_hint or 'unknown'} (v{app_version or 'unknown'})"
     body = (
-        "A new problem report was submitted via the FuelUp app.\n\n"
+        "A new problem report was submitted via the AthFuelPath app.\n\n"
         f"Name:        {reporter_name or 'not provided'}\n"
         f"Email:       {reporter_email or 'not provided'}\n"
         f"Category:    {category or 'not provided'}\n"

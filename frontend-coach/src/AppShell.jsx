@@ -179,7 +179,7 @@ function SettingsModal({ coachName, onClose, onLogout }) {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
               <span style={{ fontSize: 13, color: T.muted2 }}>Product</span>
-              <span style={{ fontSize: 13, fontWeight: 600, color: T.primary }}>FuelUp Coach</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: T.primary }}>AthFuelPath Coach</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
               <span style={{ fontSize: 13, color: T.muted2 }}>Version</span>
@@ -187,7 +187,7 @@ function SettingsModal({ coachName, onClose, onLogout }) {
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 13, color: T.muted2 }}>Support</span>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#1E5A45' }}>support@fuelupyouth.com</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#1E5A45' }}>support@athfuelpath.com</span>
             </div>
           </div>
 
@@ -291,7 +291,7 @@ function Sidebar({ activeView, onDashboard, onRoster, onReports, onLogout, hasTe
           fontSize: 16, fontWeight: 800, color: T.sidebar, flexShrink: 0,
         }}>F</div>
         <div>
-          <div style={{ color: '#fff', fontWeight: 700, fontSize: 16, lineHeight: 1.2 }}>FuelUp Coach</div>
+          <div style={{ color: '#fff', fontWeight: 700, fontSize: 16, lineHeight: 1.2 }}>AthFuelPath Coach</div>
           <div style={{ color: T.muted, fontSize: 11, fontWeight: 500 }}>Team Dashboard</div>
         </div>
       </div>
@@ -426,7 +426,7 @@ function TopBarAndDrawer({ activeView, onDashboard, onRoster, onReports, onLogou
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 14, fontWeight: 800, color: T.sidebar,
           }}>F</div>
-          <span style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>FuelUp Coach</span>
+          <span style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>AthFuelPath Coach</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <GearBtn onClick={onSettings} />
@@ -450,7 +450,7 @@ function TopBarAndDrawer({ activeView, onDashboard, onRoster, onReports, onLogou
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 14, fontWeight: 800, color: T.sidebar,
             }}>F</div>
-            <span style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>FuelUp Coach</span>
+            <span style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>AthFuelPath Coach</span>
           </div>
           <button onClick={close} aria-label="Close navigation" style={{
             background: 'none', border: 'none', cursor: 'pointer',

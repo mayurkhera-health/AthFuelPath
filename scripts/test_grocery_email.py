@@ -1,7 +1,7 @@
 """
 One-shot test: send a grocery list email with synthetic data.
 
-Run from ~/FuelUpYouth:
+Run from ~/AthFuelPath:
   GMAIL_USER=you@gmail.com GMAIL_APP_PASSWORD=xxxx python3 scripts/test_grocery_email.py
 """
 import os
@@ -30,7 +30,7 @@ items = [{
 
 text, html = grocery_list_email("Priya", "2026-07-13", items)
 
-subject = "Your FuelUp grocery list — Jul 13–19  [TEST]"
+subject = "Your AthFuelPath grocery list — Jul 13–19  [TEST]"
 ok = send_email(subject, text, [TO], html=html)
 
 if ok:

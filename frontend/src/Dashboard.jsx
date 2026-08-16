@@ -23,7 +23,7 @@ export default function Dashboard({ parent, athletes, initialTab = "nutrition", 
     <div style={s.wrapper}>
       <div style={s.card}>
         <div style={s.header}>
-          <div style={s.logo}>⚽ FuelUp</div>
+          <div style={s.logo}>⚽ AthFuelPath</div>
           <div style={s.subtitle}>Youth Sports Performance Nutrition Platform</div>
         </div>
         <h2 style={s.title}>Welcome back, {parent.full_name.split(" ")[0]}!</h2>

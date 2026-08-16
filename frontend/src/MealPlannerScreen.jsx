@@ -458,7 +458,7 @@ export default function MealPlannerScreen({ athlete, onNavigate, freshImport = f
 
       <p style={s.disclaimer}>
         Meal plans are suggestions based on event type and nutrition targets.
-        FuelUp provides educational food guidance — not medical nutrition therapy.
+        AthFuelPath provides educational food guidance — not medical nutrition therapy.
       </p>
     </div>
   );

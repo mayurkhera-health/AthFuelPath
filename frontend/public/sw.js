@@ -1,5 +1,5 @@
 self.addEventListener("push", (event) => {
-  let data = { title: "FuelUp", body: "Time to fuel up!", url: "/" };
+  let data = { title: "AthFuelPath", body: "Time to fuel up!", url: "/" };
   try { data = JSON.parse(event.data.text()); } catch {}
 
   event.waitUntil(

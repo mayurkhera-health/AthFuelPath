@@ -1,7 +1,7 @@
 """
 Nutrient Timing Rules — Single Source of Truth
 ===============================================
-All eating-window logic in FuelUp derives from these constants.
+All eating-window logic in AthFuelPath derives from these constants.
 Source: IOC / AAP / ACSM Youth Athlete Nutrient Timing Blueprint (2025).
 
 DO NOT modify timing offsets or clinical rationale without updating the

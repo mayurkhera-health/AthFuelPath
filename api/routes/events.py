@@ -24,7 +24,7 @@ def fetch_ics(url: str):
     if not url.startswith("http"):
         raise HTTPException(400, "Invalid URL.")
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "FuelUp/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "AthFuelPath/1.0"})
         with urllib.request.urlopen(req, timeout=10) as resp:
             content = resp.read().decode("utf-8", errors="replace")
         return {"content": content}

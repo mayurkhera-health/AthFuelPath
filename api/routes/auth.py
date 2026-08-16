@@ -110,7 +110,7 @@ def create_athlete_login(athlete_id: int, data: AthleteCreateLoginRequest):
         if not parent:
             raise HTTPException(
                 403,
-                "Ask your parent to set up FuelUp first — no parent account was found for that email.",
+                "Ask your parent to set up AthFuelPath first — no parent account was found for that email.",
             )
         parent_id = dict(parent)["id"]
 

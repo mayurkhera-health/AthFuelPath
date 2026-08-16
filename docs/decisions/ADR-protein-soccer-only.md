@@ -6,7 +6,7 @@
 
 ## Decision
 
-FuelUp is a **soccer-only** app today. The current protein calculation is already correct for that population, so we are making **no code change**:
+AthFuelPath is a **soccer-only** app today. The current protein calculation is already correct for that population, so we are making **no code change**:
 
 - **No `sport_type` profile field.**
 - **No DB migration.**

@@ -112,7 +112,7 @@ export default function Today({ athlete, onNavigate }) {
         </div>
 
         <p style={s.disclaimer}>
-          FuelUp provides food education guidance — not medical nutrition therapy.
+          AthFuelPath provides food education guidance — not medical nutrition therapy.
           Consult your physician or a licensed RDN for medical nutrition concerns.
         </p>
       </div>

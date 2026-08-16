@@ -185,7 +185,7 @@ export default function HydrationScreen({ athlete }) {
                 value={city}
                 onChange={e => setCity(e.target.value)}
               />
-              <p style={s.hint}>FuelUp will fetch live weather for this city to calculate sweat loss.</p>
+              <p style={s.hint}>AthFuelPath will fetch live weather for this city to calculate sweat loss.</p>
             </div>
           ) : (
             <div>
@@ -306,7 +306,7 @@ export default function HydrationScreen({ athlete }) {
 
           <p style={s.disclaimer}>
             Science: Everett MD 2025 · ACSM 2016 · Boston Children's Hospital RDN · AAP guidelines<br/>
-            FuelUp provides educational food guidance — not medical nutrition therapy.
+            AthFuelPath provides educational food guidance — not medical nutrition therapy.
           </p>
         </div>
       )}

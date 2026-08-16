@@ -43,7 +43,7 @@ def _add_X(conn):
 ```
 Register the new function inside `run_all()` alongside the other `_add_*` calls.
 
-**Test conventions:** `tests/test_<module>.py`, run `python3 -m pytest tests/test_x.py -v` from `/Users/mayurkhera/FuelUpYouth`. Pure-function tests import directly. `Date.now`-style nondeterminism: all functions that need "now" take an explicit `now: datetime` parameter so tests pass a fixed time — never call `datetime.now()` inside the pure functions.
+**Test conventions:** `tests/test_<module>.py`, run `python3 -m pytest tests/test_x.py -v` from `/Users/mayurkhera/AthFuelPath`. Pure-function tests import directly. `Date.now`-style nondeterminism: all functions that need "now" take an explicit `now: datetime` parameter so tests pass a fixed time — never call `datetime.now()` inside the pure functions.
 
 **Spec — the card-order table (authoritative):**
 
@@ -161,7 +161,7 @@ def test_post_tournament_recharge_and_rebuild_always_present():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_tournament_template.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_tournament_template.py -v`
 Expected: FAIL with `ModuleNotFoundError: api.services.tournament_template`
 
 - [ ] **Step 3: Implement**
@@ -284,7 +284,7 @@ def get_tournament_template(game_schedule: list, wt_kg: float) -> list:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_tournament_template.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_tournament_template.py -v`
 Expected: PASS (7 tests)
 
 - [ ] **Step 5: Commit**
@@ -357,7 +357,7 @@ def test_no_start_time_defaults_to_practice_when_tagged_blank():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_activity_type_resolver.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_activity_type_resolver.py -v`
 Expected: FAIL with `ModuleNotFoundError`
 
 - [ ] **Step 3: Implement**
@@ -409,7 +409,7 @@ def resolve_activity_type(event: dict, now: datetime):
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_activity_type_resolver.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_activity_type_resolver.py -v`
 Expected: PASS (6 tests)
 
 - [ ] **Step 5: Commit**
@@ -453,7 +453,7 @@ def test_adds_activity_type_column_idempotently():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_activity_type_migration.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_activity_type_migration.py -v`
 Expected: FAIL with `ImportError: cannot import name '_add_activity_type_to_events'`
 
 - [ ] **Step 3: Implement**
@@ -481,7 +481,7 @@ And register it inside `run_all()` alongside the other `_add_*` calls (e.g. righ
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_activity_type_migration.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_activity_type_migration.py -v`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -570,7 +570,7 @@ def test_patch_rejects_invalid_activity_type():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_activity_type_route.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_activity_type_route.py -v`
 Expected: FAIL (activity_type not accepted / PATCH route 404)
 
 - [ ] **Step 3: Implement the models**
@@ -642,7 +642,7 @@ def tag_activity_type(event_id: int, data: ActivityTypePatch):
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_activity_type_route.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_activity_type_route.py -v`
 Expected: PASS (4 tests)
 
 - [ ] **Step 6: Commit**
@@ -694,7 +694,7 @@ def test_active_recovery_uses_rest_style_three_meals():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_day_layout.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_day_layout.py -v`
 Expected: FAIL with `ModuleNotFoundError`
 
 - [ ] **Step 3: Implement the module skeleton + rest/active-recovery path**
@@ -760,7 +760,7 @@ def build_day_layout(events: list, athlete: dict, now: datetime) -> dict:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_day_layout.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_day_layout.py -v`
 Expected: PASS (2 tests)
 
 - [ ] **Step 5: Commit**
@@ -817,7 +817,7 @@ def test_keep_going_appears_only_over_75min():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_day_layout.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_day_layout.py -v`
 Expected: FAIL with `NotImplementedError`
 
 - [ ] **Step 3: Implement the standard single-event path**
@@ -885,7 +885,7 @@ def _as_wev2_event(ev: dict):
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_day_layout.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_day_layout.py -v`
 Expected: PASS (5 tests)
 
 - [ ] **Step 5: Commit**
@@ -928,7 +928,7 @@ def test_no_wind_down_when_event_ends_before_8pm():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_day_layout.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_day_layout.py -v`
 Expected: FAIL (`wind_down` missing)
 
 - [ ] **Step 3: Implement**
@@ -955,7 +955,7 @@ In `build_day_layout`, just before the standard-day `return`, append the wind-do
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_day_layout.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_day_layout.py -v`
 Expected: PASS (7 tests)
 
 - [ ] **Step 5: Commit**
@@ -1003,7 +1003,7 @@ def test_two_games_same_day_is_tournament():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_day_layout.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_day_layout.py -v`
 Expected: FAIL (day_type not "tournament" / template not used)
 
 - [ ] **Step 3: Implement**
@@ -1032,7 +1032,7 @@ In `api/services/day_layout.py`, add tournament detection + dispatch. Place this
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_day_layout.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_day_layout.py -v`
 Expected: PASS (9 tests)
 
 - [ ] **Step 5: Commit**
@@ -1074,7 +1074,7 @@ def test_guardrail_caps_tappable_windows_at_6():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_day_layout.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_day_layout.py -v`
 Expected: FAIL (a card sorts before 06:30, or >6 tappable)
 
 - [ ] **Step 3: Implement the guardrail pass**
@@ -1113,7 +1113,7 @@ Wrap every `return {"day_type": ..., "cards": cards}` in `build_day_layout` so c
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_day_layout.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_day_layout.py -v`
 Expected: PASS (11 tests)
 
 - [ ] **Step 5: Commit**
@@ -1167,7 +1167,7 @@ def test_to_template_windows_shape():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_day_layout_today_integration.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_day_layout_today_integration.py -v`
 Expected: FAIL (`day_layout_v2_enabled` / `cards_to_template_windows` not defined)
 
 - [ ] **Step 3: Implement the flag + adapter in `day_layout.py`**
@@ -1238,12 +1238,12 @@ In `api/services/today_service.py`, at the top of `build_today_view` (after `eve
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_day_layout_today_integration.py -v`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_day_layout_today_integration.py -v`
 Expected: PASS (2 tests)
 
 - [ ] **Step 6: Confirm no regression with the flag OFF**
 
-Run: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/test_today_service.py -q`
+Run: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/test_today_service.py -q`
 Expected: same pass/fail set as before this task (flag defaults off → legacy path unchanged). The 1 known pre-existing failure (`test_mission_items_iron_critical_for_girls`) may remain; no NEW failures.
 
 - [ ] **Step 7: Commit**
@@ -1257,7 +1257,7 @@ git commit -m "feat: build_today_view uses day_layout behind DAY_LAYOUT_V2 flag 
 
 ## After all tasks
 
-- [ ] Full suite: `cd /Users/mayurkhera/FuelUpYouth && python3 -m pytest tests/ -q` — confirm only the documented pre-existing failures remain (no new ones from this plan).
+- [ ] Full suite: `cd /Users/mayurkhera/AthFuelPath && python3 -m pytest tests/ -q` — confirm only the documented pre-existing failures remain (no new ones from this plan).
 - [ ] Use **superpowers:finishing-a-development-branch**.
 - [ ] **Plan B (mobile) is the next plan** — the activity-type one-tap selector (7 options + nudge + `PATCH /events/:id/activity-type`) and the Today-tab rendering of the new ordered cards (visible event marker, keep_going oz/packets card, recharge/rebuild, everyday placement, wind-down). It depends on this plan's `cards`/response shape, so author it after this lands.
 - [ ] **Before enabling `DAY_LAYOUT_V2` in prod:** this replaces the live Today window source. Confirm the ported guardrails match product intent, and verify the `event`-marker + `keep_going` card render correctly in Plan B first.

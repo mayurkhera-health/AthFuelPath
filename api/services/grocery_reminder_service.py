@@ -120,7 +120,7 @@ def _remind_if_due(parent_id: int, conn) -> None:
     text, html = email_templates.grocery_list_email(parent_first, local_week_start, athlete_items)
     week_end = (_date.fromisoformat(local_week_start) + timedelta(days=6)).strftime("%-d")
     week_start_label = _date.fromisoformat(local_week_start).strftime("%b %-d")
-    subject = f"Your FuelUp grocery list — {week_start_label}–{week_end}"
+    subject = f"Your AthFuelPath grocery list — {week_start_label}–{week_end}"
     send_email(subject, text, [parent_row["email"]], html=html)
 
 

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# FuelUp backend deploy wrapper. Wraps `flyctl deploy --app fuelup-youth` with
+# AthFuelPath backend deploy wrapper. Wraps `flyctl deploy --app fuelup-youth` with
 # two guardrails that are easy to forget:
 #   1. Deploy from `main` only (the v177 incident — see CLAUDE.md).
 #   2. The Performance Plate ships DARK — deploying does NOT enable it. You must
 #      flip the PERFORMANCE_PLATE_ENABLED Fly secret (post-RDN sign-off).
 #
-# Usage:  cd ~/FuelUpYouth-main && ./scripts/deploy.sh
+# Usage:  cd ~/AthFuelPath-main && ./scripts/deploy.sh
 #
 set -euo pipefail
 

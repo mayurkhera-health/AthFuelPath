@@ -7,20 +7,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Single source of truth
 - `main` is the ONLY branch for backend production deployments
 - All backend fixes, features, and hotfixes must be applied to `main`
-- Never deploy from `FuelUp-Admin`, a worktree, or any other branch
+- Never deploy from `AthFuelPath-Admin`, a worktree, or any other branch
 
-### FuelUp-Admin
-- `FuelUp-Admin` is NOT a deployment branch
-- Do not apply fixes to `FuelUp-Admin` directly
-- If a fix exists on `FuelUp-Admin` that is needed in production, cherry-pick it onto `main` — do not switch deployment branches
-- Never run `flyctl deploy` from `FuelUp-Admin` or any worktree based on it
+### AthFuelPath-Admin
+- `AthFuelPath-Admin` is NOT a deployment branch
+- Do not apply fixes to `AthFuelPath-Admin` directly
+- If a fix exists on `AthFuelPath-Admin` that is needed in production, cherry-pick it onto `main` — do not switch deployment branches
+- Never run `flyctl deploy` from `AthFuelPath-Admin` or any worktree based on it
 
 ### Deployment command
 Always deploy from the main worktree via the guarded wrapper (checks you're on
 `main`, a clean tree, and reminds you about the `PERFORMANCE_PLATE_ENABLED` flag —
 the plate ships DARK and deploy alone does NOT enable it):
 ```bash
-cd ~/FuelUpYouth-main
+cd ~/AthFuelPath-main
 ./scripts/deploy.sh
 ```
 Raw command it wraps (do not run directly unless the wrapper is unavailable):
@@ -33,7 +33,7 @@ Raw command it wraps (do not run directly unless the wrapper is unavailable):
 4. `tsc --noEmit` passes (for mobile changes)
 
 ### Why this rule exists
-- v177 (Jun 30 2026) was deployed from `FuelUp-Admin` instead of `main`
+- v177 (Jun 30 2026) was deployed from `AthFuelPath-Admin` instead of `main`
 - This broke parent signup because `/parents/exists` and `/onboarding/complete` only existed on `main`
 - One deployment branch only — always `main`
 
@@ -83,7 +83,7 @@ frontend/.env.local    — VITE_API_URL=http://localhost:8000 (dev only, gitigno
 ```
 
 ### Database
-Raw SQLite via `api/database.py`. No ORM. All queries use `conn.execute()` with `?` parameters. Tables: `parents`, `athletes`, `events`, `meal_logs`, `push_subscriptions`, `meal_plans`, `daily_targets`. Django (`fuelupy/`, `manage.py`) is present in the repo but **not used** by the running application — it is an artifact of the initial scaffold.
+Raw SQLite via `api/database.py`. No ORM. All queries use `conn.execute()` with `?` parameters. Tables: `parents`, `athletes`, `events`, `meal_logs`, `push_subscriptions`, `meal_plans`, `daily_targets`. Django (`athfuelpathy/`, `manage.py`) is present in the repo but **not used** by the running application — it is an artifact of the initial scaffold.
 
 ### API → Frontend contract
 All API routes use the `/api/` prefix. The React frontend sets `const API = import.meta.env.VITE_API_URL ?? ""` at the top of each screen file, so all fetch calls are `${API}/api/...`. In production `VITE_API_URL` is unset and calls are same-origin. The FastAPI `StaticFiles` mount at `/` serves `frontend/dist/index.html` for all non-API paths, enabling client-side navigation.
@@ -102,7 +102,7 @@ All API routes use the `/api/` prefix. The React frontend sets `const API = impo
 
 ## Test suite baseline — `feat/fueliq` (deterministic, established 2026-07-14)
 
-Run: `python3 -m pytest tests/ --tb=no -q` from `~/FuelUpYouth-main`
+Run: `python3 -m pytest tests/ --tb=no -q` from `~/AthFuelPath-main`
 
 **Baseline result: 19 failed / 597 passed / 2 errors** (~84–92 s)
 

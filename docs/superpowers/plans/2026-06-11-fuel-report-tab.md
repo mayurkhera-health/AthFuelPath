@@ -206,7 +206,7 @@ def build_wins_list(weekly_tl: dict, streak: dict, athlete_name: str) -> list:
 - [ ] **Step 2: Verify import works**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth && source venv/bin/activate && python -c "from api.services.nutrition_analysis import get_week_start, get_week_dates, build_wins_list; print(get_week_dates(get_week_start()))"
+cd /Users/mayurkhera/AthFuelPath && source venv/bin/activate && python -c "from api.services.nutrition_analysis import get_week_start, get_week_dates, build_wins_list; print(get_week_dates(get_week_start()))"
 ```
 
 Expected: `['2026-06-08', '2026-06-09', ..., '2026-06-14']` (current week dates)
@@ -334,7 +334,7 @@ def get_weekly_summary(athlete_id: int, week_start: str = None):
 - [ ] **Step 2: Verify endpoint starts**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth && source venv/bin/activate && python -c "from api.routes.today import router; print('OK')"
+cd /Users/mayurkhera/AthFuelPath && source venv/bin/activate && python -c "from api.routes.today import router; print('OK')"
 ```
 
 Expected: `OK`
@@ -418,7 +418,7 @@ def weekly_parent_report(athlete_id: int, week_start: str = None):
 - [ ] **Step 2: Verify import**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth && source venv/bin/activate && python -c "from api.routes.reports import router; print('OK')"
+cd /Users/mayurkhera/AthFuelPath && source venv/bin/activate && python -c "from api.routes.reports import router; print('OK')"
 ```
 
 Expected: `OK`
@@ -1087,7 +1087,7 @@ export default function NutritionDashboard({ athlete }) {
           <WeeklyHeatmap days={summary.days} heatmap={summary.heatmap} />
           <ParentReport athleteId={athlete.id} weekStart={weekStart} />
           <p style={s.disclaimer}>
-            FuelUp provides food education guidance — not medical nutrition therapy.
+            AthFuelPath provides food education guidance — not medical nutrition therapy.
             Consult your physician or a licensed RDN for medical nutrition concerns.
           </p>
         </div>
@@ -1127,13 +1127,13 @@ git commit -m "feat(ui): rewrite NutritionDashboard as Fuel Report tab (Zones 1-
 - [ ] **Step 1: Start backend**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth && source venv/bin/activate && uvicorn api.main:app --reload --port 8000
+cd /Users/mayurkhera/AthFuelPath && source venv/bin/activate && uvicorn api.main:app --reload --port 8000
 ```
 
 - [ ] **Step 2: Start frontend**
 
 ```bash
-cd /Users/mayurkhera/FuelUpYouth/frontend && npm run dev
+cd /Users/mayurkhera/AthFuelPath/frontend && npm run dev
 ```
 
 - [ ] **Step 3: Verify backend endpoint**

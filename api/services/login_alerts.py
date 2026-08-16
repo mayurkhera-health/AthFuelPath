@@ -46,12 +46,12 @@ def notify_login(parent: dict, *, is_new: bool, athlete_hint: str = "") -> None:
 
         first = _first_name(parent)
         if is_new:
-            title = "🎉 New FuelUp signup"
+            title = "🎉 New AthFuelPath signup"
             body = f"{first} just signed up"
             if athlete_hint:
                 body += f" · {athlete_hint}"
         else:
-            title = "👋 FuelUp login"
+            title = "👋 AthFuelPath login"
             body = f"{first} logged in"
 
         founder_alerts.notify_founder(title, body)  # own short-lived connection

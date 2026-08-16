@@ -1,4 +1,4 @@
-# FuelUp — Streak Feature Design
+# AthFuelPath — Streak Feature Design
 
 **Version:** 0.1 (Draft for Review)
 **Date:** 2026-06-21

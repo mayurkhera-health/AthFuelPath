@@ -179,7 +179,7 @@ export default function BroadcastCard({ athlete, events = [], trafficLight, fuel
 const bc = {
   card:          { background: "#fff", borderBottom: "1px solid #dce8e0" },
   ticker:        { background: "#f4f8f5", borderBottom: "1px solid #dce8e0", height: "44px", padding: "0 14px", display: "flex", alignItems: "center", gap: "8px" },
-  liveDot:       { width: "7px", height: "7px", borderRadius: "50%", background: "#e05a4a", animation: "fuelup-pulse 1.4s infinite", flexShrink: 0 },
+  liveDot:       { width: "7px", height: "7px", borderRadius: "50%", background: "#e05a4a", animation: "athfuelpath-pulse 1.4s infinite", flexShrink: 0 },
   liveLabel:     { fontSize: "12px", textTransform: "uppercase", letterSpacing: ".1em", fontWeight: "700", color: "#e05a4a" },
   tickerSep:     { width: "1px", height: "14px", background: "#dce8e0" },
   tickerEvent:   { fontSize: "13px", textTransform: "uppercase", letterSpacing: ".04em", color: "#4a6358", fontWeight: "400", flex: 1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" },

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CLI for ingesting knowledge files into the FuelUp knowledge base.
+CLI for ingesting knowledge files into the AthFuelPath knowledge base.
 
 Usage:
   python scripts/ingest_knowledge.py --all
@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 def main():
-    parser = argparse.ArgumentParser(description="FuelUp knowledge base ingestion")
+    parser = argparse.ArgumentParser(description="AthFuelPath knowledge base ingestion")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--all", action="store_true", help="Ingest all approved files in /knowledge")
     group.add_argument("--file", type=str, help="Ingest a single file")

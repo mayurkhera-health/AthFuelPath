@@ -1,5 +1,5 @@
 """
-HTML email templates for FuelUp parent/user notifications.
+HTML email templates for AthFuelPath parent/user notifications.
 
 Each public function returns a (plaintext, html) tuple ready to hand to
 email_service.send_email(subject, plaintext, [to], html=html).
@@ -32,10 +32,10 @@ _SIGNATURE_HTML = (
     '            <div style="margin-top:32px;font-size:16px;color:#4b5563;line-height:1.6;">\n'
     "                Warmly,<br>\n"
     '                <strong style="color:#1f2937;">Purvi Shah, MS, RDN</strong><br>\n'
-    "                Founder, FuelUp Youth\n"
+    "                Founder, AthFuelPath\n"
     "            </div>\n"
 )
-_SIGNATURE_TEXT = "\n\nWarmly,\nPurvi Shah, MS, RDN\nFounder, FuelUp Youth"
+_SIGNATURE_TEXT = "\n\nWarmly,\nPurvi Shah, MS, RDN\nFounder, AthFuelPath"
 # Anchor: the content div's closing tag immediately preceding the footer. Inserting
 # the signature before it keeps the sign-off inside the padded content area.
 _CONTENT_END = '</div>\n        <div class="footer">'
@@ -57,7 +57,7 @@ _WELCOME_HTML = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome to FuelUp</title>
+    <title>Welcome to AthFuelPath</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f9fafb; margin: 0; padding: 0; }
         .email-container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
@@ -80,12 +80,12 @@ _WELCOME_HTML = """<!DOCTYPE html>
 <body>
     <div class="email-container">
         <div class="header">
-            <div class="logo">🏃 FuelUp</div>
+            <div class="logo">🏃 AthFuelPath</div>
         </div>
         <div class="content">
-            <div class="greeting">Welcome to FuelUp, {parent_name}!</div>
+            <div class="greeting">Welcome to AthFuelPath, {parent_name}!</div>
             <div class="body-text">
-                You're in. Welcome to FuelUp Youth! <strong>{athlete_name}</strong>'s account is set up, and a dietitian-designed fueling plan is ready to go.
+                You're in. Welcome to AthFuelPath! <strong>{athlete_name}</strong>'s account is set up, and a dietitian-designed fueling plan is ready to go.
             </div>
             <div class="body-text">
                 Here's what that means in practice: every recommendation in this app — pre-game meals, recovery snacks, hydration targets — is built on sports nutrition science, calibrated to {athlete_name}'s sport, training load, and age. This isn't generic diet advice. It's the same caliber of fueling strategy elite athletes rely on, simplified for a teen training schedule.
@@ -104,7 +104,7 @@ _WELCOME_HTML = """<!DOCTYPE html>
             <div class="tagline">Dietitian-designed. Game-day ready.</div>
         </div>
         <div class="footer">
-            <p>© 2026 FuelUp. Fueling the next generation of athletes.</p>
+            <p>© 2026 AthFuelPath. Fueling the next generation of athletes.</p>
         </div>
     </div>
 </body>
@@ -114,8 +114,8 @@ _WELCOME_HTML = """<!DOCTYPE html>
 def welcome_email(parent_name: str, athlete_name: str):
     html = _render(_WELCOME_HTML, parent_name=parent_name, athlete_name=athlete_name, app_url=APP_URL)
     text = (
-        f"Welcome to FuelUp, {parent_name}!\n\n"
-        f"You're in. Welcome to FuelUp Youth! {athlete_name}'s account is set up, and a "
+        f"Welcome to AthFuelPath, {parent_name}!\n\n"
+        f"You're in. Welcome to AthFuelPath! {athlete_name}'s account is set up, and a "
         "dietitian-designed fueling plan is ready to go.\n\n"
         "Here's what that means in practice: every recommendation in this app — pre-game "
         "meals, recovery snacks, hydration targets — is built on sports nutrition science, "
@@ -169,7 +169,7 @@ _ACK_HTML = """<!DOCTYPE html>
     <div class="email-container">
         <div class="header">
             <div class="header-emoji">{emoji}</div>
-            <div class="logo">FuelUp</div>
+            <div class="logo">AthFuelPath</div>
         </div>
         <div class="content">
             <div class="greeting">{greeting}</div>
@@ -183,7 +183,7 @@ _ACK_HTML = """<!DOCTYPE html>
             <div class="meta">{meta_html}</div>
         </div>
         <div class="footer">
-            <p>© 2026 FuelUp. Fueling the next generation of athletes.</p>
+            <p>© 2026 AthFuelPath. Fueling the next generation of athletes.</p>
         </div>
     </div>
 </body>
@@ -215,11 +215,11 @@ def _ack_email(*, title, emoji, greeting, intro, submitted_label, submitted_cont
 
 def problem_report_email(athlete_name: str, problem_summary: str, report_id):
     return _ack_email(
-        title="Bug Report Received - FuelUp",
+        title="Bug Report Received - AthFuelPath",
         emoji="🙏",
         greeting="Thanks for reporting this issue!",
         intro=("We received your bug report and we're grateful you took the time to help "
-               "us improve FuelUp. Your feedback helps us build a better experience for "
+               "us improve AthFuelPath. Your feedback helps us build a better experience for "
                "every athlete."),
         submitted_label="Here's what you reported:",
         submitted_content=problem_summary,
@@ -239,10 +239,10 @@ def problem_report_email(athlete_name: str, problem_summary: str, report_id):
 
 def feature_idea_email(parent_name: str, feature_idea_summary: str, idea_id, submitted_date: str):
     return _ack_email(
-        title="Feature Idea Received - FuelUp",
+        title="Feature Idea Received - AthFuelPath",
         emoji="💡",
         greeting="We love your idea!",
-        intro=("Thank you for submitting a feature idea. At FuelUp, we build what parents "
+        intro=("Thank you for submitting a feature idea. At AthFuelPath, we build what parents "
                "and athletes ask for — your feedback directly shapes our roadmap."),
         submitted_label="Your idea:",
         submitted_content=feature_idea_summary,
@@ -267,7 +267,7 @@ _CALENDAR_FIRST_SYNC_HTML = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calendar Synced - FuelUp</title>
+    <title>Calendar Synced - AthFuelPath</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f9fafb; margin: 0; padding: 0; }
         .email-container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
@@ -288,12 +288,12 @@ _CALENDAR_FIRST_SYNC_HTML = """<!DOCTYPE html>
 <body>
     <div class="email-container">
         <div class="header">
-            <div class="logo">🏃 FuelUp</div>
+            <div class="logo">🏃 AthFuelPath</div>
         </div>
         <div class="content">
             <div class="greeting">Hi {parent_name},</div>
             <div class="body-text">
-                Great news — <strong>{athlete_name}</strong>'s <strong>{platform_label}</strong> calendar is now connected to FuelUp. We ran the first sync and here's what was imported:
+                Great news — <strong>{athlete_name}</strong>'s <strong>{platform_label}</strong> calendar is now connected to AthFuelPath. We ran the first sync and here's what was imported:
             </div>
             <div class="sync-box">
                 <strong>First sync summary</strong>
@@ -302,7 +302,7 @@ _CALENDAR_FIRST_SYNC_HTML = """<!DOCTYPE html>
                 </ul>
             </div>
             <div class="body-text">
-                FuelUp will check <strong>{platform_label}</strong> every 6 hours and automatically update {athlete_name}'s schedule whenever new events appear — no action needed on your end.
+                AthFuelPath will check <strong>{platform_label}</strong> every 6 hours and automatically update {athlete_name}'s schedule whenever new events appear — no action needed on your end.
             </div>
             <div class="body-text">
                 Every event now has tailored fueling guidance built in: pre-game meals, hydration targets, and recovery snacks calibrated to {athlete_name}'s training load.
@@ -310,7 +310,7 @@ _CALENDAR_FIRST_SYNC_HTML = """<!DOCTYPE html>
             <div class="tagline">Synced. Fueled. Ready.</div>
         </div>
         <div class="footer">
-            <p>© 2026 FuelUp. Fueling the next generation of athletes.</p>
+            <p>© 2026 AthFuelPath. Fueling the next generation of athletes.</p>
         </div>
     </div>
 </body>
@@ -357,16 +357,16 @@ def calendar_first_sync_email(
     )
     text = (
         f"Hi {parent_name},\n\n"
-        f"{athlete_name}'s {platform_label} calendar is now connected to FuelUp. "
+        f"{athlete_name}'s {platform_label} calendar is now connected to AthFuelPath. "
         f"We ran the first sync and here's what was imported:\n\n"
         + "\n".join(f"- {l}" for l in lines)
-        + f"\n\nFuelUp will check {platform_label} every 6 hours and automatically update "
+        + f"\n\nAthFuelPath will check {platform_label} every 6 hours and automatically update "
         f"{athlete_name}'s schedule whenever new events appear — no action needed on your end.\n\n"
         f"Every event now has tailored fueling guidance built in: pre-game meals, hydration "
         f"targets, and recovery snacks calibrated to {athlete_name}'s training load.\n\n"
         "Synced. Fueled. Ready."
     )
-    subject = f"{athlete_name}'s {platform_label} calendar is connected to FuelUp"
+    subject = f"{athlete_name}'s {platform_label} calendar is connected to AthFuelPath"
     text, html = _finalize(text, html)
     return subject, text, html
 
@@ -381,7 +381,7 @@ _CALENDAR_NEW_EVENTS_HTML = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>New Events Synced - FuelUp</title>
+    <title>New Events Synced - AthFuelPath</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f9fafb; margin: 0; padding: 0; }
         .email-container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
@@ -404,7 +404,7 @@ _CALENDAR_NEW_EVENTS_HTML = """<!DOCTYPE html>
 <body>
     <div class="email-container">
         <div class="header">
-            <div class="logo">🏃 FuelUp</div>
+            <div class="logo">🏃 AthFuelPath</div>
         </div>
         <div class="content">
             <div class="greeting">Hi {parent_name},</div>
@@ -418,14 +418,14 @@ _CALENDAR_NEW_EVENTS_HTML = """<!DOCTYPE html>
                 </ul>
             </div>
             <div class="body-text">
-                These are now live in FuelUp with personalized fueling guidance for each session.
+                These are now live in AthFuelPath with personalized fueling guidance for each session.
             </div>
             <div class="note">
-                FuelUp checks {platform_label} every 6 hours to keep {athlete_name}'s schedule current. You'll hear from us whenever something new appears.
+                AthFuelPath checks {platform_label} every 6 hours to keep {athlete_name}'s schedule current. You'll hear from us whenever something new appears.
             </div>
         </div>
         <div class="footer">
-            <p>© 2026 FuelUp. Fueling the next generation of athletes.</p>
+            <p>© 2026 AthFuelPath. Fueling the next generation of athletes.</p>
         </div>
     </div>
 </body>
@@ -472,8 +472,8 @@ def calendar_new_events_email(
         f"We found {count} new event{plural} in {athlete_name}'s {platform_label} calendar "
         f"during our latest sync:\n\n"
         + "\n".join(items_text)
-        + f"\n\nThese are now live in FuelUp with personalized fueling guidance for each session.\n\n"
-        f"FuelUp checks {platform_label} every 6 hours to keep {athlete_name}'s schedule current. "
+        + f"\n\nThese are now live in AthFuelPath with personalized fueling guidance for each session.\n\n"
+        f"AthFuelPath checks {platform_label} every 6 hours to keep {athlete_name}'s schedule current. "
         f"You'll hear from us whenever something new appears."
     )
     subject = f"{count} new event{plural} added to {athlete_name}'s schedule from {platform_label}"
@@ -509,7 +509,7 @@ _GROCERY_HTML = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Your FuelUp Grocery List</title>
+    <title>Your AthFuelPath Grocery List</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f9fafb; margin: 0; padding: 0; }
         .email-container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
@@ -535,16 +535,16 @@ _GROCERY_HTML = """<!DOCTYPE html>
 <body>
     <div class="email-container">
         <div class="header">
-            <div class="logo">🏃 FuelUp</div>
+            <div class="logo">🏃 AthFuelPath</div>
         </div>
         <div class="content">
             <div class="greeting">Your grocery list for the week of {week_range}</div>
-            <div class="body-text">Here's everything on your FuelUp list heading into the week. Screenshot this or grab what you need before Sunday night.</div>
+            <div class="body-text">Here's everything on your AthFuelPath list heading into the week. Screenshot this or grab what you need before Sunday night.</div>
             {athlete_blocks}
             <div class="note">Your grocery list resets Sunday at midnight. This is your copy to keep.</div>
         </div>
         <div class="footer">
-            <p>© 2026 FuelUp. Fueling the next generation of athletes.</p>
+            <p>© 2026 AthFuelPath. Fueling the next generation of athletes.</p>
         </div>
     </div>
 </body>
@@ -619,7 +619,7 @@ def grocery_list_email(
 
     text = (
         f"Hi {parent_name},\n\n"
-        f"Here's your FuelUp grocery list for the week of {week_range}.\n\n"
+        f"Here's your AthFuelPath grocery list for the week of {week_range}.\n\n"
         + "\n".join(text_sections)
         + "\n\nYour grocery list resets Sunday at midnight. This is your copy to keep."
     )

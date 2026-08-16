@@ -170,7 +170,7 @@ export default function ProfileScreen({ athlete, onSave }) {
       <button style={s.saveBtnFull} type="submit" disabled={saving}>
         {saving ? "Saving…" : "Save Changes"}
       </button>
-      <p style={s.disclaimer}>FuelUp provides educational food guidance — not medical nutrition therapy.</p>
+      <p style={s.disclaimer}>AthFuelPath provides educational food guidance — not medical nutrition therapy.</p>
     </form>
   );
 }

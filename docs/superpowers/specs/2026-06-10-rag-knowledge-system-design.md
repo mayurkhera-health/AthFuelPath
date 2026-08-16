@@ -1,6 +1,6 @@
 # RAG Knowledge System — Design Spec
 **Date:** 2026-06-10  
-**App:** FuelUp Youth Soccer Nutrition Platform  
+**App:** AthFuelPath Soccer Nutrition Platform  
 **Stack:** Python / FastAPI / SQLite / Anthropic Claude (claude-sonnet-4-6)
 
 ---

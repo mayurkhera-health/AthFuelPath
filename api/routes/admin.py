@@ -115,7 +115,7 @@ def _calendar_status(byga_url, playmetrics_url, imported_count, event_count) -> 
 
 
 def _active_parent_clause(conn, alias: str) -> str:
-    """Exclude anonymized tombstones left by the old FuelUp-Admin soft-delete
+    """Exclude anonymized tombstones left by the old AthFuelPath-Admin soft-delete
     (parents.account_status = 'hard_deleted'). The column only exists in
     production (added by that deployment), so this is a no-op on fresh/test DBs."""
     if _has_col(conn, "parents", "account_status"):

@@ -33,7 +33,7 @@ def _scalar(conn, sql: str, params=()) -> int:
 
 def _active_where(conn) -> str:
     """WHERE fragment (on the parents table) that excludes anonymized tombstones
-    from the old FuelUp-Admin soft-delete. account_status only exists in prod, so
+    from the old AthFuelPath-Admin soft-delete. account_status only exists in prod, so
     this is '1=1' (no-op) on fresh/test DBs."""
     cols = [r[1] for r in conn.execute("PRAGMA table_info(parents)").fetchall()]
     return "(account_status IS NULL OR account_status != 'hard_deleted')" if "account_status" in cols else "1=1"

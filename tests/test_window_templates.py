@@ -1,6 +1,6 @@
 """
 Regression tests for the window templates engine.
-All 8 tests from FUELUP_WINDOW_TEMPLATES_SPEC.md Section 10 must pass before any deploy
+All 8 tests from ATHFUELPATH_WINDOW_TEMPLATES_SPEC.md Section 10 must pass before any deploy
 touching window_templates.py.
 """
 import pytest

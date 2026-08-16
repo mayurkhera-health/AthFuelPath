@@ -1,4 +1,4 @@
-# FuelUp — Complete Build Specification
+# AthFuelPath — Complete Build Specification
 **Version 1.0 · June 2026**
 *Youth Sports Performance Nutrition Platform — Ages 9–17*
 
@@ -29,7 +29,7 @@
 
 ### Project structure
 ```
-FuelUpYouth/
+AthFuelPath/
 ├── api/
 │   ├── main.py
 │   ├── models.py
@@ -358,7 +358,7 @@ def derive_sweat_profile(athlete):
 
 ### System Prompt (shared across all prompts)
 ```
-You are FuelUp's AI nutrition engine, built exclusively on pediatric sports nutrition science for athletes ages 9–17.
+You are AthFuelPath's AI nutrition engine, built exclusively on pediatric sports nutrition science for athletes ages 9–17.
 
 SCIENCE FRAMEWORK:
 - Everett MD 2025 (Stony Brook) — primary reference
@@ -375,7 +375,7 @@ CRITICAL RULES:
 6. LEA Alert: calories < 30 kcal/kg fat-free mass — alert parent immediately
 7. NEVER recommend artificial food dyes (Red #40, Yellow #5, Yellow #6)
 8. Pre-game day is the most missed nutrition day — glycogen takes 24-48hrs to replenish
-9. FuelUp is an EDUCATIONAL food guidance tool — NOT medical nutrition therapy
+9. AthFuelPath is an EDUCATIONAL food guidance tool — NOT medical nutrition therapy
 
 Respond ONLY with valid JSON. No markdown, no prose outside the JSON.
 ```
@@ -405,7 +405,7 @@ Respond ONLY with valid JSON. No markdown, no prose outside the JSON.
   },
   "lea_warning": {"triggered": false, "parent_message": null, "threshold_kcal": 0, "action_required": null},
   "unlock_cta": {"headline": "", "parent_message": "", "athlete_message": ""},
-  "_meta": {"generated_by": "FuelUp AI — Everett MD 2025 + Boston Children's Hospital RDN + AAP", "disclaimer": "FuelUp provides educational food guidance — not medical nutrition therapy.", "prompt_version": "0.1"}
+  "_meta": {"generated_by": "AthFuelPath AI — Everett MD 2025 + Boston Children's Hospital RDN + AAP", "disclaimer": "AthFuelPath provides educational food guidance — not medical nutrition therapy.", "prompt_version": "0.1"}
 }
 ```
 **Iron urgency_level rule:** MUST be `"critical"` for girls, `"important"` for boys — enforced in Python before calling Claude, never left to Claude's judgment.
@@ -459,7 +459,7 @@ Fuel score: 0–100 (iron, calcium, hydration weighted extra)
   "iron_alert": null,
   "featured_recipe": {"id": "R001", "name": "", "reason": ""},
   "report_text": "3-4 paragraph warm professional report for email/SMS",
-  "legal_disclaimer": "FuelUp provides educational food guidance — not medical nutrition therapy. Consult your child's physician for medical concerns."
+  "legal_disclaimer": "AthFuelPath provides educational food guidance — not medical nutrition therapy. Consult your child's physician for medical concerns."
 }
 ```
 
@@ -702,7 +702,7 @@ Two-panel layout (flex row, full viewport height):
 
 **Left hero panel** (dark green gradient `#0a3324 → #155e42`):
 - RD-Approved badge
-- ⚽ FuelUp**Youth** wordmark
+- ⚽ AthFuelPath**Youth** wordmark
 - Headline: *"The complete nutrition platform for every competitive soccer athlete."*
 - Subheadline: *"AI-generated, RD-approved Nutrition Blueprints — personalized to every athlete's age, training schedule, game days, dietary needs, and performance goals. Built for youth sports clubs, ages 9–17."*
 - 2×2 feature grid (semi-transparent cards): 🧠 AI Nutrition Blueprints | 📅 Game-Day Fuel Protocols | 📊 Live Macro Tracking | 💧 Hydration Calculator
@@ -719,8 +719,8 @@ Two-panel layout (flex row, full viewport height):
 
 **Step 0 — Age Gate:**
 - Input: athlete's age (integer)
-- Validation: age < 9 → "FuelUp is for youth athletes ages 9–17..."
-- Validation: age > 17 → "FuelUp is for ages 9–17. For athletes 18+, consult a CSSD."
+- Validation: age < 9 → "AthFuelPath is for youth athletes ages 9–17..."
+- Validation: age > 17 → "AthFuelPath is for ages 9–17. For athletes 18+, consult a CSSD."
 - On pass: pre-fill `athlete.age` state, advance to Step 1
 
 **Step 1 — Parent Consent:**
@@ -770,7 +770,7 @@ const TABS = [
 
 **First-time user restriction:** when `isNewAccount=true`, only show the Blueprint tab. All other tabs hidden. Clicking "Add Schedule →" in Blueprint unlocks all tabs via `onUnlockApp()`.
 
-**Top bar:** ⚽ FuelUp Youth logo + athlete name (left) | Avatar circle (initials) + ⚙ gear badge (right) → opens Settings drawer
+**Top bar:** ⚽ AthFuelPath logo + athlete name (left) | Avatar circle (initials) + ⚙ gear badge (right) → opens Settings drawer
 
 **Settings drawer:** Right-side overlay, 380px, slide-in animation. Contains `<SettingsScreen>`.
 
@@ -910,7 +910,7 @@ const TABS = [
 
 3. **Data deletion:** Consent text must include: *"I can request complete data deletion at any time by emailing [YOUR SUPPORT EMAIL]."*
 
-4. **Disclaimer — shown everywhere:** *"FuelUp provides educational food guidance — not medical nutrition therapy. Consult your child's physician for medical concerns."*
+4. **Disclaimer — shown everywhere:** *"AthFuelPath provides educational food guidance — not medical nutrition therapy. Consult your child's physician for medical concerns."*
    - Shown on: Login page, Onboarding, every Blueprint page, every Report, every AI-generated plan, API root response
 
 5. **Age gate:** Reject athletes < 9 or > 17 at both frontend (onboarding) and backend (`POST /api/athletes/` returns 400).

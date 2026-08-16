@@ -5,7 +5,7 @@ source = "fuelup_data"
   auto_extend_size_threshold = 80
   auto_extend_size_increment = "1GB"
   auto_extend_size_limit = "5GB"
-# fly.toml — FuelUp Youth Soccer Nutrition Platform
+# fly.toml — AthFuelPath Soccer Nutrition Platform
 app = 'fuelup-youth'
 primary_region = 'sjc'
 

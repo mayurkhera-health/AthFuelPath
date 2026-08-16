@@ -71,7 +71,7 @@ def test_new_signup_via_onboarding_alerts(ctx):
     assert r.status_code == 201
     assert len(sent) == 1
     title, body = sent[0]
-    assert title == "🎉 New FuelUp signup"
+    assert title == "🎉 New AthFuelPath signup"
     assert "Pat" in body and "Ari" in body      # first name + athlete hint
 
 
@@ -80,7 +80,7 @@ def test_returning_login_alerts_with_wave(ctx):
     _insert_parent(ka, "Sarah Smith", "sarah@example.com", last_login="2026-02-01T00:00:00")
     ka.commit()
     assert _login(c, "sarah@example.com").status_code == 200
-    assert sent == [("👋 FuelUp login", "Sarah logged in")]
+    assert sent == [("👋 AthFuelPath login", "Sarah logged in")]
 
 
 def test_first_ever_explicit_login_reads_as_new(ctx):
@@ -88,7 +88,7 @@ def test_first_ever_explicit_login_reads_as_new(ctx):
     _insert_parent(ka, "New Nate", "nate@example.com", last_login=None)  # never stamped
     ka.commit()
     assert _login(c, "nate@example.com").status_code == 200
-    assert sent[0][0] == "🎉 New FuelUp signup"
+    assert sent[0][0] == "🎉 New AthFuelPath signup"
     # and the login stamps last_login_at so a NEXT login would be a returning one
     row = ka.execute("SELECT last_login_at FROM parents WHERE email='nate@example.com'").fetchone()
     assert row[0] is not None
@@ -130,7 +130,7 @@ def test_push_failure_falls_back_to_email(ctx, monkeypatch):
     monkeypatch.setattr(founder_alerts, "_email", lambda t, b: emailed.append((t, b)) or True)
 
     assert _login(c, "fb@example.com").status_code == 200
-    assert emailed == [("👋 FuelUp login", "Fran logged in")]
+    assert emailed == [("👋 AthFuelPath login", "Fran logged in")]
 
 
 # ── env toggle ───────────────────────────────────────────────────────────────
@@ -154,4 +154,4 @@ def test_mode_new_signups_only(ctx, monkeypatch):
 
     r = c.post("/api/onboarding/complete", json=ONBOARD_BODY)  # new signup → fires
     assert r.status_code == 201
-    assert len(sent) == 1 and sent[0][0] == "🎉 New FuelUp signup"
+    assert len(sent) == 1 and sent[0][0] == "🎉 New AthFuelPath signup"

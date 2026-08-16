@@ -24,7 +24,7 @@ Designed for a 15-year-old athlete who does not want to track macros. Nutrition 
 - **Bottom nav:** keep existing AppShell top tab bar unchanged
 - **Mission item tap → API:** POST to existing `/api/meal-logs/` endpoint; stub `confirm` endpoint later
 - **Science fix tap:** toast only ("→ Added to meal plan"), no API call until endpoint exists
-- **Design tokens:** FuelUp green palette (`#2d6a4f`, `#1b3a2a`, `#52b788`), Nunito + DM Sans fonts, existing border/surface tokens
+- **Design tokens:** AthFuelPath green palette (`#2d6a4f`, `#1b3a2a`, `#52b788`), Nunito + DM Sans fonts, existing border/surface tokens
 
 ---
 
