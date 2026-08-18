@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+_to_delete
+**/_to_delete
+.env*
+!.env.example
+audit.mjs
+scripts
+README.md
+*.zip
+*.tgz
+DEPLOY.md
+.DS_Store
