@@ -286,6 +286,35 @@ def test_tappable_windows_carry_open_close_time_24h():
     conn.close()
 
 
+def test_tappable_windows_carry_purpose_load_levels_and_food_ideas():
+    """Every tappable window on an event day returns a non-empty purpose
+    sentence, a load_levels dict with HIGH/MODERATE/LIGHT per macro, and
+    up to 4 deterministic food ideas — the data the redesigned Today
+    fueling-window card renders (spec: redesign/simplify-v2)."""
+    conn = _make_today_conn()
+    conn.execute("INSERT INTO athletes (id, first_name, sport, gender, weight_lbs, height_ft, height_in, age) VALUES (4, 'Sam', 'soccer', 'boy', 130, 5, 6, 15)")
+    conn.execute(
+        "INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, duration_hours) "
+        "VALUES (4, 'Practice', 'practice', '2026-06-22', '16:00', 1.5)"
+    )
+    conn.commit()
+
+    view = build_today_view(4, conn, today="2026-06-22")
+    tappable = [w for w in view["windows"] if w.get("status") not in ("nudge", "event")]
+    assert tappable, "expected tappable windows on an event day"
+    for w in tappable:
+        assert isinstance(w.get("purpose"), str) and w["purpose"], f"{w['slot_name']} missing purpose"
+        levels = w.get("load_levels")
+        assert isinstance(levels, dict)
+        assert set(levels.keys()) == {"carbs", "protein", "fats"}
+        for v in levels.values():
+            assert v in ("HIGH", "MODERATE", "LIGHT")
+        ideas = w.get("food_ideas")
+        assert isinstance(ideas, list)
+        assert len(ideas) <= 4
+    conn.close()
+
+
 def test_record_window_capture_uses_log_date():
     """record_window_capture respects client-supplied log_date, not server date."""
     conn = _make_test_conn()

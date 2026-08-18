@@ -5,6 +5,8 @@ from api.services.nutrition_calc import calc_daily_targets
 from api.services.window_distribution import distribute_to_slots
 from api.services.window_engine_v2 import event_relative_windows_enabled
 from api.services.activity_type_resolver import resolve_activity_type
+from api.services.idea_catalog import IDEAS
+from api.services.window_load import load_levels_for
 from api.utils.week import get_week_start
 
 log = logging.getLogger(__name__)
@@ -1092,6 +1094,10 @@ def build_today_view(athlete_id: int, conn, today: str | None = None, force_v2: 
             "open_time":     od.strftime("%H:%M") if od else "",
             "close_time":    cd.strftime("%H:%M") if cd else "",
             "macro_focus":   focus,
+            "category_key":  tw.get("category_key"),
+            "purpose":       tw.get("why") or "",
+            "load_levels":   load_levels_for(_FOCUS_MACRO_PCT.get(focus), tw.get("category_key")),
+            "food_ideas":    IDEAS.get(tw.get("category", ""), IDEAS.get(tw.get("category_key", ""), []))[:4],
             "carbs_g":       round(_daily_carbs   * _FOCUS_MACRO_PCT.get(focus, {"carbs_pct": 0.15})["carbs_pct"])   if _daily_carbs   else None,
             "protein_g":     round(_daily_protein * _FOCUS_MACRO_PCT.get(focus, {"protein_pct": 0.15})["protein_pct"]) if _daily_protein else None,
             "logged":        logged,

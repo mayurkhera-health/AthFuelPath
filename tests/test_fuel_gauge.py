@@ -356,14 +356,18 @@ PRODUCTION_TOP_KEYS = {
 
 
 def test_flag_off_payload_is_byte_identical_to_production(live_v2, flag_off):
-    """Snapshot/contract: flag OFF → no new top-level keys, no fuel_targets, no
-    category_key anywhere. This is THE additive guarantee."""
+    """Snapshot/contract: flag OFF → no new top-level keys, no fuel_targets.
+    This is THE additive guarantee for the Fuel Gauge feature specifically.
+    (category_key is no longer exclusive to Fuel Gauge: redesign/simplify-v2
+    Task 2 threads category_key/purpose/load_levels/food_ideas onto every
+    tappable window unconditionally, straight from window_templates.py's
+    always-on event-relative path — independent of FUEL_GAUGE_ENABLED. See
+    docs/superpowers/plans/2026-08-17-today-screen-redesign.md.)"""
     view = _view(_athlete(), [(TODAY, "game", "medium", "10:00", 1.5)])
     assert set(view.keys()) == PRODUCTION_TOP_KEYS
     assert "fuel_targets" not in view
     blob = json.dumps(view)
     assert "fuel_targets" not in blob
-    assert "category_key" not in blob
 
 
 def test_flag_off_preserves_existing_today_fields(live_v2, flag_off):
