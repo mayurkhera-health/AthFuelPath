@@ -108,6 +108,34 @@ def get_day_timeline(athlete_id: int, date: str = None, v2: bool = False, identi
         conn.close()
 
 
+@router.get("/{athlete_id}/meal-plan/week")
+def get_week_windows(
+    athlete_id: int, week_start: str = Query(...), v2: bool = False,
+    identity=Depends(require_session),
+):
+    """Week-batched window skeletons for the Plan tab's day-by-day screen
+    (recipe_selections system, mobile). Same real engine as the single-date
+    /meal-plan route above (generate_day_windows -> window_templates ->
+    window_engine_v2 when EVENT_RELATIVE_WINDOWS is on) — this just avoids 7
+    separate round-trips for a week view. No meal_plan_selections items /
+    ideas-catalog merge here — that's the OTHER Meal Plan sub-tab's system;
+    this endpoint returns windows only, joined against recipe_selections
+    client-side instead."""
+    conn = get_conn()
+    try:
+        assert_owns_athlete(identity, athlete_id, conn)
+        if not conn.execute("SELECT id FROM athletes WHERE id = ?", (athlete_id,)).fetchone():
+            raise HTTPException(404, "Athlete not found")
+        base = dt_date.fromisoformat(week_start)
+        days = {}
+        for i in range(7):
+            d = (base + timedelta(days=i)).isoformat()
+            days[d] = generate_day_windows(athlete_id, d, conn, force_v2=v2)
+        return {"week_start": week_start, "days": days}
+    finally:
+        conn.close()
+
+
 @router.get("/{athlete_id}/today")
 def get_today_view(
     athlete_id: int, date: str = Query(None), v2: bool = False, now: str = Query(None),
