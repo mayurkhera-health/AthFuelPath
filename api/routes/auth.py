@@ -6,7 +6,7 @@ Keeps /api/parents/login and /api/athletes/* intact for backward compat.
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel
 from api.database import get_conn
 from api.services import login_alerts
@@ -27,7 +27,7 @@ class AthleteCreateLoginRequest(BaseModel):
 
 
 @router.post("/login")
-def unified_login(data: LoginRequest, background_tasks: BackgroundTasks):
+def unified_login(data: LoginRequest, background_tasks: BackgroundTasks, request: Request):
     """
     Single login for both personas.
     Checks parents first (most common), then athlete_logins.
@@ -37,6 +37,10 @@ def unified_login(data: LoginRequest, background_tasks: BackgroundTasks):
     session-restore on app relaunch uses /api/parents/login, so alerting here
     fires only on a real, active sign-in — not a background rehydrate.
     """
+    # Temporary — 2026-08-19, remove after ~7 days. Same client-split logging
+    # as parents.py's /login — see docs/age-audit.md Part 14/16.
+    logger.info("unified_login_client origin=%r user_agent=%r",
+                request.headers.get("origin"), request.headers.get("user-agent"))
     email = data.email.strip().lower()
     conn = get_conn()
     try:

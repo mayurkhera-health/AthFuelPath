@@ -2,7 +2,7 @@ import hashlib
 import logging
 import random
 from datetime import datetime, timedelta
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from api.models import ParentCreate, ParentResponse, ParentProfileUpdate, OTPRequest, OTPVerify
 from api.database import get_conn
 from api.services.email import send_otp_email
@@ -53,7 +53,13 @@ def confirm_consent(parent_id: int):
 
 
 @router.post("/login")
-def login(data: OTPRequest):
+def login(data: OTPRequest, request: Request):
+    # Temporary — 2026-08-19, remove after ~7 days once we have real client-split
+    # data. See docs/age-audit.md Part 14/16: legacy web sends a browser Origin +
+    # UA, mobile sends none/an Expo-RN UA — this is a cleaner signal than any
+    # existing DB column for "does legacy web still have real login traffic."
+    log.info("parents_login_client origin=%r user_agent=%r",
+              request.headers.get("origin"), request.headers.get("user-agent"))
     email = data.email.strip().lower()
     conn = get_conn()
     try:
