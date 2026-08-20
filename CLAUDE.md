@@ -2,7 +2,43 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Branch & Deployment Rules (CRITICAL — read before any backend work)
+## ⚠️ Backend runtime cutover (2026-08-20) — READ BEFORE TOUCHING DEPLOY ANYTHING
+
+`main` was merged with the `migration/postgres-cloud-run` branch on 2026-08-20.
+As of that merge, **`main` requires PostgreSQL/Cloud SQL to boot at all** —
+`api/database.py` has no SQLite fallback anymore (the SQLite code path was
+removed, not just disabled). The real, live deploy target is now **Cloud Run**
+(`athfuelpath-api`, project `fuelup-500318`, region `us-west1`), not Fly.io.
+
+**Fly.io (`fuelup-youth`) is now a frozen rollback snapshot, not a deploy
+target.** It's still running the pre-cutover SQLite-based code and is
+intentionally left untouched as a safety net. Do **not** deploy current `main`
+to it — `api/database.py` will fail loudly on startup (no Postgres env/secrets
+configured there), crash-looping the live app.
+
+- If Fly ever needs to be redeployed for real, use the tag
+  `fly-sqlite-last-known-good` (the last commit before this cutover merge) —
+  **not** current `main`.
+- The GitHub Actions auto-deploy-to-Fly-on-push-to-main workflow
+  (`.github/workflows/fly-deploy.yml`) has been **deleted** for exactly this
+  reason — it would otherwise have auto-triggered a Fly deploy of
+  Postgres-only code on the very push that merged this cutover. If you're
+  reading this because that workflow got re-added, stop and reconsider before
+  pushing to `main`.
+- Real prod data (parents, athletes, events, etc.) was migrated from Fly's
+  SQLite database to Cloud SQL via `db/migrate_sqlite_data.py` — Cloud SQL is
+  the live source of truth now, not Fly's SQLite volume.
+- Known open item: `POST /api/parents/login` and `POST /api/auth/login` are
+  still email-only (no password/OTP) — see `docs/cloud-run-security-audit.md`.
+  This is real, live, unresolved risk on a public endpoint with real users'
+  data — not merely documented for later.
+
+## Branch & Deployment Rules — historical (pre-cutover, Fly.io-era)
+
+Everything below this line describes the Fly.io deploy process as it worked
+**before** the 2026-08-20 cutover above. Kept for reference (e.g., if
+`fly-sqlite-last-known-good` is ever actually redeployed) — do not follow it
+against current `main`.
 
 ### Single source of truth
 - `main` is the ONLY branch for backend production deployments
@@ -56,13 +92,23 @@ npm run lint     # ESLint
 ```
 
 ### Deployment
+See the cutover warning at the very top of this file. Fly.io is a frozen
+rollback snapshot as of 2026-08-20 — the commands below are historical
+(pre-cutover) and only apply to the `fly-sqlite-last-known-good` tag, never
+to current `main`.
 ```bash
-fly deploy -a fuelup-youth                          # deploy to Fly.io
+fly deploy -a fuelup-youth                          # (historical — see warning above)
 fly ssh console -a fuelup-youth -C "python db/setup.py"  # re-init DB on server
 fly logs -a fuelup-youth                            # tail live logs
 ```
 
-CI auto-deploys to Fly.io on every push to `main` via `.github/workflows/fly-deploy.yml`. Requires `FLY_API_TOKEN` set as a GitHub Actions secret.
+There is no CI auto-deploy anymore — `.github/workflows/fly-deploy.yml` (which
+deployed to Fly.io on every push to `main`) was deleted as part of the
+2026-08-20 cutover, since it would otherwise auto-deploy Postgres-only code to
+Fly's SQLite-only environment on every future push to `main`.
+
+Real deploy path now: Cloud Run (`athfuelpath-api`, project `fuelup-500318`,
+region `us-west1`) via `gcloud builds submit` + `gcloud run services update`.
 
 ## Architecture
 
