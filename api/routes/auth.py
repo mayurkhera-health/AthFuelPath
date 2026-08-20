@@ -46,12 +46,12 @@ def unified_login(data: LoginRequest, background_tasks: BackgroundTasks, request
     try:
         # 1. Parent?
         parent = conn.execute(
-            "SELECT * FROM parents WHERE lower(email) = ?", (email,)
+            "SELECT * FROM parents WHERE lower(email) = %s", (email,)
         ).fetchone()
         if parent:
             parent_d = dict(parent)
             athletes = [dict(a) for a in conn.execute(
-                "SELECT * FROM athletes WHERE parent_id = ?", (parent_d["id"],)
+                "SELECT * FROM athletes WHERE parent_id = %s", (parent_d["id"],)
             ).fetchall()]
 
             # Beta login alert (best-effort; backgrounded so it never slows the
@@ -60,7 +60,7 @@ def unified_login(data: LoginRequest, background_tasks: BackgroundTasks, request
             try:
                 is_new = not parent_d.get("last_login_at")
                 conn.execute(
-                    "UPDATE parents SET last_login_at = ? WHERE id = ?",
+                    "UPDATE parents SET last_login_at = %s WHERE id = %s",
                     (datetime.utcnow().isoformat(), parent_d["id"]),
                 )
                 conn.commit()
@@ -76,11 +76,11 @@ def unified_login(data: LoginRequest, background_tasks: BackgroundTasks, request
 
         # 2. Athlete?
         al = conn.execute(
-            "SELECT * FROM athlete_logins WHERE lower(email) = ?", (email,)
+            "SELECT * FROM athlete_logins WHERE lower(email) = %s", (email,)
         ).fetchone()
         if al:
             athlete = conn.execute(
-                "SELECT * FROM athletes WHERE id = ?", (dict(al)["athlete_id"],)
+                "SELECT * FROM athletes WHERE id = %s", (dict(al)["athlete_id"],)
             ).fetchone()
             if not athlete:
                 raise HTTPException(500, "Athlete profile not found.")
@@ -109,7 +109,7 @@ def create_athlete_login(athlete_id: int, data: AthleteCreateLoginRequest):
     try:
         # Gate 1: parent must exist
         parent = conn.execute(
-            "SELECT id FROM parents WHERE lower(email) = ?", (parent_email,)
+            "SELECT id FROM parents WHERE lower(email) = %s", (parent_email,)
         ).fetchone()
         if not parent:
             raise HTTPException(
@@ -120,7 +120,7 @@ def create_athlete_login(athlete_id: int, data: AthleteCreateLoginRequest):
 
         # Gate 2: athlete must belong to this parent
         athlete = conn.execute(
-            "SELECT * FROM athletes WHERE id = ? AND parent_id = ?",
+            "SELECT * FROM athletes WHERE id = %s AND parent_id = %s",
             (athlete_id, parent_id),
         ).fetchone()
         if not athlete:
@@ -134,19 +134,20 @@ def create_athlete_login(athlete_id: int, data: AthleteCreateLoginRequest):
         # does not — see db_migrations). Prevents a silent duplicate login for the
         # same athlete claimed under a second email.
         if conn.execute(
-            "SELECT 1 FROM athlete_logins WHERE athlete_id = ?", (athlete_id,)
+            "SELECT 1 FROM athlete_logins WHERE athlete_id = %s", (athlete_id,)
         ).fetchone():
             raise HTTPException(409, "This athlete already has a login.")
 
         # Create login credentials
         try:
             conn.execute(
-                "INSERT INTO athlete_logins (email, athlete_id) VALUES (?, ?)",
+                "INSERT INTO athlete_logins (email, athlete_id) VALUES (%s, %s)",
                 (email, athlete_id),
             )
             conn.commit()
         except Exception as e:
-            if "UNIQUE" in str(e):
+            conn.rollback()
+            if "unique" in str(e).lower():
                 raise HTTPException(409, "An account with that email already exists.")
             raise HTTPException(500, str(e))
 

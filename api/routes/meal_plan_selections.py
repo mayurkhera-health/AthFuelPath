@@ -64,10 +64,10 @@ def add_item(window_key: str, body: ItemIn, identity=Depends(require_session)):
     conn = get_conn()
     try:
         assert_owns_athlete(identity, body.athlete_id, conn)
-        conn.execute(
+        cur = conn.execute(
             "INSERT INTO meal_plan_selections "
             "(athlete_id, plan_date, window_key, item_text, recipe_json, added_by) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
             (
                 body.athlete_id,
                 body.plan_date,
@@ -78,7 +78,7 @@ def add_item(window_key: str, body: ItemIn, identity=Depends(require_session)):
             ),
         )
         conn.commit()
-        item_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        item_id = cur.fetchone()["id"]
         out = {"id": item_id, "text": body.text, "added_by": body.added_by}
         if body.recipe is not None:
             out["recipe"] = body.recipe.model_dump()
@@ -92,12 +92,12 @@ def remove_item(window_key: str, item_id: int, identity=Depends(require_session)
     conn = get_conn()
     try:
         row = conn.execute(
-            "SELECT id, athlete_id FROM meal_plan_selections WHERE id = ?", (item_id,)
+            "SELECT id, athlete_id FROM meal_plan_selections WHERE id = %s", (item_id,)
         ).fetchone()
         if not row:
             raise HTTPException(404, "Item not found")
         assert_owns_athlete(identity, dict(row)["athlete_id"], conn)
-        conn.execute("DELETE FROM meal_plan_selections WHERE id = ?", (item_id,))
+        conn.execute("DELETE FROM meal_plan_selections WHERE id = %s", (item_id,))
         conn.commit()
         return None
     finally:

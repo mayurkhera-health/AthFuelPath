@@ -18,6 +18,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Optional
 
+import psycopg
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
@@ -87,12 +88,17 @@ def _client_ip(request: Request) -> str:
 
 def _table_exists(conn, name: str) -> bool:
     return conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+        "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = %s",
+        (name,),
     ).fetchone() is not None
 
 
 def _has_col(conn, table: str, col: str) -> bool:
-    return any(r[1] == col for r in conn.execute(f"PRAGMA table_info({table})").fetchall())
+    return conn.execute(
+        "SELECT 1 FROM information_schema.columns "
+        "WHERE table_schema = 'public' AND table_name = %s AND column_name = %s",
+        (table, col),
+    ).fetchone() is not None
 
 
 def _calendar_status(byga_url, playmetrics_url, imported_count, event_count) -> str:
@@ -126,31 +132,31 @@ def _active_parent_clause(conn, alias: str) -> str:
 def _count(conn, table: str, where: str, params) -> int:
     if not _table_exists(conn, table):
         return 0
-    row = conn.execute(f"SELECT COUNT(*) FROM {table} WHERE {where}", params).fetchone()
-    return row[0] if row else 0
+    row = conn.execute(f"SELECT COUNT(*) AS count FROM {table} WHERE {where}", params).fetchone()
+    return row["count"] if row else 0
 
 
 def _athlete_ids(conn, parent_id: int) -> list[int]:
-    rows = conn.execute("SELECT id FROM athletes WHERE parent_id = ?", (parent_id,)).fetchall()
-    return [r[0] for r in rows]
+    rows = conn.execute("SELECT id FROM athletes WHERE parent_id = %s", (parent_id,)).fetchall()
+    return [r["id"] for r in rows]
 
 
 # ── Cascade preview + delete ─────────────────────────────────────────────────
 def _preview_athlete(conn, athlete_id: int) -> dict:
     counts = {}
     for table in ATHLETE_CHILD_TABLES:
-        n = _count(conn, table, "athlete_id = ?", (athlete_id,))
+        n = _count(conn, table, "athlete_id = %s", (athlete_id,))
         if n:
             counts[table] = n
     # shopping_list_items via list_id → shopping_lists.athlete_id
     if _table_exists(conn, "shopping_lists"):
-        list_ids = [r[0] for r in conn.execute(
-            "SELECT id FROM shopping_lists WHERE athlete_id = ?", (athlete_id,)).fetchall()]
+        list_ids = [r["id"] for r in conn.execute(
+            "SELECT id FROM shopping_lists WHERE athlete_id = %s", (athlete_id,)).fetchall()]
         if list_ids and _table_exists(conn, "shopping_list_items"):
-            q = ",".join("?" * len(list_ids))
+            q = ",".join(["%s"] * len(list_ids))
             n = conn.execute(
-                f"SELECT COUNT(*) FROM shopping_list_items WHERE list_id IN ({q})", list_ids
-            ).fetchone()[0]
+                f"SELECT COUNT(*) AS count FROM shopping_list_items WHERE list_id IN ({q})", list_ids
+            ).fetchone()["count"]
             if n:
                 counts["shopping_list_items"] = n
         if list_ids:
@@ -162,16 +168,16 @@ def _delete_athlete(conn, athlete_id: int) -> None:
     """Delete every child row for one athlete, then the athlete. Caller owns the
     transaction/commit."""
     if _table_exists(conn, "shopping_lists"):
-        list_ids = [r[0] for r in conn.execute(
-            "SELECT id FROM shopping_lists WHERE athlete_id = ?", (athlete_id,)).fetchall()]
+        list_ids = [r["id"] for r in conn.execute(
+            "SELECT id FROM shopping_lists WHERE athlete_id = %s", (athlete_id,)).fetchall()]
         if list_ids and _table_exists(conn, "shopping_list_items"):
-            q = ",".join("?" * len(list_ids))
+            q = ",".join(["%s"] * len(list_ids))
             conn.execute(f"DELETE FROM shopping_list_items WHERE list_id IN ({q})", list_ids)
-        conn.execute("DELETE FROM shopping_lists WHERE athlete_id = ?", (athlete_id,))
+        conn.execute("DELETE FROM shopping_lists WHERE athlete_id = %s", (athlete_id,))
     for table in ATHLETE_CHILD_TABLES:
         if _table_exists(conn, table):
-            conn.execute(f"DELETE FROM {table} WHERE athlete_id = ?", (athlete_id,))
-    conn.execute("DELETE FROM athletes WHERE id = ?", (athlete_id,))
+            conn.execute(f"DELETE FROM {table} WHERE athlete_id = %s", (athlete_id,))
+    conn.execute("DELETE FROM athletes WHERE id = %s", (athlete_id,))
 
 
 def _merge_counts(dst: dict, src: dict) -> None:
@@ -220,8 +226,8 @@ def list_families(
     if search:
         like = f"%{search.strip()}%"
         where.append(
-            "(p.full_name LIKE ? OR p.email LIKE ? OR EXISTS("
-            "SELECT 1 FROM athletes a2 WHERE a2.parent_id = p.id AND a2.first_name LIKE ?))"
+            "(p.full_name LIKE %s OR p.email LIKE %s OR EXISTS("
+            "SELECT 1 FROM athletes a2 WHERE a2.parent_id = p.id AND a2.first_name LIKE %s))"
         )
         params += [like, like, like]
     if calendar == "byga":
@@ -232,20 +238,20 @@ def list_families(
         where.append("NOT EXISTS(SELECT 1 FROM athletes a3 WHERE a3.parent_id = p.id AND "
                      "(a3.byga_ics_url IS NOT NULL OR a3.playmetrics_ics_url IS NOT NULL))")
     if date_from:
-        where.append("p.created_at >= ?")
+        where.append("p.created_at >= %s")
         params.append(date_from)
     if date_to:
-        where.append("p.created_at <= ?")
+        where.append("p.created_at <= %s")
         params.append(date_to)
 
     having = ""
     if has_athletes == "yes":
-        having = "HAVING athlete_count > 0"
+        having = "HAVING COUNT(a.id) > 0"
     elif has_athletes == "no":
-        having = "HAVING athlete_count = 0"
+        having = "HAVING COUNT(a.id) = 0"
 
     order = {
-        "name": "p.full_name COLLATE NOCASE ASC",
+        "name": "LOWER(p.full_name) ASC",
         "last_active": "last_active DESC",
         "newest": "p.created_at DESC",
     }.get(sort, "p.created_at DESC")
@@ -260,7 +266,7 @@ def list_families(
                SUM(CASE WHEN a.byga_ics_url IS NOT NULL THEN 1 ELSE 0 END) AS byga_count,
                SUM(CASE WHEN a.playmetrics_ics_url IS NOT NULL THEN 1 ELSE 0 END) AS playmetrics_count,
                (SELECT COUNT(*) FROM events e JOIN athletes aa ON aa.id = e.athlete_id
-                 WHERE aa.parent_id = p.id AND e.synced_at IS NOT NULL AND e.synced_at > ?) AS recent_synced_count,
+                 WHERE aa.parent_id = p.id AND e.synced_at IS NOT NULL AND e.synced_at > %s) AS recent_synced_count,
                (SELECT COUNT(*) FROM events e2 JOIN athletes ab ON ab.id = e2.athlete_id
                  WHERE ab.parent_id = p.id AND e2.uid IS NOT NULL AND e2.uid != '') AS imported_count,
                (SELECT MAX(ts) FROM (
@@ -280,10 +286,10 @@ def list_families(
         # recent_synced_count subquery param comes first in the SELECT param order
         select_params = [stale_cutoff] + params
         total = conn.execute(
-            f"SELECT COUNT(*) FROM ({base})", select_params
-        ).fetchone()[0]
+            f"SELECT COUNT(*) AS count FROM ({base})", select_params
+        ).fetchone()["count"]
         rows = conn.execute(
-            f"{base} ORDER BY {order} LIMIT ? OFFSET ?",
+            f"{base} ORDER BY {order} LIMIT %s OFFSET %s",
             select_params + [limit, offset],
         ).fetchall()
 
@@ -301,7 +307,7 @@ def list_families(
                 "a.byga_ics_url, a.playmetrics_ics_url, "
                 "(SELECT COUNT(*) FROM events e WHERE e.athlete_id = a.id) AS event_count, "
                 "(SELECT COUNT(*) FROM events e WHERE e.athlete_id = a.id AND e.uid IS NOT NULL AND e.uid != '') AS imported_count "
-                "FROM athletes a WHERE a.parent_id = ? ORDER BY a.id",
+                "FROM athletes a WHERE a.parent_id = %s ORDER BY a.id",
                 (d["id"],),
             ).fetchall()
             chips = []
@@ -347,21 +353,21 @@ def _athlete_engagement(athlete: dict, conn) -> dict:
     from tables the app already writes — no new instrumentation."""
     aid = athlete["id"]
     meals = conn.execute(
-        "SELECT COUNT(*) AS n, MAX(logged_at) AS last FROM meal_logs WHERE athlete_id = ?",
+        "SELECT COUNT(*) AS n, MAX(logged_at) AS last FROM meal_logs WHERE athlete_id = %s",
         (aid,)).fetchone()
     water = conn.execute(
-        "SELECT COUNT(*) AS n, MAX(log_date) AS last FROM water_logs WHERE athlete_id = ?",
+        "SELECT COUNT(*) AS n, MAX(log_date) AS last FROM water_logs WHERE athlete_id = %s",
         (aid,)).fetchone()
     pantry = conn.execute(
         "SELECT week_start, COUNT(*) AS n, SUM(checked) AS done FROM pantry_list_items "
-        "WHERE athlete_id = ? GROUP BY week_start ORDER BY week_start DESC LIMIT 1",
+        "WHERE athlete_id = %s GROUP BY week_start ORDER BY week_start DESC LIMIT 1",
         (aid,)).fetchone()
     login = conn.execute(
-        "SELECT email, created_at FROM athlete_logins WHERE athlete_id = ?", (aid,)).fetchone()
+        "SELECT email, created_at FROM athlete_logins WHERE athlete_id = %s", (aid,)).fetchone()
     push_tokens = conn.execute(
-        "SELECT COUNT(*) FROM expo_push_tokens WHERE athlete_id = ?", (aid,)).fetchone()[0]
+        "SELECT COUNT(*) AS count FROM expo_push_tokens WHERE athlete_id = %s", (aid,)).fetchone()["count"]
     last_push = conn.execute(
-        "SELECT MAX(sent_at) FROM notification_log WHERE athlete_id = ?", (aid,)).fetchone()[0]
+        "SELECT MAX(sent_at) AS max_sent_at FROM notification_log WHERE athlete_id = %s", (aid,)).fetchone()["max_sent_at"]
     try:
         streak = streak_service.compute_current_streak(aid, conn)["current"]
     except Exception:   # engagement is informational — never fail the page over it
@@ -389,22 +395,22 @@ def _athlete_engagement(athlete: dict, conn) -> dict:
 def family_detail(parent_id: int, _: bool = Depends(require_admin)):
     conn = get_conn()
     try:
-        prow = conn.execute("SELECT * FROM parents WHERE id = ?", (parent_id,)).fetchone()
+        prow = conn.execute("SELECT * FROM parents WHERE id = %s", (parent_id,)).fetchone()
         if not prow:
             raise HTTPException(404, "Parent not found.")
         parent = dict(prow)
         parent["push_devices"] = [dict(r) for r in conn.execute(
             "SELECT platform, timezone, created_at FROM expo_push_tokens "
-            "WHERE parent_id = ? ORDER BY created_at DESC", (parent_id,)).fetchall()]
+            "WHERE parent_id = %s ORDER BY created_at DESC", (parent_id,)).fetchall()]
         parent["push_tokens"] = len(parent["push_devices"])
 
         athletes = []
-        for a in conn.execute("SELECT * FROM athletes WHERE parent_id = ? ORDER BY id", (parent_id,)).fetchall():
+        for a in conn.execute("SELECT * FROM athletes WHERE parent_id = %s ORDER BY id", (parent_id,)).fetchall():
             ad = dict(a)
             stats = conn.execute(
                 "SELECT source, COUNT(*) AS n, "
-                "SUM(CASE WHEN event_date >= date('now') THEN 1 ELSE 0 END) AS upcoming "
-                "FROM events WHERE athlete_id = ? GROUP BY source",
+                "SUM(CASE WHEN event_date >= sqlite_today() THEN 1 ELSE 0 END) AS upcoming "
+                "FROM events WHERE athlete_id = %s GROUP BY source",
                 (ad["id"],),
             ).fetchall()
             by_source, total_events, upcoming_events = {}, 0, 0
@@ -414,13 +420,13 @@ def family_detail(parent_id: int, _: bool = Depends(require_admin)):
                 total_events += sd["n"]
                 upcoming_events += sd["upcoming"] or 0
             last_synced = conn.execute(
-                "SELECT MAX(synced_at) FROM events WHERE athlete_id = ? AND synced_at IS NOT NULL",
+                "SELECT MAX(synced_at) AS max_synced_at FROM events WHERE athlete_id = %s AND synced_at IS NOT NULL",
                 (ad["id"],),
-            ).fetchone()[0]
+            ).fetchone()["max_synced_at"]
             imported_events = conn.execute(
-                "SELECT COUNT(*) FROM events WHERE athlete_id = ? AND uid IS NOT NULL AND uid != ''",
+                "SELECT COUNT(*) AS count FROM events WHERE athlete_id = %s AND uid IS NOT NULL AND uid != ''",
                 (ad["id"],),
-            ).fetchone()[0]
+            ).fetchone()["count"]
             ad["event_stats"] = {
                 "total": total_events, "upcoming": upcoming_events, "by_source": by_source,
                 "imported": imported_events, "manual": total_events - imported_events,
@@ -435,22 +441,22 @@ def family_detail(parent_id: int, _: bool = Depends(require_admin)):
         upcoming = []
         recent_ideas = []
         if athlete_ids:
-            q = ",".join("?" * len(athlete_ids))
+            q = ",".join(["%s"] * len(athlete_ids))
             upcoming = [dict(e) for e in conn.execute(
-                f"SELECT * FROM events WHERE athlete_id IN ({q}) AND event_date >= date('now') "
+                f"SELECT * FROM events WHERE athlete_id IN ({q}) AND event_date >= sqlite_today() "
                 f"ORDER BY event_date, start_time LIMIT 5", athlete_ids
             ).fetchall()]
         # Feature ideas: match by any family athlete_id OR the parent's email.
         if _table_exists(conn, "feature_requests"):
             if athlete_ids:
-                q = ",".join("?" * len(athlete_ids))
+                q = ",".join(["%s"] * len(athlete_ids))
                 recent_ideas = [dict(f) for f in conn.execute(
-                    f"SELECT * FROM feature_requests WHERE athlete_id IN ({q}) OR lower(email) = lower(?) "
+                    f"SELECT * FROM feature_requests WHERE athlete_id IN ({q}) OR lower(email) = lower(%s) "
                     f"ORDER BY submitted_at DESC LIMIT 10", athlete_ids + [parent["email"]]
                 ).fetchall()]
             else:
                 recent_ideas = [dict(f) for f in conn.execute(
-                    "SELECT * FROM feature_requests WHERE lower(email) = lower(?) "
+                    "SELECT * FROM feature_requests WHERE lower(email) = lower(%s) "
                     "ORDER BY submitted_at DESC LIMIT 10", (parent["email"],)
                 ).fetchall()]
 
@@ -474,28 +480,30 @@ def family_detail(parent_id: int, _: bool = Depends(require_admin)):
 def update_parent(parent_id: int, data: ParentUpdate, _: bool = Depends(require_admin)):
     conn = get_conn()
     try:
-        row = conn.execute("SELECT * FROM parents WHERE id = ?", (parent_id,)).fetchone()
+        row = conn.execute("SELECT * FROM parents WHERE id = %s", (parent_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Parent not found.")
         fields, values, changed = [], [], {}
         if data.full_name is not None:
-            fields.append("full_name = ?"); values.append(data.full_name); changed["full_name"] = data.full_name
+            fields.append("full_name = %s"); values.append(data.full_name); changed["full_name"] = data.full_name
         if data.email is not None:
             email = data.email.strip().lower()
             if not _EMAIL_RE.match(email):
                 raise HTTPException(400, "Invalid email format.")
-            fields.append("email = ?"); values.append(email); changed["email"] = email
+            fields.append("email = %s"); values.append(email); changed["email"] = email
         if not fields:
             return dict(row)
         try:
-            conn.execute(f"UPDATE parents SET {', '.join(fields)} WHERE id = ?", values + [parent_id])
+            conn.execute(f"UPDATE parents SET {', '.join(fields)} WHERE id = %s", values + [parent_id])
             conn.commit()
+        except psycopg.errors.UniqueViolation:
+            conn.rollback()
+            raise HTTPException(409, "Another parent already uses that email.")
         except Exception as e:
-            if "UNIQUE" in str(e):
-                raise HTTPException(409, "Another parent already uses that email.")
+            conn.rollback()
             raise HTTPException(500, str(e))
         write_audit("update_parent", "parent", parent_id, changed)
-        return dict(conn.execute("SELECT * FROM parents WHERE id = ?", (parent_id,)).fetchone())
+        return dict(conn.execute("SELECT * FROM parents WHERE id = %s", (parent_id,)).fetchone())
     finally:
         conn.close()
 
@@ -505,7 +513,7 @@ def update_parent(parent_id: int, data: ParentUpdate, _: bool = Depends(require_
 def update_athlete(athlete_id: int, data: AthleteUpdate, _: bool = Depends(require_admin)):
     conn = get_conn()
     try:
-        row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
+        row = conn.execute("SELECT * FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
         allowed = ["first_name", "age", "gender", "weight_lbs", "height_ft", "height_in",
@@ -515,13 +523,13 @@ def update_athlete(athlete_id: int, data: AthleteUpdate, _: bool = Depends(requi
         payload = data.model_dump(exclude_unset=True)
         for key in allowed:
             if key in payload:
-                fields.append(f"{key} = ?"); values.append(payload[key]); changed[key] = payload[key]
+                fields.append(f"{key} = %s"); values.append(payload[key]); changed[key] = payload[key]
         if not fields:
             return dict(row)
-        conn.execute(f"UPDATE athletes SET {', '.join(fields)} WHERE id = ?", values + [athlete_id])
+        conn.execute(f"UPDATE athletes SET {', '.join(fields)} WHERE id = %s", values + [athlete_id])
         conn.commit()
         write_audit("update_athlete", "athlete", athlete_id, changed)
-        return dict(conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone())
+        return dict(conn.execute("SELECT * FROM athletes WHERE id = %s", (athlete_id,)).fetchone())
     finally:
         conn.close()
 
@@ -531,10 +539,10 @@ def update_athlete(athlete_id: int, data: AthleteUpdate, _: bool = Depends(requi
 def preview_delete_athlete(athlete_id: int, _: bool = Depends(require_admin)):
     conn = get_conn()
     try:
-        row = conn.execute("SELECT first_name FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
+        row = conn.execute("SELECT first_name FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
-        return {"athlete_id": athlete_id, "first_name": row[0], "counts": _preview_athlete(conn, athlete_id)}
+        return {"athlete_id": athlete_id, "first_name": row["first_name"], "counts": _preview_athlete(conn, athlete_id)}
     finally:
         conn.close()
 
@@ -543,7 +551,7 @@ def preview_delete_athlete(athlete_id: int, _: bool = Depends(require_admin)):
 def delete_athlete(athlete_id: int, _: bool = Depends(require_admin)):
     conn = get_conn()
     try:
-        row = conn.execute("SELECT first_name FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
+        row = conn.execute("SELECT first_name FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
         counts = _preview_athlete(conn, athlete_id)
@@ -551,7 +559,7 @@ def delete_athlete(athlete_id: int, _: bool = Depends(require_admin)):
             conn.execute("BEGIN")
             _delete_athlete(conn, athlete_id)
             write_audit("delete_athlete", "athlete", athlete_id,
-                        {"first_name": row[0], "cascade": counts}, conn=conn)
+                        {"first_name": row["first_name"], "cascade": counts}, conn=conn)
             conn.commit()
         except Exception as e:
             conn.rollback()
@@ -568,7 +576,7 @@ def _preview_parent(conn, parent_id: int) -> dict:
     for aid in athlete_ids:
         _merge_counts(counts, _preview_athlete(conn, aid))
     for table, col in PARENT_CHILD_TABLES:
-        n = _count(conn, table, f"{col} = ?", (parent_id,))
+        n = _count(conn, table, f"{col} = %s", (parent_id,))
         if n:
             counts[f"{table}:{col}"] = counts.get(f"{table}:{col}", 0) + n
     return counts
@@ -578,10 +586,10 @@ def _preview_parent(conn, parent_id: int) -> dict:
 def preview_delete_parent(parent_id: int, _: bool = Depends(require_admin)):
     conn = get_conn()
     try:
-        row = conn.execute("SELECT full_name FROM parents WHERE id = ?", (parent_id,)).fetchone()
+        row = conn.execute("SELECT full_name FROM parents WHERE id = %s", (parent_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Parent not found.")
-        return {"parent_id": parent_id, "full_name": row[0], "counts": _preview_parent(conn, parent_id)}
+        return {"parent_id": parent_id, "full_name": row["full_name"], "counts": _preview_parent(conn, parent_id)}
     finally:
         conn.close()
 
@@ -592,7 +600,7 @@ def delete_parent(parent_id: int, data: DeleteConfirm, _: bool = Depends(require
         raise HTTPException(400, "Type DELETE to confirm parent deletion.")
     conn = get_conn()
     try:
-        row = conn.execute("SELECT full_name FROM parents WHERE id = ?", (parent_id,)).fetchone()
+        row = conn.execute("SELECT full_name FROM parents WHERE id = %s", (parent_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Parent not found.")
         counts = _preview_parent(conn, parent_id)
@@ -602,10 +610,10 @@ def delete_parent(parent_id: int, data: DeleteConfirm, _: bool = Depends(require
                 _delete_athlete(conn, aid)
             for table, col in PARENT_CHILD_TABLES:
                 if _table_exists(conn, table):
-                    conn.execute(f"DELETE FROM {table} WHERE {col} = ?", (parent_id,))
-            conn.execute("DELETE FROM parents WHERE id = ?", (parent_id,))
+                    conn.execute(f"DELETE FROM {table} WHERE {col} = %s", (parent_id,))
+            conn.execute("DELETE FROM parents WHERE id = %s", (parent_id,))
             write_audit("delete_parent", "parent", parent_id,
-                        {"full_name": row[0], "cascade": counts}, conn=conn)
+                        {"full_name": row["full_name"], "cascade": counts}, conn=conn)
             conn.commit()
         except Exception as e:
             conn.rollback()

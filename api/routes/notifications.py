@@ -52,13 +52,13 @@ def register_expo_token(data: ExpoTokenPayload, identity=Depends(require_session
         # side the current call doesn't mention, so one token can carry both ids.
         conn.execute(
             """INSERT INTO expo_push_tokens (athlete_id, parent_id, token, platform, timezone)
-               VALUES (?, ?, ?, ?, ?)
+               VALUES (%s, %s, %s, %s, %s)
                ON CONFLICT(token) DO UPDATE SET
                athlete_id=COALESCE(excluded.athlete_id, expo_push_tokens.athlete_id),
                parent_id=COALESCE(excluded.parent_id, expo_push_tokens.parent_id),
                platform=excluded.platform,
                timezone=excluded.timezone,
-               updated_at=datetime('now')""",
+               updated_at=sqlite_now()""",
             (data.athlete_id, data.parent_id, data.token, data.platform, data.timezone),
         )
         # Prune stale tokens for this profile (older than 30 days, different token).
@@ -67,15 +67,15 @@ def register_expo_token(data: ExpoTokenPayload, identity=Depends(require_session
         if data.parent_id:
             conn.execute(
                 """DELETE FROM expo_push_tokens
-                   WHERE parent_id = ? AND token != ?
-                   AND datetime(COALESCE(updated_at, created_at)) < datetime('now', '-30 days')""",
+                   WHERE parent_id = %s AND token != %s
+                   AND COALESCE(updated_at, created_at) < to_char((now() AT TIME ZONE 'UTC') - INTERVAL '30 days', 'YYYY-MM-DD HH24:MI:SS')""",
                 (data.parent_id, data.token),
             )
         if data.athlete_id:
             conn.execute(
                 """DELETE FROM expo_push_tokens
-                   WHERE athlete_id = ? AND token != ?
-                   AND datetime(COALESCE(updated_at, created_at)) < datetime('now', '-30 days')""",
+                   WHERE athlete_id = %s AND token != %s
+                   AND COALESCE(updated_at, created_at) < to_char((now() AT TIME ZONE 'UTC') - INTERVAL '30 days', 'YYYY-MM-DD HH24:MI:SS')""",
                 (data.athlete_id, data.token),
             )
         conn.commit()
@@ -105,11 +105,11 @@ def update_fueliq_notif_prefs(data: FuelIQNotifPrefs):
     try:
         conn.execute(
             """INSERT INTO fueliq_notification_prefs (athlete_id, morning_enabled, pregame_enabled)
-               VALUES (?, ?, ?)
+               VALUES (%s, %s, %s)
                ON CONFLICT(athlete_id) DO UPDATE SET
                morning_enabled = excluded.morning_enabled,
                pregame_enabled = excluded.pregame_enabled,
-               updated_at      = datetime('now')""",
+               updated_at      = sqlite_now()""",
             (data.athlete_id, int(data.morning_enabled), int(data.pregame_enabled)),
         )
         conn.commit()
@@ -140,7 +140,7 @@ def update_notification_prefs(data: NotificationPrefsUpdate, identity=Depends(re
     try:
         table = "athletes" if data.profile_type == "athlete" else "parents"
         exists = conn.execute(
-            f"SELECT 1 FROM {table} WHERE id = ?", (data.profile_id,)
+            f"SELECT 1 FROM {table} WHERE id = %s", (data.profile_id,)
         ).fetchone()
         if not exists:
             raise HTTPException(404, f"{data.profile_type.capitalize()} not found.")
@@ -152,14 +152,14 @@ def update_notification_prefs(data: NotificationPrefsUpdate, identity=Depends(re
             """INSERT INTO notification_prefs
                    (profile_type, profile_id, training_days, game_days,
                     quiet_hours_enabled, quiet_start, quiet_end)
-               VALUES (?, ?, ?, ?, ?, ?, ?)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)
                ON CONFLICT(profile_type, profile_id) DO UPDATE SET
                    training_days       = excluded.training_days,
                    game_days           = excluded.game_days,
                    quiet_hours_enabled = excluded.quiet_hours_enabled,
                    quiet_start         = excluded.quiet_start,
                    quiet_end           = excluded.quiet_end,
-                   updated_at          = datetime('now')""",
+                   updated_at          = sqlite_now()""",
             (data.profile_type, data.profile_id, int(data.training_days), int(data.game_days),
              int(data.quiet_hours_enabled), data.quiet_start, data.quiet_end),
         )
@@ -180,7 +180,7 @@ def subscribe(data: PushSubscription):
     try:
         conn.execute(
             """INSERT INTO push_subscriptions (athlete_id, endpoint, p256dh, auth)
-               VALUES (?, ?, ?, ?)
+               VALUES (%s, %s, %s, %s)
                ON CONFLICT(athlete_id, endpoint) DO UPDATE SET
                p256dh=excluded.p256dh, auth=excluded.auth""",
             (data.athlete_id, data.endpoint, data.p256dh, data.auth),
@@ -196,7 +196,7 @@ def get_prefs(athlete_id: int):
     conn = get_conn()
     try:
         row = conn.execute(
-            "SELECT * FROM push_subscriptions WHERE athlete_id = ? ORDER BY id DESC LIMIT 1",
+            "SELECT * FROM push_subscriptions WHERE athlete_id = %s ORDER BY id DESC LIMIT 1",
             (athlete_id,),
         ).fetchone()
         if not row:
@@ -217,9 +217,9 @@ def update_prefs(athlete_id: int, prefs: NotificationPrefs):
     try:
         conn.execute(
             """UPDATE push_subscriptions SET
-               remind_pregame_meal=?, remind_pregame_snack=?,
-               remind_meal_log=?, remind_hydration=?
-               WHERE athlete_id=?""",
+               remind_pregame_meal=%s, remind_pregame_snack=%s,
+               remind_meal_log=%s, remind_hydration=%s
+               WHERE athlete_id=%s""",
             (prefs.remind_pregame_meal, prefs.remind_pregame_snack,
              prefs.remind_meal_log, prefs.remind_hydration, athlete_id),
         )
@@ -233,7 +233,7 @@ def update_prefs(athlete_id: int, prefs: NotificationPrefs):
 def unsubscribe(athlete_id: int):
     conn = get_conn()
     try:
-        conn.execute("DELETE FROM push_subscriptions WHERE athlete_id = ?", (athlete_id,))
+        conn.execute("DELETE FROM push_subscriptions WHERE athlete_id = %s", (athlete_id,))
         conn.commit()
         return {"message": "Unsubscribed from push notifications."}
     finally:

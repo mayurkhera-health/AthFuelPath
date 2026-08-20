@@ -117,7 +117,7 @@ def assert_owns_athlete(identity: SessionIdentity, athlete_id: int, conn) -> Non
         if identity.athlete_id == athlete_id:
             return
         raise HTTPException(403, "Not authorized for this athlete.")
-    row = conn.execute("SELECT parent_id FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
+    row = conn.execute("SELECT parent_id FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
     if not row:
         raise HTTPException(404, "Athlete not found.")
     if dict(row)["parent_id"] != identity.parent_id:

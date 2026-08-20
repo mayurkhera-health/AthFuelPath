@@ -7,7 +7,7 @@ def queue_nutrient_resolution(log_id: int, conn) -> None:
     The athlete client never receives the macro numbers — only nutrient_status.
     """
     conn.execute(
-        "UPDATE window_logs SET nutrient_status = 'pending' WHERE id = ?",
+        "UPDATE window_logs SET nutrient_status = 'pending' WHERE id = %s",
         (log_id,),
     )
     conn.commit()

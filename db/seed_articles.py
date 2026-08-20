@@ -250,7 +250,7 @@ def run():
     skipped = 0
     for art in ARTICLES:
         existing = conn.execute(
-            "SELECT id FROM articles WHERE title = ?", (art["title"],)
+            "SELECT id FROM articles WHERE title = %s", (art["title"],)
         ).fetchone()
         if existing:
             skipped += 1
@@ -259,7 +259,7 @@ def run():
             """INSERT INTO articles
                (title, summary, body_markdown, category, audience,
                 read_time_min, author, science_source, published_date, is_active)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (
                 art["title"], art["summary"], art["body_markdown"],
                 art["category"], art["audience"], art["read_time_min"],

@@ -1,103 +1,64 @@
 """
-App startup: lightweight DB migrations + knowledge ingest.
-Runs on every deploy so production stays in sync without manual fly ssh steps.
+App startup (migration/postgres-cloud-run): DB readiness check + knowledge
+ingest. Schema creation/migration is NOT the API's job anymore — the app
+ASSUMES db/postgres_migrate.py has already been run successfully against the
+target database (by the deploy pipeline / operator), same as any normal
+production service. If the schema isn't there, startup fails loudly instead
+of silently trying to create it and serving traffic against a wrong/partial
+schema.
+
+This intentionally removes the old SQLite-era behavior of
+_ensure_knowledge_tables()/PRAGMA-based ALTER TABLE column patching at every
+boot — that responsibility now lives entirely in db/postgres/NNN_*.sql.
 """
 
 from __future__ import annotations
 
 import logging
-import sqlite3
 from pathlib import Path
 
-from api.database import DB_PATH, get_conn
+from api.database import get_conn
+from db.postgres_migrate import latest_applied_version
 
 logger = logging.getLogger(__name__)
 
 KNOWLEDGE_DIR = Path(__file__).resolve().parent.parent / "knowledge"
 
 
-def _ensure_knowledge_tables(conn: sqlite3.Connection) -> None:
-    conn.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS knowledge_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            slug TEXT UNIQUE NOT NULL,
-            title TEXT NOT NULL,
-            category TEXT NOT NULL,
-            source TEXT,
-            source_urls TEXT,
-            last_reviewed_date TEXT,
-            organization TEXT,
-            applicable_age_range TEXT,
-            tags TEXT,
-            review_status TEXT DEFAULT 'draft',
-            version INTEGER DEFAULT 1,
-            file_path TEXT NOT NULL,
-            ingested_at TEXT DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS knowledge_chunks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            item_id INTEGER REFERENCES knowledge_items(id) ON DELETE CASCADE,
-            chunk_index INTEGER NOT NULL,
-            heading TEXT,
-            content TEXT NOT NULL,
-            embedding TEXT,
-            embedding_model TEXT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_item
-            ON knowledge_chunks(item_id);
-
-        CREATE INDEX IF NOT EXISTS idx_knowledge_items_status
-            ON knowledge_items(review_status);
-        """
-    )
+class StartupError(RuntimeError):
+    """Raised when the app cannot safely serve traffic. Startup must fail
+    loudly on this — never log-and-continue for a DB/schema problem."""
 
 
-def ensure_schema() -> None:
-    """Apply idempotent schema fixes for existing production databases."""
-    conn = get_conn()
+def verify_db_ready() -> None:
+    """Fail loudly if the database is unreachable or hasn't been migrated.
+    This is the Cloud Run equivalent of the old 'just create tables if
+    missing' behavior — except now a missing schema is treated as a
+    deployment error, not something the API process should paper over."""
     try:
-        _ensure_knowledge_tables(conn)
+        conn = get_conn()
+        try:
+            conn.execute("SELECT 1")
+        finally:
+            conn.close()
+    except Exception as exc:
+        raise StartupError(f"Database is not reachable: {exc}") from exc
 
-        cols = {
-            row[1]
-            for row in conn.execute("PRAGMA table_info(knowledge_items)").fetchall()
-        }
-        if cols and "organization" not in cols:
-            conn.execute("ALTER TABLE knowledge_items ADD COLUMN organization TEXT")
-            logger.info("Added knowledge_items.organization column")
-
-        chunk_cols = {
-            row[1]
-            for row in conn.execute("PRAGMA table_info(knowledge_chunks)").fetchall()
-        }
-        if chunk_cols and "embedding" not in chunk_cols:
-            conn.execute("ALTER TABLE knowledge_chunks ADD COLUMN embedding TEXT")
-            logger.info("Added knowledge_chunks.embedding column")
-        if chunk_cols and "embedding_model" not in chunk_cols:
-            conn.execute("ALTER TABLE knowledge_chunks ADD COLUMN embedding_model TEXT")
-            logger.info("Added knowledge_chunks.embedding_model column")
-
-        selection_cols = {
-            row[1]
-            for row in conn.execute("PRAGMA table_info(meal_plan_selections)").fetchall()
-        }
-        if selection_cols and "recipe_json" not in selection_cols:
-            conn.execute("ALTER TABLE meal_plan_selections ADD COLUMN recipe_json TEXT")
-            logger.info("Added meal_plan_selections.recipe_json column")
-
-        conn.commit()
-    finally:
-        conn.close()
+    version = latest_applied_version()
+    if version is None:
+        raise StartupError(
+            "No applied migrations found (schema_migrations is empty or missing). "
+            "Run `python -m db.postgres_migrate` against this database before starting the API."
+        )
+    logger.info("Database ready — schema_migrations at version %s", version)
 
 
 def ensure_knowledge_ingested(force: bool = False) -> None:
     """
-    Ingest bundled knowledge/*.md into SQLite.
+    Ingest bundled knowledge/*.md into the database.
     Skips when approved chunks already exist unless force=True.
+    Non-critical: a failure here logs and does not block startup (matches
+    prior behavior — see run_startup()'s try/except).
     """
     from api.services.knowledge.ingest import ingest_all
 
@@ -108,10 +69,10 @@ def ensure_knowledge_ingested(force: bool = False) -> None:
     conn = get_conn()
     try:
         chunk_count = conn.execute(
-            """SELECT COUNT(*) FROM knowledge_chunks kc
+            """SELECT COUNT(*) AS count FROM knowledge_chunks kc
                JOIN knowledge_items ki ON kc.item_id = ki.id
                WHERE ki.review_status = 'approved'"""
-        ).fetchone()[0]
+        ).fetchone()["count"]
     finally:
         conn.close()
 
@@ -126,17 +87,14 @@ def ensure_knowledge_ingested(force: bool = False) -> None:
     total_chunks = sum(r.get("chunks", 0) for r in ok)
     logger.info(
         "Knowledge ingest: %s files, %s chunks (%s skipped, %s errors)",
-        len(ok),
-        total_chunks,
-        len(skipped),
-        len(errors),
+        len(ok), total_chunks, len(skipped), len(errors),
     )
     for err in errors:
         logger.error("Knowledge ingest error: %s", err)
 
 
 def ensure_knowledge_embeddings() -> None:
-    """Backfill Bedrock embeddings for ingested chunks missing vectors."""
+    """Backfill embeddings for ingested chunks missing vectors. Non-critical."""
     from api.services.knowledge.retrieval import backfill_missing_embeddings
 
     try:
@@ -148,9 +106,19 @@ def ensure_knowledge_embeddings() -> None:
 
 
 def run_startup() -> None:
-    """Called once when the API process starts."""
-    if not DB_PATH.parent.exists():
-        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    ensure_schema()
-    ensure_knowledge_ingested()
-    ensure_knowledge_embeddings()
+    """Called once when the API process starts.
+
+    verify_db_ready() is CRITICAL — its exception is allowed to propagate and
+    stop the process (see api/main.py's lifespan, which no longer swallows
+    startup exceptions the way the old SQLite version did). Knowledge
+    ingest/embeddings remain best-effort/non-critical, matching prior
+    behavior — the app can serve fueling/schedule/etc. traffic even if the
+    knowledge base isn't ready yet.
+    """
+    verify_db_ready()
+
+    try:
+        ensure_knowledge_ingested()
+        ensure_knowledge_embeddings()
+    except Exception:
+        logger.exception("Knowledge ingest/embeddings failed — coach knowledge base may be unavailable")

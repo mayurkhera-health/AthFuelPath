@@ -1,6 +1,5 @@
 import re
 import json
-import sqlite3
 from datetime import datetime
 from pathlib import Path
 
@@ -87,7 +86,7 @@ def ingest_file(file_path: str) -> dict:
             """INSERT INTO knowledge_items
                (slug, title, category, source, source_urls, organization, last_reviewed_date,
                 applicable_age_range, tags, review_status, version, file_path, ingested_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                ON CONFLICT(slug) DO UPDATE SET
                  title = excluded.title,
                  category = excluded.category,
@@ -120,11 +119,11 @@ def ingest_file(file_path: str) -> dict:
         conn.commit()
 
         item_row = conn.execute(
-            "SELECT id FROM knowledge_items WHERE slug = ?", (slug,)
+            "SELECT id FROM knowledge_items WHERE slug = %s", (slug,)
         ).fetchone()
         item_id = item_row["id"]
 
-        conn.execute("DELETE FROM knowledge_chunks WHERE item_id = ?", (item_id,))
+        conn.execute("DELETE FROM knowledge_chunks WHERE item_id = %s", (item_id,))
         for i, chunk in enumerate(chunks):
             embedding_json = None
             try:
@@ -134,7 +133,7 @@ def ingest_file(file_path: str) -> dict:
             conn.execute(
                 """INSERT INTO knowledge_chunks
                    (item_id, chunk_index, heading, content, embedding, embedding_model)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
+                   VALUES (%s, %s, %s, %s, %s, %s)""",
                 (
                     item_id,
                     i,

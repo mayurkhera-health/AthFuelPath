@@ -21,7 +21,7 @@ def analyze_photo_meal(data: PhotoMealAnalyzeRequest):
         raise HTTPException(400, "Please provide a valid base64-encoded image.")
     conn = get_conn()
     try:
-        row = conn.execute("SELECT * FROM athletes WHERE id = ?", (data.athlete_id,)).fetchone()
+        row = conn.execute("SELECT * FROM athletes WHERE id = %s", (data.athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
         athlete = dict(row)
@@ -56,7 +56,7 @@ def analyze_voice_meal(data: VoiceMealAnalyzeRequest):
         raise HTTPException(400, "Please provide a meal description (at least 3 characters).")
     conn = get_conn()
     try:
-        row = conn.execute("SELECT * FROM athletes WHERE id = ?", (data.athlete_id,)).fetchone()
+        row = conn.execute("SELECT * FROM athletes WHERE id = %s", (data.athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
         athlete = dict(row)
@@ -81,19 +81,20 @@ def analyze_voice_meal(data: VoiceMealAnalyzeRequest):
 def log_meal(data: MealLogCreate):
     conn = get_conn()
     try:
-        if not conn.execute("SELECT id FROM athletes WHERE id = ?", (data.athlete_id,)).fetchone():
+        if not conn.execute("SELECT id FROM athletes WHERE id = %s", (data.athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
-        conn.execute(
+        cur = conn.execute(
             """INSERT INTO meal_logs
                (athlete_id, log_method, description, calories, carbs_g, protein_g,
                 fat_g, iron_mg, calcium_mg, water_oz, edamam_raw)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               RETURNING *""",
             (data.athlete_id, data.log_method, data.description, data.calories,
              data.carbs_g, data.protein_g, data.fat_g, data.iron_mg,
              data.calcium_mg, data.water_oz, data.edamam_raw),
         )
         conn.commit()
-        row = conn.execute("SELECT * FROM meal_logs WHERE rowid = last_insert_rowid()").fetchone()
+        row = cur.fetchone()
         return dict(row)
     finally:
         conn.close()
@@ -105,12 +106,12 @@ def get_meals(athlete_id: int, date: str = None):
     try:
         if date:
             rows = conn.execute(
-                "SELECT * FROM meal_logs WHERE athlete_id = ? AND DATE(logged_at) = ? ORDER BY logged_at",
+                "SELECT * FROM meal_logs WHERE athlete_id = %s AND DATE(logged_at) = %s ORDER BY logged_at",
                 (athlete_id, date),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM meal_logs WHERE athlete_id = ? ORDER BY logged_at DESC LIMIT 50",
+                "SELECT * FROM meal_logs WHERE athlete_id = %s ORDER BY logged_at DESC LIMIT 50",
                 (athlete_id,),
             ).fetchall()
         return [dict(r) for r in rows]
@@ -122,9 +123,9 @@ def get_meals(athlete_id: int, date: str = None):
 def delete_meal(meal_id: int):
     conn = get_conn()
     try:
-        if not conn.execute("SELECT id FROM meal_logs WHERE id = ?", (meal_id,)).fetchone():
+        if not conn.execute("SELECT id FROM meal_logs WHERE id = %s", (meal_id,)).fetchone():
             raise HTTPException(404, "Meal log not found.")
-        conn.execute("DELETE FROM meal_logs WHERE id = ?", (meal_id,))
+        conn.execute("DELETE FROM meal_logs WHERE id = %s", (meal_id,))
         conn.commit()
         return {"message": "Meal log deleted.", "meal_id": meal_id}
     finally:

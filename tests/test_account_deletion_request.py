@@ -64,7 +64,7 @@ def test_request_persists_and_emails_the_team(client):
     assert body["email_sent"] is True
 
     row = get_conn().execute(
-        "SELECT parent_id, parent_name, parent_email, athlete_names FROM account_deletion_requests WHERE id = ?",
+        "SELECT parent_id, parent_name, parent_email, athlete_names FROM account_deletion_requests WHERE id = %s",
         (body["id"],),
     ).fetchone()
     assert row["parent_id"] == parent_id
@@ -90,8 +90,8 @@ def test_nothing_is_actually_deleted(client):
     assert r.status_code == 200, r.text
 
     conn = get_conn()
-    assert conn.execute("SELECT id FROM parents WHERE id = ?", (parent_id,)).fetchone() is not None
-    assert conn.execute("SELECT id FROM athletes WHERE id = ?", (athlete_ids[0],)).fetchone() is not None
+    assert conn.execute("SELECT id FROM parents WHERE id = %s", (parent_id,)).fetchone() is not None
+    assert conn.execute("SELECT id FROM athletes WHERE id = %s", (athlete_ids[0],)).fetchone() is not None
 
 
 def test_request_persists_even_when_email_fails(client):
@@ -104,7 +104,7 @@ def test_request_persists_even_when_email_fails(client):
     assert r.status_code == 200, r.text
     assert r.json()["email_sent"] is False
     row = get_conn().execute(
-        "SELECT id FROM account_deletion_requests WHERE parent_id = ?", (parent_id,)
+        "SELECT id FROM account_deletion_requests WHERE parent_id = %s", (parent_id,)
     ).fetchone()
     assert row is not None, "request must be saved even if the email send fails"
 

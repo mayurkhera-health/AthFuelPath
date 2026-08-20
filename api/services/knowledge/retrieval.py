@@ -135,7 +135,7 @@ def _persist_chunk_embedding(chunk_id: int, vector: list[float]) -> None:
     conn = get_conn()
     try:
         conn.execute(
-            "UPDATE knowledge_chunks SET embedding = ?, embedding_model = ? WHERE id = ?",
+            "UPDATE knowledge_chunks SET embedding = %s, embedding_model = %s WHERE id = %s",
             (pack_embedding(vector), EMBEDDING_MODEL, chunk_id),
         )
         conn.commit()
@@ -153,7 +153,7 @@ def backfill_missing_embeddings(limit: int = 200) -> int:
                JOIN knowledge_items ki ON kc.item_id = ki.id
                WHERE ki.review_status = 'approved'
                  AND (kc.embedding IS NULL OR kc.embedding = '')
-               LIMIT ?""",
+               LIMIT %s""",
             (limit,),
         ).fetchall()
     finally:

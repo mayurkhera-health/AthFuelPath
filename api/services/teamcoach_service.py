@@ -55,7 +55,7 @@ def get_coach_teams(coach_id: int) -> dict:
             """SELECT t.id, t.name, t.season, t.threshold_pct
                FROM teams t
                JOIN coach_team_access cta ON cta.team_id = t.id
-               WHERE cta.coach_id = ?
+               WHERE cta.coach_id = %s
                ORDER BY t.name""",
             (coach_id,),
         ).fetchall()
@@ -65,14 +65,14 @@ def get_coach_teams(coach_id: int) -> dict:
 
         for t in team_rows:
             joined_count = conn.execute(
-                "SELECT COUNT(*) AS cnt FROM roster_membership WHERE team_id = ?",
+                "SELECT COUNT(*) AS cnt FROM roster_membership WHERE team_id = %s",
                 (t["id"],),
             ).fetchone()["cnt"]
 
             snaps = conn.execute(
                 """SELECT week_start, players_above_threshold, roster_count, generated_at
                    FROM team_engagement_snapshot
-                   WHERE team_id = ?
+                   WHERE team_id = %s
                    ORDER BY week_start DESC LIMIT 2""",
                 (t["id"],),
             ).fetchall()
@@ -134,7 +134,7 @@ def assert_coach_owns_team(coach_id: int, team_id: int) -> None:
     conn = get_read_conn()
     try:
         row = conn.execute(
-            "SELECT 1 FROM coach_team_access WHERE coach_id=? AND team_id=?",
+            "SELECT 1 FROM coach_team_access WHERE coach_id=%s AND team_id=%s",
             (coach_id, team_id),
         ).fetchone()
     finally:
@@ -152,7 +152,7 @@ def get_roster(team_id: int) -> list[dict]:
                       rm.parent_consent_flag, rm.joined_at
                FROM roster_membership rm
                JOIN athletes a ON a.id = rm.athlete_id
-               WHERE rm.team_id = ?
+               WHERE rm.team_id = %s
                ORDER BY a.first_name""",
             (team_id,),
         ).fetchall()
@@ -183,7 +183,7 @@ def _team_has_any_real_log_data(conn, team_id: int) -> bool:
     has ever confirmed a fuel window."""
     row = conn.execute(
         """SELECT 1 FROM confirmations
-           WHERE athlete_id IN (SELECT athlete_id FROM roster_membership WHERE team_id = ?)
+           WHERE athlete_id IN (SELECT athlete_id FROM roster_membership WHERE team_id = %s)
            LIMIT 1""",
         (team_id,),
     ).fetchone()
@@ -193,7 +193,7 @@ def _team_has_any_real_log_data(conn, team_id: int) -> bool:
 def _last_logged(conn, athlete_id: int) -> str | None:
     row = conn.execute(
         """SELECT MAX(log_date) AS last_date FROM confirmations
-           WHERE athlete_id = ?""",
+           WHERE athlete_id = %s""",
         (athlete_id,),
     ).fetchone()
     return row["last_date"] if row and row["last_date"] else None
@@ -206,13 +206,13 @@ def _logging_status(conn, athlete_id: int) -> str:
     row = conn.execute(
         """SELECT COUNT(*) AS cnt
            FROM confirmations
-           WHERE athlete_id = ?
-             AND log_date >= date('now', '-7 days')""",
+           WHERE athlete_id = %s
+             AND log_date >= to_char((now() AT TIME ZONE 'UTC') - interval '7 days', 'YYYY-MM-DD')""",
         (athlete_id,),
     ).fetchone()
     if row is None or row["cnt"] == 0:
         any_row = conn.execute(
-            "SELECT 1 FROM confirmations WHERE athlete_id = ? LIMIT 1",
+            "SELECT 1 FROM confirmations WHERE athlete_id = %s LIMIT 1",
             (athlete_id,),
         ).fetchone()
         return "inactive" if any_row else "no_data"
@@ -266,7 +266,7 @@ def get_athlete_detail(team_id: int, athlete_id: int) -> dict | None:
                       a.competition_level, rm.joined_at
                FROM roster_membership rm
                JOIN athletes a ON a.id = rm.athlete_id
-               WHERE rm.team_id = ? AND rm.athlete_id = ?""",
+               WHERE rm.team_id = %s AND rm.athlete_id = %s""",
             (team_id, athlete_id),
         ).fetchone()
         if not row:
@@ -274,7 +274,7 @@ def get_athlete_detail(team_id: int, athlete_id: int) -> dict | None:
 
         logs = conn.execute(
             """SELECT DISTINCT log_date AS date FROM confirmations
-               WHERE athlete_id = ?
+               WHERE athlete_id = %s
                ORDER BY log_date DESC""",
             (athlete_id,),
         ).fetchall()
@@ -314,7 +314,7 @@ def get_engagement(team_id: int) -> dict:
             """SELECT week_start, threshold_pct, players_above_threshold,
                       roster_count, generated_at
                FROM team_engagement_snapshot
-               WHERE team_id = ?
+               WHERE team_id = %s
                ORDER BY week_start DESC
                LIMIT 2""",
             (team_id,),

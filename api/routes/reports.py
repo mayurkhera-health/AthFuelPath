@@ -27,21 +27,21 @@ def daily_fuel_score(athlete_id: int, date: str = None, identity=Depends(require
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)
-        row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
+        row = conn.execute("SELECT * FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
         athlete = dict(row)
         target_date = date or str(dt_date.today())
 
         targets_row = conn.execute(
-            "SELECT * FROM daily_targets WHERE athlete_id = ? AND target_date = ?",
+            "SELECT * FROM daily_targets WHERE athlete_id = %s AND target_date = %s",
             (athlete_id, target_date),
         ).fetchone()
         if not targets_row:
             return {"athlete_id": athlete_id, "date": target_date, "message": "No targets set. Add events first."}
 
         meals = conn.execute(
-            "SELECT * FROM meal_logs WHERE athlete_id = ? AND DATE(logged_at) = ?",
+            "SELECT * FROM meal_logs WHERE athlete_id = %s AND DATE(logged_at::timestamp) = %s",
             (athlete_id, target_date),
         ).fetchall()
 
@@ -69,7 +69,7 @@ def weekly_parent_report(athlete_id: int, week_start: str = None, identity=Depen
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)
-        row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
+        row = conn.execute("SELECT * FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
         athlete = dict(row)
@@ -86,11 +86,11 @@ def weekly_parent_report(athlete_id: int, week_start: str = None, identity=Depen
 
         for day in week_dates:
             targets_row = conn.execute(
-                "SELECT * FROM daily_targets WHERE athlete_id = ? AND target_date = ?",
+                "SELECT * FROM daily_targets WHERE athlete_id = %s AND target_date = %s",
                 (athlete_id, day),
             ).fetchone()
             meals = conn.execute(
-                "SELECT * FROM meal_logs WHERE athlete_id = ? AND DATE(logged_at) = ?",
+                "SELECT * FROM meal_logs WHERE athlete_id = %s AND DATE(logged_at::timestamp) = %s",
                 (athlete_id, day),
             ).fetchall()
             meal_list = [dict(m) for m in meals]
@@ -159,7 +159,7 @@ def tournament_readiness(athlete_id: int, tournament_date: str = None, identity=
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)
-        row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
+        row = conn.execute("SELECT * FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
         athlete = dict(row)
@@ -169,7 +169,7 @@ def tournament_readiness(athlete_id: int, tournament_date: str = None, identity=
         two_weeks_ago = str(today - timedelta(days=14))
 
         meals = conn.execute(
-            "SELECT * FROM meal_logs WHERE athlete_id = ? AND DATE(logged_at) >= ?",
+            "SELECT * FROM meal_logs WHERE athlete_id = %s AND DATE(logged_at::timestamp) >= %s",
             (athlete_id, two_weeks_ago),
         ).fetchall()
         avg_cal = sum(m["calories"] or 0 for m in meals) / max(14, 1)

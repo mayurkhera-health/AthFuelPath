@@ -59,16 +59,16 @@ def record_confirmation(
         # would otherwise pass ownership and silently insert an orphaned
         # confirmation row instead of erroring. Sibling routes in today.py
         # already do this same existence check; this one didn't.
-        if not conn.execute("SELECT id FROM athletes WHERE id = ?", (athlete_id,)).fetchone():
+        if not conn.execute("SELECT id FROM athletes WHERE id = %s", (athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
         conn.execute(
-            "INSERT OR IGNORE INTO confirmations (athlete_id, log_date, window_key, window_type) "
-            "VALUES (?, ?, ?, ?)",
+            "INSERT INTO confirmations (athlete_id, log_date, window_key, window_type) "
+            "VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING",
             (athlete_id, log_date, window_key, window_type),
         )
         conn.commit()
         row = conn.execute(
-            "SELECT * FROM confirmations WHERE athlete_id = ? AND window_key = ? AND log_date = ?",
+            "SELECT * FROM confirmations WHERE athlete_id = %s AND window_key = %s AND log_date = %s",
             (athlete_id, window_key, log_date),
         ).fetchone()
         streak = streak_service.register_confirmation(athlete_id, conn, today=log_date)
@@ -90,10 +90,10 @@ def unrecord_confirmation(
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)
-        if not conn.execute("SELECT id FROM athletes WHERE id = ?", (athlete_id,)).fetchone():
+        if not conn.execute("SELECT id FROM athletes WHERE id = %s", (athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
         conn.execute(
-            "DELETE FROM confirmations WHERE athlete_id = ? AND window_key = ? AND log_date = ?",
+            "DELETE FROM confirmations WHERE athlete_id = %s AND window_key = %s AND log_date = %s",
             (athlete_id, window_key, log_date),
         )
         conn.commit()

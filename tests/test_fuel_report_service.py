@@ -10,11 +10,11 @@ Regression tests for Fuel Report v2 — 7 critical spec invariants.
 7. Streak breaks on gap days — consecutive calendar days only
 """
 
-import sqlite3
 from datetime import date, timedelta
 
 import pytest
 
+from api.database import get_conn
 from api.services.fuel_report_service import (
     evaluate_safety_flag,
     compute_rates,
@@ -26,54 +26,35 @@ from api.services.fuel_report_service import (
 
 @pytest.fixture
 def cfg_conn():
-    """In-memory DB with report_config defaults — sufficient for flag + rate tests."""
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    conn.executescript("""
-        CREATE TABLE report_config (
-            key        TEXT PRIMARY KEY,
-            value      REAL NOT NULL,
-            description TEXT,
-            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-        INSERT INTO report_config VALUES ('load_high_game_days',          3.0, '', datetime('now'));
-        INSERT INTO report_config VALUES ('prefuel_rate_low',             0.5, '', datetime('now'));
-        INSERT INTO report_config VALUES ('recovery_rate_low',            0.5, '', datetime('now'));
-        INSERT INTO report_config VALUES ('hydration_rate_low',           0.5, '', datetime('now'));
-        INSERT INTO report_config VALUES ('streak_min_confirms_per_day',  1.0, '', datetime('now'));
-    """)
+    """Real DB connection — report_config defaults (load_high_game_days=3.0,
+    prefuel/recovery/hydration_rate_low=0.5, streak_min_confirms_per_day=1.0)
+    are already seeded by tests/conftest.py's module-scoped fixture via
+    db/postgres_seeds.py::seed_report_config, so no local setup is needed."""
+    conn = get_conn()
     yield conn
     conn.close()
 
 
 @pytest.fixture
 def streak_conn():
-    """In-memory DB with confirmations + report_config — for streak tests."""
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    conn.executescript("""
-        CREATE TABLE confirmations (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            athlete_id  INTEGER NOT NULL,
-            log_date    TEXT    NOT NULL,
-            window_key  TEXT    NOT NULL,
-            window_type TEXT    NOT NULL
-        );
-        CREATE TABLE report_config (
-            key        TEXT PRIMARY KEY,
-            value      REAL NOT NULL,
-            description TEXT,
-            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-        INSERT INTO report_config VALUES ('streak_min_confirms_per_day', 1.0, '', datetime('now'));
-    """)
+    """Real DB connection with a dummy athlete row — confirmations.athlete_id
+    is a real FK against athletes(id) in the Postgres schema. report_config
+    defaults (streak_min_confirms_per_day=1.0) are already seeded by
+    tests/conftest.py's module-scoped fixture."""
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO athletes (id, first_name, age, gender, weight_lbs, height_ft, height_in) "
+        "VALUES (1, 'Streak Athlete', 15, 'girl', 100, 5, 5) ON CONFLICT (id) DO NOTHING"
+    )
+    conn.execute("DELETE FROM confirmations WHERE athlete_id = 1")
+    conn.commit()
     yield conn
     conn.close()
 
 
 def _add_confirmation(conn, athlete_id, log_date, window_key="pre_event_meal", window_type="pre_fuel"):
     conn.execute(
-        "INSERT INTO confirmations (athlete_id, log_date, window_key, window_type) VALUES (?, ?, ?, ?)",
+        "INSERT INTO confirmations (athlete_id, log_date, window_key, window_type) VALUES (%s, %s, %s, %s)",
         (athlete_id, log_date, window_key, window_type),
     )
     conn.commit()
@@ -125,16 +106,7 @@ def test_flag_fires_at_most_once(cfg_conn):
 
 def test_hydration_rate_always_none(cfg_conn):
     """fuel_during is never a tappable window — hydration rate is always None, never 0.0."""
-    # Use a conn that has the confirmations table so the function can run fully
-    cfg_conn.executescript("""
-        CREATE TABLE IF NOT EXISTS confirmations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            athlete_id INTEGER,
-            log_date TEXT,
-            window_key TEXT,
-            window_type TEXT
-        );
-    """)
+    # confirmations already exists in the real schema — no local setup needed.
     applicable = {"2026-06-09": [("pre_event_meal", "pre_fuel")]}
     rates = compute_rates(
         athlete_id=1,
@@ -152,15 +124,7 @@ def test_none_rate_when_no_applicable_windows(cfg_conn):
     A week with no tappable windows returns None for all rates.
     None means 'not applicable this week', not 'applicable but zero confirmations'.
     """
-    cfg_conn.executescript("""
-        CREATE TABLE IF NOT EXISTS confirmations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            athlete_id INTEGER,
-            log_date TEXT,
-            window_key TEXT,
-            window_type TEXT
-        );
-    """)
+    # confirmations already exists in the real schema — no local setup needed.
     # All rest days — no tappable windows
     applicable = {
         "2026-06-09": [],

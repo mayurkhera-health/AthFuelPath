@@ -63,10 +63,10 @@ def _compute_streak(athlete_id: int, conn) -> int:
     d = today
     for _ in range(365):
         row = conn.execute(
-            "SELECT COUNT(*) FROM meal_logs WHERE athlete_id = ? AND DATE(logged_at) = ?",
+            "SELECT COUNT(*) AS count FROM meal_logs WHERE athlete_id = %s AND logged_at::date = %s",
             (athlete_id, d.isoformat()),
         ).fetchone()
-        if row and row[0] > 0:
+        if row and row["count"] > 0:
             streak += 1
             d -= timedelta(days=1)
         else:
@@ -110,7 +110,7 @@ def _rank_gaps(totals: dict, targets: dict, days: int, gender: str) -> list:
 def build_weekly_report(athlete_id: int, week_start: str, conn) -> dict:
     from api.services.claude_ai import prompt3_weekly_report_v2
 
-    row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
+    row = conn.execute("SELECT * FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
     if not row:
         raise ValueError(f"Athlete {athlete_id} not found")
     athlete = dict(row)
@@ -135,12 +135,12 @@ def build_weekly_report(athlete_id: int, week_start: str, conn) -> dict:
         is_future = day_date > date.today()
 
         targets_row = conn.execute(
-            "SELECT * FROM daily_targets WHERE athlete_id = ? AND target_date = ?",
+            "SELECT * FROM daily_targets WHERE athlete_id = %s AND target_date = %s",
             (athlete_id, day_str),
         ).fetchone()
 
         event_row = conn.execute(
-            "SELECT event_type, event_name FROM events WHERE athlete_id = ? AND event_date = ?",
+            "SELECT event_type, event_name FROM events WHERE athlete_id = %s AND event_date = %s",
             (athlete_id, day_str),
         ).fetchone()
         event_type = event_row["event_type"] if event_row else None
@@ -155,25 +155,25 @@ def build_weekly_report(athlete_id: int, week_start: str, conn) -> dict:
 
         # Window logs count → confirmed_count for the dot
         wl_row = conn.execute(
-            "SELECT COUNT(DISTINCT slot_name) FROM window_logs WHERE athlete_id = ? AND DATE(logged_at) = ?",
+            "SELECT COUNT(DISTINCT slot_name) AS count FROM window_logs WHERE athlete_id = %s AND logged_at::date = %s",
             (athlete_id, day_str),
         ).fetchone()
-        confirmed_count = wl_row[0] if wl_row else 0
+        confirmed_count = wl_row["count"] if wl_row else 0
 
         # Fall back to meal_logs if no window_logs
         if confirmed_count == 0:
             ml_row = conn.execute(
-                "SELECT COUNT(*) FROM meal_logs WHERE athlete_id = ? AND DATE(logged_at) = ?",
+                "SELECT COUNT(*) AS count FROM meal_logs WHERE athlete_id = %s AND logged_at::date = %s",
                 (athlete_id, day_str),
             ).fetchone()
-            if ml_row and ml_row[0] > 0:
+            if ml_row and ml_row["count"] > 0:
                 confirmed_count = 1
 
         # Past days always have at least one applicable window; future days have none
         applicable_count = 0 if is_future else 1
 
         meal_rows = conn.execute(
-            "SELECT * FROM meal_logs WHERE athlete_id = ? AND DATE(logged_at) = ?",
+            "SELECT * FROM meal_logs WHERE athlete_id = %s AND logged_at::date = %s",
             (athlete_id, day_str),
         ).fetchall()
 
@@ -230,7 +230,7 @@ def build_weekly_report(athlete_id: int, week_start: str, conn) -> dict:
     next_events = [
         dict(r) for r in conn.execute(
             "SELECT event_type, event_name, event_date FROM events "
-            "WHERE athlete_id = ? AND event_date BETWEEN ? AND ? ORDER BY event_date",
+            "WHERE athlete_id = %s AND event_date BETWEEN %s AND %s ORDER BY event_date",
             (athlete_id, next_week_start.isoformat(), next_week_end.isoformat()),
         ).fetchall()
     ]

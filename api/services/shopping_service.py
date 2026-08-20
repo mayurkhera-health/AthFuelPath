@@ -93,7 +93,7 @@ def fetch_week_events(athlete_id: int, week_start: str, conn) -> dict:
     for i in range(7):
         day = (sunday + timedelta(days=i)).isoformat()
         rows = conn.execute(
-            "SELECT * FROM events WHERE athlete_id = ? AND event_date = ? ORDER BY start_time",
+            "SELECT * FROM events WHERE athlete_id = %s AND event_date = %s ORDER BY start_time",
             (athlete_id, day),
         ).fetchall()
         result[day] = [dict(r) for r in rows]
@@ -135,12 +135,12 @@ def build_essentials(athlete_id: int, week_start: str, conn) -> dict:
 
     # Athlete + parent names
     athlete_row = conn.execute(
-        "SELECT first_name, parent_id FROM athletes WHERE id = ?", (athlete_id,)
+        "SELECT first_name, parent_id FROM athletes WHERE id = %s", (athlete_id,)
     ).fetchone()
     athlete_name = dict(athlete_row)["first_name"] if athlete_row else "Athlete"
     parent_id    = dict(athlete_row)["parent_id"]   if athlete_row else None
     parent_row   = conn.execute(
-        "SELECT full_name FROM parents WHERE id = ?", (parent_id,)
+        "SELECT full_name FROM parents WHERE id = %s", (parent_id,)
     ).fetchone() if parent_id else None
     parent_name  = dict(parent_row)["full_name"].split()[0] if parent_row else "Parent"
 
@@ -165,7 +165,7 @@ def build_essentials(athlete_id: int, week_start: str, conn) -> dict:
 
     # Load athlete preferences
     pref_rows = conn.execute(
-        "SELECT food_name, preference, category FROM athlete_food_prefs WHERE athlete_id = ?",
+        "SELECT food_name, preference, category FROM athlete_food_prefs WHERE athlete_id = %s",
         (athlete_id,),
     ).fetchall()
     excluded = {r["food_name"] for r in pref_rows if r["preference"] in ("disliked", "allergic")}
@@ -187,7 +187,7 @@ def build_essentials(athlete_id: int, week_start: str, conn) -> dict:
             continue
         foods_rows = conn.execute(
             "SELECT id, name, soft_hint, allergen_tags FROM fueling_foods "
-            "WHERE category = ? AND is_active = 1",
+            "WHERE category = %s AND is_active = 1",
             (cat,),
         ).fetchall()
 

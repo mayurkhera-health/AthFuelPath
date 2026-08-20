@@ -14,6 +14,13 @@ _persistent_memory_uri = None
 
 
 def init_db():
+    # RETIRED on migration/postgres-cloud-run: api/database.py is
+    # PostgreSQL-only now, so the sqlite3.connect() calls below would fail
+    # immediately. Kept as a no-op (not deleted) purely so the ~50 test
+    # files that still call `from db.setup import init_db; init_db()` keep
+    # working unmodified — tests/conftest.py's fixtures own schema/seed
+    # setup now (db/postgres_migrate.py + db/postgres_seeds.py).
+    return
     global _persistent_memory_conn, _persistent_memory_uri
     db_path = os.getenv("DB_PATH", str(Path(__file__).resolve().parent.parent / "fuelup.db"))
     if db_path == ":memory:":
@@ -369,7 +376,7 @@ def seed_fueling_foods(conn=None):
                 conn.execute(
                     """
                     INSERT INTO fueling_foods (name, category, role, allergen_tags, soft_hint, is_active)
-                    VALUES (?, ?, ?, ?, ?, 1)
+                    VALUES (%s, %s, %s, %s, %s, 1)
                     ON CONFLICT(name) DO UPDATE SET
                         category      = excluded.category,
                         role          = excluded.role,

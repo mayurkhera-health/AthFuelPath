@@ -793,7 +793,7 @@ def on_event_added_or_changed(athlete_id: int, event_date: str, conn) -> dict:
     Returns the updated engine result dict.
     """
     events = [dict(r) for r in conn.execute(
-        "SELECT * FROM events WHERE athlete_id = ? AND event_date = ? ORDER BY start_time",
+        "SELECT * FROM events WHERE athlete_id = %s AND event_date = %s ORDER BY start_time",
         (athlete_id, event_date),
     ).fetchall()]
     return generate_windows_for_day(athlete_id, event_date, events)
@@ -806,7 +806,7 @@ def scheduled_tap_window_keys(athlete_id: int, date_str: str, conn) -> list[str]
     this is the single source of truth for "how many windows were actually
     scheduled" (1-5 per the guardrails, never a fixed constant)."""
     events = [dict(r) for r in conn.execute(
-        "SELECT * FROM events WHERE athlete_id = ? AND event_date = ? ORDER BY start_time",
+        "SELECT * FROM events WHERE athlete_id = %s AND event_date = %s ORDER BY start_time",
         (athlete_id, date_str),
     ).fetchall()]
     result = generate_windows_for_day(athlete_id, date_str, events)

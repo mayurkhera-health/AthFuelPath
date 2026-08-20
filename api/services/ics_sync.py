@@ -28,6 +28,7 @@ from datetime import datetime, timedelta, timezone, date
 from urllib.parse import urlparse
 
 import httpx
+import psycopg
 from icalendar import Calendar
 
 from api.database import get_conn
@@ -252,7 +253,7 @@ def sync_platform(conn, athlete_id: int, platform: str, ics_url: str,
 
     # 2. Existing synced rows for this athlete + platform.
     existing_rows = conn.execute(
-        "SELECT * FROM events WHERE athlete_id = ? AND source = ?",
+        "SELECT * FROM events WHERE athlete_id = %s AND source = %s",
         (athlete_id, platform),
     ).fetchall()
     existing = {r["uid"]: dict(r) for r in existing_rows if r["uid"]}
@@ -277,14 +278,14 @@ def sync_platform(conn, athlete_id: int, platform: str, ics_url: str,
             # Ambiguous (>1 match) at either tier is left for INSERT to resolve.
             def _match_row(source_filter, params_extra=()):
                 count = conn.execute(
-                    f"SELECT COUNT(*) FROM events WHERE athlete_id=? AND event_name=? "
-                    f"AND event_date=? AND start_time=? AND {source_filter}",
+                    f"SELECT COUNT(*) AS count FROM events WHERE athlete_id=%s AND event_name=%s "
+                    f"AND event_date=%s AND start_time=%s AND {source_filter}",
                     (athlete_id, ev["event_name"], ev["event_date"], ev["start_time"], *params_extra),
-                ).fetchone()[0]
+                ).fetchone()["count"]
                 if count == 1:
                     return conn.execute(
-                        f"SELECT * FROM events WHERE athlete_id=? AND event_name=? "
-                        f"AND event_date=? AND start_time=? AND {source_filter}",
+                        f"SELECT * FROM events WHERE athlete_id=%s AND event_name=%s "
+                        f"AND event_date=%s AND start_time=%s AND {source_filter}",
                         (athlete_id, ev["event_name"], ev["event_date"], ev["start_time"], *params_extra),
                     ).fetchone()
                 if count > 1:
@@ -295,7 +296,7 @@ def sync_platform(conn, athlete_id: int, platform: str, ics_url: str,
                     )
                 return None
 
-            name_time_row = _match_row("source = ?", (platform,))
+            name_time_row = _match_row("source = %s", (platform,))
             if name_time_row is None:
                 name_time_row = _match_row("source = 'manual'")
             if name_time_row:
@@ -305,8 +306,8 @@ def sync_platform(conn, athlete_id: int, platform: str, ics_url: str,
                     uid, matched["id"], matched.get("source"),
                 )
                 cur = conn.execute(
-                    "UPDATE events SET uid=?, source=?, event_name=?, event_type=?, "
-                    "duration_hours=?, city=?, venue_name=?, intensity=?, synced_at=? WHERE id=?",
+                    "UPDATE events SET uid=%s, source=%s, event_name=%s, event_type=%s, "
+                    "duration_hours=%s, city=%s, venue_name=%s, intensity=%s, synced_at=%s WHERE id=%s",
                     (uid, platform, ev["event_name"], ev["event_type"], ev["duration_hours"],
                      ev["city"], ev["venue_name"], intensity, now_iso, matched["id"]),
                 )
@@ -334,7 +335,7 @@ def sync_platform(conn, athlete_id: int, platform: str, ics_url: str,
                     conn.execute(
                         "INSERT INTO events (athlete_id, event_name, event_type, event_date, "
                         "start_time, duration_hours, city, venue_name, intensity, uid, source, synced_at) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                         (athlete_id, ev["event_name"], ev["event_type"], ev["event_date"],
                          ev["start_time"], ev["duration_hours"], ev["city"], ev["venue_name"],
                          intensity, uid, platform, now_iso),
@@ -346,15 +347,16 @@ def sync_platform(conn, athlete_id: int, platform: str, ics_url: str,
                         "event_type": ev["event_type"],
                     })
                     affected_dates.add(ev["event_date"])
-                except Exception:
+                except psycopg.errors.UniqueViolation:
                     # Partial unique index (athlete_id, uid) — uid conflict.
                     # If the existing row is source='manual' (user previously
                     # uploaded a file), upgrade it to the platform source so the
                     # 6-hour job owns it going forward. Otherwise leave as-is.
+                    conn.rollback()
                     logger.debug("Insert skipped for uid %s", uid, exc_info=True)
                     upgraded = conn.execute(
-                        "UPDATE events SET source = ?, synced_at = ? "
-                        "WHERE athlete_id = ? AND uid = ? AND source = 'manual'",
+                        "UPDATE events SET source = %s, synced_at = %s "
+                        "WHERE athlete_id = %s AND uid = %s AND source = 'manual'",
                         (platform, now_iso, athlete_id, uid),
                     ).rowcount
                     if upgraded:
@@ -364,8 +366,8 @@ def sync_platform(conn, athlete_id: int, platform: str, ics_url: str,
             cur = existing[uid]
             if _needs_update(cur, ev):
                 conn.execute(
-                    "UPDATE events SET event_name=?, event_type=?, event_date=?, start_time=?, "
-                    "duration_hours=?, city=?, venue_name=?, intensity=?, synced_at=? WHERE id=?",
+                    "UPDATE events SET event_name=%s, event_type=%s, event_date=%s, start_time=%s, "
+                    "duration_hours=%s, city=%s, venue_name=%s, intensity=%s, synced_at=%s WHERE id=%s",
                     (ev["event_name"], ev["event_type"], ev["event_date"], ev["start_time"],
                      ev["duration_hours"], ev["city"], ev["venue_name"], intensity, now_iso, cur["id"]),
                 )
@@ -379,7 +381,7 @@ def sync_platform(conn, athlete_id: int, platform: str, ics_url: str,
     #    events (< cutoff) are preserved as history; manual events are never here.
     for uid, cur in existing.items():
         if uid not in desired and (cur["event_date"] or "") >= cutoff_date:
-            conn.execute("DELETE FROM events WHERE id = ?", (cur["id"],))
+            conn.execute("DELETE FROM events WHERE id = %s", (cur["id"],))
             counts["deleted"] += 1
             affected_dates.add(cur["event_date"])
 
@@ -390,6 +392,7 @@ def sync_platform(conn, athlete_id: int, platform: str, ics_url: str,
         try:
             on_event_added_or_changed(athlete_id, d, conn)
         except Exception:
+            conn.rollback()
             logger.warning("Window recompute failed (athlete %s, %s)", athlete_id, d, exc_info=True)
     conn.commit()
 
@@ -407,7 +410,7 @@ def _send_new_events_email(conn, athlete_id: int, platform: str, new_events: lis
         row = conn.execute(
             "SELECT a.first_name, p.email, p.full_name "
             "FROM athletes a JOIN parents p ON p.id = a.parent_id "
-            "WHERE a.id = ?",
+            "WHERE a.id = %s",
             (athlete_id,),
         ).fetchone()
         if not row or not row["email"]:
@@ -422,6 +425,7 @@ def _send_new_events_email(conn, athlete_id: int, platform: str, new_events: lis
         send_email(subject=subject, body=text_body, to=[row["email"]],
                    html=html_body, bcc=["mayurkhera@gmail.com"])
     except Exception:
+        conn.rollback()
         logger.warning("Failed to send new-events email (athlete %s, %s)",
                        athlete_id, platform, exc_info=True)
 
@@ -450,6 +454,7 @@ def run_calendar_sync_tick() -> None:
                             if counts["inserted"] > 0:
                                 _send_new_events_email(conn, row["id"], platform, counts["inserted_events"])
                     except Exception:
+                        conn.rollback()
                         logger.exception("Calendar sync crashed (athlete %s, %s)", row["id"], platform)
     finally:
         conn.close()

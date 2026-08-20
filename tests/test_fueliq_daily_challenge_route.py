@@ -16,12 +16,13 @@ from tests.conftest import auth_headers
 
 def _wipe(conn):
     conn.commit()
-    conn.execute("PRAGMA foreign_keys=OFF")
-    for (name,) in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall():
-        conn.execute(f"DELETE FROM {name}")
+    tables = [r["table_name"] for r in conn.execute(
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema='public' AND table_name != 'schema_migrations'"
+    ).fetchall()]
+    if tables:
+        conn.execute(f"TRUNCATE TABLE {', '.join(tables)} RESTART IDENTITY CASCADE")
     conn.commit()
-    conn.execute("PRAGMA foreign_keys=ON")
 
 
 @pytest.fixture
@@ -56,7 +57,7 @@ def _seed_challenge(conn, challenge_date, title="T1", verdict="myth"):
     conn.execute(
         "INSERT INTO fueliq_daily_challenges "
         "(challenge_date, title, hook, verdict, science_text, points) "
-        "VALUES (?, ?, 'hook', ?, 'science', 10)",
+        "VALUES (%s, %s, 'hook', %s, 'science', 10)",
         (challenge_date, title, verdict),
     )
     conn.commit()

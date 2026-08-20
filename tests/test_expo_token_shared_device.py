@@ -44,7 +44,7 @@ def _row_for_token(token):
     conn = get_conn()
     try:
         return conn.execute(
-            "SELECT athlete_id, parent_id FROM expo_push_tokens WHERE token = ?", (token,)
+            "SELECT athlete_id, parent_id FROM expo_push_tokens WHERE token = %s", (token,)
         ).fetchone()
     finally:
         conn.close()
@@ -132,7 +132,7 @@ def test_re_registering_with_the_same_ids_still_updates_platform_and_timezone(cl
 
     conn = get_conn()
     row = conn.execute(
-        "SELECT platform, timezone FROM expo_push_tokens WHERE token = ?", (shared_token,)
+        "SELECT platform, timezone FROM expo_push_tokens WHERE token = %s", (shared_token,)
     ).fetchone()
     conn.close()
     assert row["platform"] == "android"

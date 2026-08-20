@@ -49,7 +49,7 @@ def _seed_article(category="iron"):
     conn.execute(
         """INSERT INTO articles (title, summary, body_markdown, category, audience,
                read_time_min, author, published_date, is_active)
-           VALUES (?, ?, ?, ?, 'athlete', 3, 'Test Author', '2026-01-01', 1)""",
+           VALUES (%s, %s, %s, %s, 'athlete', 3, 'Test Author', '2026-01-01', 1)""",
         (f"Article about {category}", "summary", "body", category),
     )
     conn.commit()

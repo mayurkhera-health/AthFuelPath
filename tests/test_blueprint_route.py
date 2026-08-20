@@ -62,7 +62,7 @@ def test_blueprint_get_lazy_generates_when_null(client):
     """A never-generated athlete (background task was killed) self-heals on view."""
     aid = _make_athlete(client, age=13, gender="boy")  # age<14 → isolates from Task 1
     conn = get_conn()
-    conn.execute("UPDATE athletes SET blueprint_json=NULL WHERE id=?", (aid,))
+    conn.execute("UPDATE athletes SET blueprint_json=NULL WHERE id=%s", (aid,))
     conn.commit()
 
     r = client.get(f"/api/athletes/{aid}/blueprint", headers=auth_headers("athlete", athlete_id=aid))
@@ -72,7 +72,7 @@ def test_blueprint_get_lazy_generates_when_null(client):
 
     # Persisted: a follow-up read shows a real blueprint, not NULL / not a sentinel.
     row = get_conn().execute(
-        "SELECT blueprint_json FROM athletes WHERE id=?", (aid,)
+        "SELECT blueprint_json FROM athletes WHERE id=%s", (aid,)
     ).fetchone()
     assert row["blueprint_json"]
     assert "__status" not in json.loads(row["blueprint_json"])
@@ -93,7 +93,7 @@ def test_create_generates_blueprint_inline_not_via_background(client, monkeypatc
 
     assert called["bg"] is False, "create should not schedule the background task"
     row = get_conn().execute(
-        "SELECT blueprint_json FROM athletes WHERE id=?", (aid,)
+        "SELECT blueprint_json FROM athletes WHERE id=%s", (aid,)
     ).fetchone()
     assert row["blueprint_json"], "blueprint should be generated inline during create"
     assert "__status" not in json.loads(row["blueprint_json"])

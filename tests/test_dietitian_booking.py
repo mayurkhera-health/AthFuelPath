@@ -66,7 +66,7 @@ def test_booking_persists_and_emails_the_dietitian(client):
     assert body["email_sent"] is True
 
     row = get_conn().execute(
-        "SELECT athlete_id, session_type, about_athlete, reason FROM dietitian_bookings WHERE id = ?",
+        "SELECT athlete_id, session_type, about_athlete, reason FROM dietitian_bookings WHERE id = %s",
         (body["id"],),
     ).fetchone()
     assert row["athlete_id"] == aid
@@ -97,7 +97,7 @@ def test_booking_persists_even_when_email_fails(client):
     assert r.json()["email_sent"] is False
 
     row = get_conn().execute(
-        "SELECT id FROM dietitian_bookings WHERE athlete_id = ?", (aid,)
+        "SELECT id FROM dietitian_bookings WHERE athlete_id = %s", (aid,)
     ).fetchone()
     assert row is not None, "booking must be saved even if the email send fails"
 

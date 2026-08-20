@@ -72,14 +72,14 @@ def import_daily_challenges(conn, items: list[dict], today: date | None = None) 
     inserted = []
     for item in items:
         exists = conn.execute(
-            "SELECT 1 FROM fueliq_daily_challenges WHERE title = ?", (item["title"],)
+            "SELECT 1 FROM fueliq_daily_challenges WHERE title = %s", (item["title"],)
         ).fetchone()
         if exists:
             continue
         conn.execute(
             "INSERT INTO fueliq_daily_challenges "
             "(challenge_date, title, hook, verdict, science_text, source_citation, points) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
             (
                 next_date.isoformat(),
                 item["title"],
@@ -98,7 +98,7 @@ def import_daily_challenges(conn, items: list[dict], today: date | None = None) 
 
 def _qualifying_dates(athlete_id: int, conn) -> set:
     rows = conn.execute(
-        "SELECT DISTINCT challenge_date AS d FROM fueliq_daily_challenge_answers WHERE athlete_id = ?",
+        "SELECT DISTINCT challenge_date AS d FROM fueliq_daily_challenge_answers WHERE athlete_id = %s",
         (athlete_id,),
     ).fetchall()
     return {r["d"] for r in rows}
@@ -136,10 +136,10 @@ def _register_streak(athlete_id: int, conn, today: date) -> dict:
     conn.execute(
         "INSERT INTO fueliq_daily_challenge_streak "
         "(athlete_id, current_streak, best_streak, last_completed_date, updated_at) "
-        "VALUES (?, ?, ?, ?, datetime('now')) "
+        "VALUES (%s, %s, %s, %s, sqlite_now()) "
         "ON CONFLICT(athlete_id) DO UPDATE SET "
         "current_streak = excluded.current_streak, best_streak = excluded.best_streak, "
-        "last_completed_date = excluded.last_completed_date, updated_at = datetime('now')",
+        "last_completed_date = excluded.last_completed_date, updated_at = sqlite_now()",
         (athlete_id, current, best, today.isoformat()),
     )
     conn.commit()
@@ -148,7 +148,7 @@ def _register_streak(athlete_id: int, conn, today: date) -> dict:
 
 def _streak_for(athlete_id: int, conn) -> dict:
     row = conn.execute(
-        "SELECT current_streak, best_streak FROM fueliq_daily_challenge_streak WHERE athlete_id = ?",
+        "SELECT current_streak, best_streak FROM fueliq_daily_challenge_streak WHERE athlete_id = %s",
         (athlete_id,),
     ).fetchone()
     return {"current": row["current_streak"], "best": row["best_streak"]} if row else {"current": 0, "best": 0}
@@ -166,18 +166,18 @@ def get_todays_challenge(athlete_id: int, conn, today: date | None = None) -> di
 
     streak = _streak_for(athlete_id, conn)
     total_completed = conn.execute(
-        "SELECT COUNT(*) AS c FROM fueliq_daily_challenge_answers WHERE athlete_id = ?", (athlete_id,)
+        "SELECT COUNT(*) AS c FROM fueliq_daily_challenge_answers WHERE athlete_id = %s", (athlete_id,)
     ).fetchone()["c"]
 
     row = conn.execute(
-        "SELECT challenge_date, title, hook FROM fueliq_daily_challenges WHERE challenge_date = ?",
+        "SELECT challenge_date, title, hook FROM fueliq_daily_challenges WHERE challenge_date = %s",
         (today_str,),
     ).fetchone()
     if not row:
         return {"challenge": None, "streak": streak, "total_completed": total_completed}
 
     answer = conn.execute(
-        "SELECT guess, correct FROM fueliq_daily_challenge_answers WHERE athlete_id = ? AND challenge_date = ?",
+        "SELECT guess, correct FROM fueliq_daily_challenge_answers WHERE athlete_id = %s AND challenge_date = %s",
         (athlete_id, today_str),
     ).fetchone()
     challenge = {
@@ -203,14 +203,14 @@ def submit_daily_challenge_verdict(athlete_id: int, guess: str, conn, today: dat
     today_str = today_d.isoformat()
 
     existing = conn.execute(
-        "SELECT correct FROM fueliq_daily_challenge_answers WHERE athlete_id = ? AND challenge_date = ?",
+        "SELECT correct FROM fueliq_daily_challenge_answers WHERE athlete_id = %s AND challenge_date = %s",
         (athlete_id, today_str),
     ).fetchone()
     if existing:
         return {"already_answered": True, "correct": bool(existing["correct"]), "points_earned": 0}
 
     challenge = conn.execute(
-        "SELECT verdict, science_text, points FROM fueliq_daily_challenges WHERE challenge_date = ?",
+        "SELECT verdict, science_text, points FROM fueliq_daily_challenges WHERE challenge_date = %s",
         (today_str,),
     ).fetchone()
     if not challenge:
@@ -219,7 +219,7 @@ def submit_daily_challenge_verdict(athlete_id: int, guess: str, conn, today: dat
     correct = guess == challenge["verdict"]
     conn.execute(
         "INSERT INTO fueliq_daily_challenge_answers (athlete_id, challenge_date, guess, correct) "
-        "VALUES (?, ?, ?, ?)",
+        "VALUES (%s, %s, %s, %s)",
         (athlete_id, today_str, guess, int(correct)),
     )
     conn.commit()
@@ -248,7 +248,7 @@ def run_daily_challenge_push(conn=None, today: date | None = None) -> dict:
     try:
         today_str = (today or _today_pst()).isoformat()
         challenge = conn.execute(
-            "SELECT id, push_sent_at FROM fueliq_daily_challenges WHERE challenge_date = ?",
+            "SELECT id, push_sent_at FROM fueliq_daily_challenges WHERE challenge_date = %s",
             (today_str,),
         ).fetchone()
         if not challenge:
@@ -269,7 +269,7 @@ def run_daily_challenge_push(conn=None, today: date | None = None) -> dict:
             tokens, _PUSH_TITLE, _PUSH_BODY, data={"type": "daily_challenge"}
         )
         conn.execute(
-            "UPDATE fueliq_daily_challenges SET push_sent_at = datetime('now') WHERE id = ?",
+            "UPDATE fueliq_daily_challenges SET push_sent_at = sqlite_now() WHERE id = %s",
             (challenge["id"],),
         )
         conn.commit()

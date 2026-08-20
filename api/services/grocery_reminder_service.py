@@ -43,6 +43,7 @@ def run_grocery_reminder_tick() -> None:
             try:
                 _remind_if_due(row["parent_id"], conn)
             except Exception as exc:
+                conn.rollback()
                 log.error("Grocery reminder tick failed for parent %s: %s", row["parent_id"], exc)
     finally:
         conn.close()
@@ -50,7 +51,7 @@ def run_grocery_reminder_tick() -> None:
 
 def _remind_if_due(parent_id: int, conn) -> None:
     token_rows = conn.execute(
-        "SELECT token, timezone FROM expo_push_tokens WHERE parent_id = ?",
+        "SELECT token, timezone FROM expo_push_tokens WHERE parent_id = %s",
         (parent_id,),
     ).fetchall()
     if not token_rows:
@@ -76,7 +77,7 @@ def _remind_if_due(parent_id: int, conn) -> None:
     # Check if any athlete in this family has grocery items this week.
     athlete_ids = [
         r["id"] for r in conn.execute(
-            "SELECT id FROM athletes WHERE parent_id = ?", (parent_id,)
+            "SELECT id FROM athletes WHERE parent_id = %s", (parent_id,)
         ).fetchall()
     ]
     if not athlete_ids:
@@ -86,7 +87,7 @@ def _remind_if_due(parent_id: int, conn) -> None:
         conn.execute(
             "SELECT 1 FROM shopping_list_items si "
             "JOIN shopping_lists sl ON sl.id = si.list_id "
-            "WHERE sl.athlete_id = ? AND sl.week_start = ? LIMIT 1",
+            "WHERE sl.athlete_id = %s AND sl.week_start = %s LIMIT 1",
             (aid, local_week_start),
         ).fetchone()
         for aid in athlete_ids
@@ -109,7 +110,7 @@ def _remind_if_due(parent_id: int, conn) -> None:
         return
 
     parent_row = conn.execute(
-        "SELECT email, full_name FROM parents WHERE id = ?", (parent_id,)
+        "SELECT email, full_name FROM parents WHERE id = %s", (parent_id,)
     ).fetchone()
     if not parent_row:
         return
@@ -128,7 +129,7 @@ def _build_athlete_items(athlete_ids: list[int], week_start: str, conn) -> list[
     result = []
     for aid in athlete_ids:
         athlete_row = conn.execute(
-            "SELECT first_name FROM athletes WHERE id = ?", (aid,)
+            "SELECT first_name FROM athletes WHERE id = %s", (aid,)
         ).fetchone()
         athlete_name = athlete_row["first_name"] if athlete_row else f"Athlete {aid}"
 
@@ -136,7 +137,7 @@ def _build_athlete_items(athlete_ids: list[int], week_start: str, conn) -> list[
             "SELECT si.name, si.category, si.source "
             "FROM shopping_list_items si "
             "JOIN shopping_lists sl ON sl.id = si.list_id "
-            "WHERE sl.athlete_id = ? AND sl.week_start = ? "
+            "WHERE sl.athlete_id = %s AND sl.week_start = %s "
             "ORDER BY si.category, si.name",
             (aid, week_start),
         ).fetchall()

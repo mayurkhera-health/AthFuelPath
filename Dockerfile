@@ -29,8 +29,15 @@ COPY . /code
 COPY --from=frontend-builder /app/frontend/dist /code/frontend/dist
 COPY --from=frontend-builder /app/frontend-coach/dist /code/frontend-coach/dist
 
-RUN mkdir -p /data
+# migration/postgres-cloud-run: no more /data SQLite volume — PostgreSQL is
+# reached over the network (DATABASE_URL) or a Cloud SQL Unix socket
+# (INSTANCE_UNIX_SOCKET), neither of which needs local disk persistence.
 
 EXPOSE 8000
 
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Cloud Run injects PORT at runtime and expects the container to listen on
+# it; Fly.io/local docker run don't set it, so default to 8000. Exec-form
+# CMD does NOT expand env vars, so this uses shell + exec (replaces the
+# shell process with uvicorn — keeps signal handling or that would break
+# graceful shutdown, PID 1 issues, and Cloud Run's SIGTERM handling).
+CMD ["sh", "-c", "exec uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

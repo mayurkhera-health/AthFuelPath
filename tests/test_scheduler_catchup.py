@@ -44,15 +44,18 @@ def _iso_ago(minutes):
 def _seed_heartbeat(conn, last_success_iso):
     """Seed calendar_sync with matching last_run/last_success (a clean prior run)."""
     conn.execute(
-        "INSERT OR REPLACE INTO scheduler_heartbeats (job_name, last_run_at, last_success_at) "
-        "VALUES ('calendar_sync', ?, ?)", (last_success_iso, last_success_iso))
+        "INSERT INTO scheduler_heartbeats (job_name, last_run_at, last_success_at) "
+        "VALUES ('calendar_sync', %s, %s) "
+        "ON CONFLICT (job_name) DO UPDATE SET last_run_at = EXCLUDED.last_run_at, "
+        "last_success_at = EXCLUDED.last_success_at",
+        (last_success_iso, last_success_iso))
     conn.commit()
 
 
 def _read_success(conn):
     row = conn.execute(
         "SELECT last_success_at FROM scheduler_heartbeats WHERE job_name='calendar_sync'").fetchone()
-    return row[0] if row else None
+    return row["last_success_at"] if row else None
 
 
 @pytest.fixture

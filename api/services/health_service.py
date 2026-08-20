@@ -107,10 +107,14 @@ def check_gmail_smtp(conn):
 
 def check_db_writable(conn):
     try:
-        conn.execute("INSERT OR REPLACE INTO health_scratch (id, v) VALUES (1, ?)", (_now(),))
+        conn.execute(
+            "INSERT INTO health_scratch (id, v) VALUES (1, %s) "
+            "ON CONFLICT (id) DO UPDATE SET v = EXCLUDED.v",
+            (_now(),))
         conn.execute("DELETE FROM health_scratch WHERE id = 1")
         return "green", "writable", None
     except Exception as e:
+        conn.rollback()
         return "red", f"write failed: {e}"[:200], None
 
 
@@ -132,10 +136,10 @@ def check_disk_space(conn):
 
 def _check_scheduler(conn, job_name, max_minutes):
     row = conn.execute(
-        "SELECT last_run_at FROM scheduler_heartbeats WHERE job_name = ?", (job_name,)).fetchone()
-    if not row or not row[0]:
+        "SELECT last_run_at FROM scheduler_heartbeats WHERE job_name = %s", (job_name,)).fetchone()
+    if not row or not row["last_run_at"]:
         return "unknown", "no run recorded yet", None
-    mins = _minutes_since(row[0])
+    mins = _minutes_since(row["last_run_at"])
     if mins is None:
         return "unknown", "unparseable heartbeat", None
     if mins > max_minutes:
@@ -154,10 +158,10 @@ def check_scheduler_calendar_sync(conn):
 def check_calendar_sync_systemic(conn):
     row = conn.execute(
         "SELECT meta FROM scheduler_heartbeats WHERE job_name = 'calendar_sync'").fetchone()
-    if not row or not row[0]:
+    if not row or not row["meta"]:
         return "unknown", "no sync tick recorded", None
     try:
-        meta = json.loads(row[0])
+        meta = json.loads(row["meta"])
     except Exception:
         return "unknown", "no counts recorded", None
     attempted = int(meta.get("attempted", 0) or 0)
@@ -171,10 +175,10 @@ def check_calendar_sync_systemic(conn):
 
 def check_expo_push(conn):
     rows = conn.execute(
-        "SELECT success FROM expo_push_log ORDER BY id DESC LIMIT ?", (EXPO_WINDOW,)).fetchall()
+        "SELECT success FROM expo_push_log ORDER BY id DESC LIMIT %s", (EXPO_WINDOW,)).fetchall()
     if not rows:
         return "unknown", "no recent sends", None
-    fails = sum(1 for r in rows if not r[0])
+    fails = sum(1 for r in rows if not r["success"])
     if fails == len(rows):
         return "red", f"last {len(rows)} sends all failed", 1.0
     return "green", f"{len(rows) - fails}/{len(rows)} recent sends OK", float(round(fails / len(rows), 3))
@@ -198,32 +202,34 @@ CHECKS_DAILY = [
 
 # ── Runner: apply results, detect transitions, write incidents, alert ─────────
 def _apply_result(conn, name, status, detail, metric, now):
-    old = conn.execute("SELECT status FROM health_checks WHERE check_name = ?", (name,)).fetchone()
-    old_status = old[0] if old else "unknown"
+    old = conn.execute("SELECT status FROM health_checks WHERE check_name = %s", (name,)).fetchone()
+    old_status = old["status"] if old else "unknown"
 
-    conn.execute("INSERT OR IGNORE INTO health_checks (check_name, status) VALUES (?, 'unknown')", (name,))
-    sets = "status=?, detail=?, metric_value=?, last_checked_at=?"
+    conn.execute("INSERT INTO health_checks (check_name, status) VALUES (%s, 'unknown') "
+                 "ON CONFLICT DO NOTHING", (name,))
+    sets = "status=%s, detail=%s, metric_value=%s, last_checked_at=%s"
     params = [status, detail, metric, now]
     if status == "green":
-        sets += ", last_green_at=?"; params.append(now)
+        sets += ", last_green_at=%s"; params.append(now)
     elif status == "red":
-        sets += ", last_red_at=?"; params.append(now)
+        sets += ", last_red_at=%s"; params.append(now)
     params.append(name)
-    conn.execute(f"UPDATE health_checks SET {sets} WHERE check_name = ?", params)
+    conn.execute(f"UPDATE health_checks SET {sets} WHERE check_name = %s", params)
 
     if status != old_status:
         cur = conn.execute(
             "INSERT INTO health_incidents (check_name, from_status, to_status, detail, created_at) "
-            "VALUES (?, ?, ?, ?, ?)", (name, old_status, status, detail, now))
-        incident_id = cur.lastrowid
+            "VALUES (%s, %s, %s, %s, %s) RETURNING id", (name, old_status, status, detail, now))
+        incident_id = cur.fetchone()["id"]
         try:
             note = health_alerts.dispatch(conn, name, old_status, status, detail)
         except Exception as e:  # alerting must never crash the runner
+            conn.rollback()
             log.warning("health alert failed for %s: %s", name, e)
             note = f"alert error: {e}"
         if note:
-            conn.execute("UPDATE health_incidents SET detail = COALESCE(detail,'') || ' [alert: ' || ? || ']' "
-                         "WHERE id = ?", (note, incident_id))
+            conn.execute("UPDATE health_incidents SET detail = COALESCE(detail,'') || ' [alert: ' || %s || ']' "
+                         "WHERE id = %s", (note, incident_id))
 
 
 def _run_checks(conn, checks):
@@ -232,6 +238,7 @@ def _run_checks(conn, checks):
         try:
             status, detail, metric = fn(conn)
         except Exception as e:  # a crashing check is red, never kills the runner
+            conn.rollback()
             status, detail, metric = "red", f"check crashed: {e}"[:200], None
         _apply_result(conn, name, status, detail, metric, now)
     conn.commit()
@@ -284,7 +291,7 @@ _HEARTBEAT_JOB = {
 def _heartbeat_evidence(conn, job_name):
     row = conn.execute(
         "SELECT job_name, last_run_at, last_success_at, last_error, meta "
-        "FROM scheduler_heartbeats WHERE job_name = ?", (job_name,)).fetchone()
+        "FROM scheduler_heartbeats WHERE job_name = %s", (job_name,)).fetchone()
     if not row:
         return {"kind": "heartbeat", "job_name": job_name, "last_run_at": None,
                 "last_success_at": None, "last_error": None, "meta": None}
@@ -301,9 +308,9 @@ def get_check_detail(name: str, conn) -> dict | None:
     """Everything the drawer needs for one sensor, or None for an unknown name."""
     if name not in ALL_CHECKS:
         return None
-    check = conn.execute("SELECT * FROM health_checks WHERE check_name = ?", (name,)).fetchone()
+    check = conn.execute("SELECT * FROM health_checks WHERE check_name = %s", (name,)).fetchone()
     incidents = conn.execute(
-        "SELECT * FROM health_incidents WHERE check_name = ? ORDER BY id DESC LIMIT 20",
+        "SELECT * FROM health_incidents WHERE check_name = %s ORDER BY id DESC LIMIT 20",
         (name,)).fetchall()
 
     evidence = None
@@ -311,11 +318,11 @@ def get_check_detail(name: str, conn) -> dict | None:
         evidence = _heartbeat_evidence(conn, _HEARTBEAT_JOB[name])
         if name == "calendar_sync_systemic":
             evidence["feeds_connected"] = conn.execute(
-                "SELECT COUNT(*) FROM athletes WHERE COALESCE(byga_ics_url,'') != '' "
-                "OR COALESCE(playmetrics_ics_url,'') != ''").fetchone()[0]
+                "SELECT COUNT(*) AS count FROM athletes WHERE COALESCE(byga_ics_url,'') != '' "
+                "OR COALESCE(playmetrics_ics_url,'') != ''").fetchone()["count"]
     elif name == "expo_push":
         rows = conn.execute(
-            "SELECT success, detail, created_at FROM expo_push_log ORDER BY id DESC LIMIT ?",
+            "SELECT success, detail, created_at FROM expo_push_log ORDER BY id DESC LIMIT %s",
             (EXPO_WINDOW,)).fetchall()
         evidence = {"kind": "push_log",
                     "sends": [{"success": bool(r["success"]), "detail": r["detail"],
@@ -363,15 +370,16 @@ def _hb(job_name, run=False, success=False, error=None):
     try:
         conn = get_conn()
         try:
-            conn.execute("INSERT OR IGNORE INTO scheduler_heartbeats (job_name) VALUES (?)", (job_name,))
+            conn.execute("INSERT INTO scheduler_heartbeats (job_name) VALUES (%s) ON CONFLICT DO NOTHING",
+                         (job_name,))
             if run:
-                conn.execute("UPDATE scheduler_heartbeats SET last_run_at=?, last_error=NULL WHERE job_name=?",
+                conn.execute("UPDATE scheduler_heartbeats SET last_run_at=%s, last_error=NULL WHERE job_name=%s",
                              (_now(), job_name))
             if success:
-                conn.execute("UPDATE scheduler_heartbeats SET last_success_at=? WHERE job_name=?",
+                conn.execute("UPDATE scheduler_heartbeats SET last_success_at=%s WHERE job_name=%s",
                              (_now(), job_name))
             if error is not None:
-                conn.execute("UPDATE scheduler_heartbeats SET last_error=? WHERE job_name=?",
+                conn.execute("UPDATE scheduler_heartbeats SET last_error=%s WHERE job_name=%s",
                              (error, job_name))
             conn.commit()
         finally:
@@ -386,7 +394,7 @@ def record_expo_send(success: bool, detail: str = ""):
     try:
         conn = get_conn()
         try:
-            conn.execute("INSERT INTO expo_push_log (success, detail) VALUES (?, ?)",
+            conn.execute("INSERT INTO expo_push_log (success, detail) VALUES (%s, %s)",
                          (1 if success else 0, (detail or "")[:200]))
             conn.commit()
         finally:
@@ -401,8 +409,9 @@ def record_calendar_sync_stats(attempted: int, succeeded: int):
     try:
         conn = get_conn()
         try:
-            conn.execute("INSERT OR IGNORE INTO scheduler_heartbeats (job_name) VALUES ('calendar_sync')")
-            conn.execute("UPDATE scheduler_heartbeats SET meta=? WHERE job_name='calendar_sync'",
+            conn.execute("INSERT INTO scheduler_heartbeats (job_name) VALUES ('calendar_sync') "
+                         "ON CONFLICT DO NOTHING")
+            conn.execute("UPDATE scheduler_heartbeats SET meta=%s WHERE job_name='calendar_sync'",
                          (json.dumps({"attempted": attempted, "succeeded": succeeded, "at": _now()}),))
             conn.commit()
         finally:
@@ -422,7 +431,7 @@ def calendar_sync_freshness(conn, cadence_min: int = CALSYNC_CADENCE_MIN):
     row = conn.execute(
         "SELECT last_success_at FROM scheduler_heartbeats WHERE job_name = 'calendar_sync'"
     ).fetchone()
-    last = row[0] if row else None
+    last = row["last_success_at"] if row else None
     if not last:
         return "initial", None, None
     mins = _minutes_since(last)
@@ -442,12 +451,13 @@ def claim_calendar_sync_catchup(conn, cadence_min: int = CALSYNC_CADENCE_MIN) ->
     re-stamps last_run/last_success via instrument_job."""
     now = _now()
     cutoff = (datetime.utcnow() - timedelta(minutes=cadence_min)).isoformat()
-    conn.execute("INSERT OR IGNORE INTO scheduler_heartbeats (job_name) VALUES ('calendar_sync')")
+    conn.execute("INSERT INTO scheduler_heartbeats (job_name) VALUES ('calendar_sync') "
+                 "ON CONFLICT DO NOTHING")
     cur = conn.execute(
-        "UPDATE scheduler_heartbeats SET last_run_at = ? "
+        "UPDATE scheduler_heartbeats SET last_run_at = %s "
         "WHERE job_name = 'calendar_sync' "
-        "  AND (last_success_at IS NULL OR last_success_at <= ?) "  # stale/never succeeded
-        "  AND (last_run_at     IS NULL OR last_run_at     <= ?)",   # and not just claimed
+        "  AND (last_success_at IS NULL OR last_success_at <= %s) "  # stale/never succeeded
+        "  AND (last_run_at     IS NULL OR last_run_at     <= %s)",   # and not just claimed
         (now, cutoff, cutoff),
     )
     conn.commit()

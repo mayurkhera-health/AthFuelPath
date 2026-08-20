@@ -18,12 +18,16 @@ PASSWORD = "s3cret-admin"
 
 def _wipe(conn):
     conn.commit()
-    conn.execute("PRAGMA foreign_keys=OFF")
-    for (name,) in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall():
-        conn.execute(f"DELETE FROM {name}")
+    tables = [
+        r["table_name"]
+        for r in conn.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name != 'schema_migrations'"
+        ).fetchall()
+    ]
+    if tables:
+        conn.execute(f"TRUNCATE TABLE {', '.join(tables)} RESTART IDENTITY CASCADE")
     conn.commit()
-    conn.execute("PRAGMA foreign_keys=ON")
 
 
 def _configure_posthog(monkeypatch):
@@ -49,20 +53,20 @@ def client(monkeypatch):
     # Two families; one athlete connected + has a meal plan → funnel + sync %.
     p1 = keepalive.execute(
         "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) "
-        "VALUES ('A','a@x.com','t',1)").lastrowid
+        "VALUES ('A','a@x.com','t',TRUE) RETURNING id").fetchone()["id"]
     a1 = keepalive.execute(
         "INSERT INTO athletes (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in, byga_ics_url) "
-        "VALUES (?, 'Ann', 12, 'F', 90, 5, 2, 'https://byga/a.ics')", (p1,)).lastrowid
-    keepalive.execute("INSERT INTO meal_plans (athlete_id, plan_date, slot_name) VALUES (?, date('now'), 'lunch')", (a1,))
+        "VALUES (%s, 'Ann', 12, 'F', 90, 5, 2, 'https://byga/a.ics') RETURNING id", (p1,)).fetchone()["id"]
+    keepalive.execute("INSERT INTO meal_plans (athlete_id, plan_date, slot_name) VALUES (%s, sqlite_today(), 'lunch')", (a1,))
     keepalive.execute("INSERT INTO events (athlete_id, event_name, event_type, event_date, source) "
-                      "VALUES (?, 'M', 'game', date('now'), 'byga')", (a1,))
+                      "VALUES (%s, 'M', 'game', sqlite_today(), 'byga')", (a1,))
     keepalive.execute("INSERT INTO events (athlete_id, event_name, event_type, event_date, source) "
-                      "VALUES (?, 'M', 'game', date('now'), 'manual')", (a1,))
+                      "VALUES (%s, 'M', 'game', sqlite_today(), 'manual')", (a1,))
     p2 = keepalive.execute(
         "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) "
-        "VALUES ('B','b@x.com','t',1)").lastrowid
+        "VALUES ('B','b@x.com','t',TRUE) RETURNING id").fetchone()["id"]
     keepalive.execute("INSERT INTO athletes (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in) "
-                      "VALUES (?, 'Bob', 13, 'M', 100, 5, 4)", (p2,))
+                      "VALUES (%s, 'Bob', 13, 'M', 100, 5, 4)", (p2,))
     keepalive.commit()
 
     with TestClient(app) as c:
@@ -91,7 +95,10 @@ def test_overview_posthog_unavailable_is_graceful(client):
 def test_deleted_parents_excluded_from_metrics(client):
     from api.database import get_conn
     conn = get_conn()
-    if "account_status" not in [r[1] for r in conn.execute("PRAGMA table_info(parents)").fetchall()]:
+    cols = [r["column_name"] for r in conn.execute(
+        "SELECT column_name FROM information_schema.columns WHERE table_name = 'parents'"
+    ).fetchall()]
+    if "account_status" not in cols:
         conn.execute("ALTER TABLE parents ADD COLUMN account_status TEXT")  # idempotent across shared-DB tests
     # Mark family B (Bob, no calendar) as hard-deleted.
     conn.execute("UPDATE parents SET account_status = 'hard_deleted' WHERE email = 'b@x.com'")
@@ -122,9 +129,9 @@ def test_funnel_counts_uploaded_ics_as_connected(client):
     # "Connected calendar", matching the Users-page badge.
     from api.database import get_conn
     conn = get_conn()
-    aid = conn.execute("SELECT id FROM athletes WHERE first_name='Bob'").fetchone()[0]
+    aid = conn.execute("SELECT id FROM athletes WHERE first_name='Bob'").fetchone()["id"]
     conn.execute("INSERT INTO events (athlete_id, event_name, event_type, event_date, uid) "
-                 "VALUES (?, 'M', 'game', date('now'), 'ics-uid-xyz')", (aid,))
+                 "VALUES (%s, 'M', 'game', sqlite_today(), 'ics-uid-xyz')", (aid,))
     conn.commit()
     conn.close()
     steps = {s["label"]: s["value"] for s in client.get("/api/admin/analytics/funnel").json()["steps"]}

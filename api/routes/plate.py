@@ -48,7 +48,7 @@ def get_window_plate(
     try:
         assert_owns_athlete(identity, athlete_id, conn)
         row = conn.execute(
-            "SELECT allergies, dietary_restrictions FROM athletes WHERE id = ?",
+            "SELECT allergies, dietary_restrictions FROM athletes WHERE id = %s",
             (athlete_id,),
         ).fetchone()
     finally:

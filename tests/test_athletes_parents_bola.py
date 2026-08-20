@@ -35,11 +35,11 @@ def make_parent(email):
     conn = get_conn()
     try:
         cur = conn.execute(
-            "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES (?, ?, ?, ?)",
-            ("Test Parent", email.lower(), datetime.utcnow().isoformat(), 1),
+            "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES (%s, %s, %s, %s) RETURNING id",
+            ("Test Parent", email.lower(), datetime.utcnow().isoformat(), True),
         )
         conn.commit()
-        return cur.lastrowid
+        return cur.fetchone()["id"]
     finally:
         conn.close()
 
@@ -50,11 +50,11 @@ def make_athlete(parent_id, first_name="Alex"):
         cur = conn.execute(
             """INSERT INTO athletes
                (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in)
-               VALUES (?, ?, 15, 'girl', 115, 5, 6)""",
+               VALUES (%s, %s, 15, 'girl', 115, 5, 6) RETURNING id""",
             (parent_id, first_name),
         )
         conn.commit()
-        return cur.lastrowid
+        return cur.fetchone()["id"]
     finally:
         conn.close()
 
@@ -111,7 +111,7 @@ def test_update_athlete_rejects_unrelated_athlete_token(client):
         headers=auth_headers("athlete", athlete_id=attacker_id),
     )
     assert r.status_code == 403
-    row = get_conn().execute("SELECT first_name FROM athletes WHERE id=?", (victim_id,)).fetchone()
+    row = get_conn().execute("SELECT first_name FROM athletes WHERE id=%s", (victim_id,)).fetchone()
     assert row["first_name"] != "Hacked"
 
 
@@ -121,7 +121,7 @@ def test_delete_parent_account_requires_a_session(client):
     victim_parent = make_parent("v4@example.com")
     r = client.delete(f"/api/parents/{victim_parent}")
     assert r.status_code == 401
-    assert get_conn().execute("SELECT id FROM parents WHERE id=?", (victim_parent,)).fetchone()
+    assert get_conn().execute("SELECT id FROM parents WHERE id=%s", (victim_parent,)).fetchone()
 
 
 def test_delete_parent_account_rejects_unrelated_parent(client):
@@ -132,7 +132,7 @@ def test_delete_parent_account_rejects_unrelated_parent(client):
         headers=auth_headers("parent", parent_id=attacker_parent),
     )
     assert r.status_code == 403
-    assert get_conn().execute("SELECT id FROM parents WHERE id=?", (victim_parent,)).fetchone()
+    assert get_conn().execute("SELECT id FROM parents WHERE id=%s", (victim_parent,)).fetchone()
 
 
 def test_delete_parent_account_allows_owner(client):
@@ -146,7 +146,7 @@ def test_delete_parent_account_allows_owner(client):
     )
     assert r.status_code == 200
     assert r.json()["received"] is True
-    assert get_conn().execute("SELECT id FROM parents WHERE id=?", (parent_id,)).fetchone() is not None
+    assert get_conn().execute("SELECT id FROM parents WHERE id=%s", (parent_id,)).fetchone() is not None
 
 
 # ── PATCH /api/parents/{id}/profile ───────────────────────────────────────────
@@ -160,5 +160,5 @@ def test_update_parent_profile_rejects_unrelated_parent(client):
         headers=auth_headers("parent", parent_id=attacker_parent),
     )
     assert r.status_code == 403
-    row = get_conn().execute("SELECT full_name FROM parents WHERE id=?", (victim_parent,)).fetchone()
+    row = get_conn().execute("SELECT full_name FROM parents WHERE id=%s", (victim_parent,)).fetchone()
     assert row["full_name"] != "Hacked Name"

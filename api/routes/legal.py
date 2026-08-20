@@ -292,16 +292,16 @@ def seed_legal_documents(conn) -> None:
     via PUT /{slug} would no longer contain that string and is left alone."""
     for doc in SEED_DOCUMENTS:
         existing = conn.execute(
-            "SELECT id, content FROM legal_documents WHERE slug = ?", (doc["slug"],)
+            "SELECT id, content FROM legal_documents WHERE slug = %s", (doc["slug"],)
         ).fetchone()
         if not existing:
             conn.execute(
-                "INSERT INTO legal_documents (slug, title, content, updated_at) VALUES (?, ?, ?, ?)",
+                "INSERT INTO legal_documents (slug, title, content, updated_at) VALUES (%s, %s, %s, %s)",
                 (doc["slug"], doc["title"], doc["content"], datetime.utcnow().isoformat()),
             )
         elif "Fueling2Win" in existing["content"]:
             conn.execute(
-                "UPDATE legal_documents SET title = ?, content = ?, updated_at = ? WHERE id = ?",
+                "UPDATE legal_documents SET title = %s, content = %s, updated_at = %s WHERE id = %s",
                 (doc["title"], doc["content"], datetime.utcnow().isoformat(), existing["id"]),
             )
     conn.commit()
@@ -332,7 +332,7 @@ def get_legal_document(slug: str):
     try:
         seed_legal_documents(conn)
         row = conn.execute(
-            "SELECT slug, title, content, updated_at FROM legal_documents WHERE slug = ?",
+            "SELECT slug, title, content, updated_at FROM legal_documents WHERE slug = %s",
             (slug,),
         ).fetchone()
         if not row:
@@ -359,12 +359,12 @@ def update_legal_document(
     try:
         seed_legal_documents(conn)
         row = conn.execute(
-            "SELECT id FROM legal_documents WHERE slug = ?", (slug,)
+            "SELECT id FROM legal_documents WHERE slug = %s", (slug,)
         ).fetchone()
         if not row:
             raise HTTPException(404, f"Document '{slug}' not found.")
         conn.execute(
-            "UPDATE legal_documents SET content = ?, updated_at = ? WHERE slug = ?",
+            "UPDATE legal_documents SET content = %s, updated_at = %s WHERE slug = %s",
             (body.content.strip(), datetime.utcnow().isoformat(), slug),
         )
         conn.commit()

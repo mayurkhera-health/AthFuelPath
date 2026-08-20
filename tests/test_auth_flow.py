@@ -48,11 +48,12 @@ def make_parent(email, full_name="Test Parent", consent=True):
     conn = get_conn()
     try:
         cur = conn.execute(
-            "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES (?, ?, ?, ?)",
-            (full_name, email.lower(), datetime.utcnow().isoformat(), 1 if consent else 0),
+            "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES (%s, %s, %s, %s) RETURNING id",
+            (full_name, email.lower(), datetime.utcnow().isoformat(), consent),
         )
+        row = cur.fetchone()
         conn.commit()
-        return cur.lastrowid
+        return row["id"]
     finally:
         conn.close()
 
@@ -63,11 +64,12 @@ def make_athlete(parent_id, first_name="Alex"):
         cur = conn.execute(
             """INSERT INTO athletes
                (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in)
-               VALUES (?, ?, 14, 'Boy', 120, 5, 6)""",
+               VALUES (%s, %s, 14, 'Boy', 120, 5, 6) RETURNING id""",
             (parent_id, first_name),
         )
+        row = cur.fetchone()
         conn.commit()
-        return cur.lastrowid
+        return row["id"]
     finally:
         conn.close()
 
@@ -203,7 +205,7 @@ def test_parent_takes_precedence_over_athlete_login(client):
     conn = get_conn()
     try:
         conn.execute(
-            "INSERT INTO athlete_logins (email, athlete_id) VALUES (?, ?)",
+            "INSERT INTO athlete_logins (email, athlete_id) VALUES (%s, %s)",
             ("dual@example.com", aid),
         )
         conn.commit()

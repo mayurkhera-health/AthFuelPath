@@ -1074,7 +1074,7 @@ def _todays_event(athlete_id: int, now: str | None) -> dict | None:
     conn = get_conn()
     try:
         row = conn.execute(
-            "SELECT * FROM events WHERE athlete_id = ? AND event_date = ? ORDER BY start_time LIMIT 1",
+            "SELECT * FROM events WHERE athlete_id = %s AND event_date = %s ORDER BY start_time LIMIT 1",
             (athlete_id, today_str),
         ).fetchone()
         return dict(row) if row else None

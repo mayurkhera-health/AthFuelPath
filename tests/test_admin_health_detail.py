@@ -21,12 +21,16 @@ PASSWORD = "s3cret-admin"
 
 def _wipe(conn):
     conn.commit()
-    conn.execute("PRAGMA foreign_keys=OFF")
-    for (name,) in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall():
-        conn.execute(f"DELETE FROM {name}")
+    tables = [
+        r["table_name"]
+        for r in conn.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name != 'schema_migrations'"
+        ).fetchall()
+    ]
+    if tables:
+        conn.execute(f"TRUNCATE TABLE {', '.join(tables)} RESTART IDENTITY CASCADE")
     conn.commit()
-    conn.execute("PRAGMA foreign_keys=ON")
 
 
 @pytest.fixture
@@ -35,9 +39,11 @@ def client(monkeypatch):
     init_db()
     run_all()
     _wipe(keepalive)
-    keepalive.executemany(
-        "INSERT OR IGNORE INTO health_checks (check_name, status) VALUES (?, 'unknown')",
-        [(n,) for n in health_service.CHECK_ORDER])
+    with keepalive.cursor() as cur:
+        cur.executemany(
+            "INSERT INTO health_checks (check_name, status) VALUES (%s, 'unknown') "
+            "ON CONFLICT (check_name) DO NOTHING",
+            [(n,) for n in health_service.CHECK_ORDER])
     keepalive.commit()
 
     monkeypatch.setenv("ADMIN_PASSWORD", PASSWORD)
@@ -59,24 +65,25 @@ def client(monkeypatch):
 
 def _seed_incidents(conn):
     # chronological insert order, as production writes them (endpoint sorts by id DESC)
-    _exec_retry(conn, "INSERT INTO health_incidents (check_name, from_status, to_status, detail, created_at) VALUES (?, ?, ?, ?, ?)",
+    _exec_retry(conn, "INSERT INTO health_incidents (check_name, from_status, to_status, detail, created_at) VALUES (%s, %s, %s, %s, %s)",
                 ("scheduler_calendar_sync", "red", "green", "tick 3m ago", "2026-07-01T09:00:00"))
-    _exec_retry(conn, "INSERT INTO health_incidents (check_name, from_status, to_status, detail, created_at) VALUES (?, ?, ?, ?, ?)",
+    _exec_retry(conn, "INSERT INTO health_incidents (check_name, from_status, to_status, detail, created_at) VALUES (%s, %s, %s, %s, %s)",
                 ("expo_push", "unknown", "green", "10/10 recent sends OK", "2026-07-04T10:00:00"))
-    _exec_retry(conn, "INSERT INTO health_incidents (check_name, from_status, to_status, detail, created_at) VALUES (?, ?, ?, ?, ?)",
+    _exec_retry(conn, "INSERT INTO health_incidents (check_name, from_status, to_status, detail, created_at) VALUES (%s, %s, %s, %s, %s)",
                 ("scheduler_calendar_sync", "green", "red", "last run 443 min ago (> 420)", "2026-07-05T03:12:00"))
     conn.commit()
 
 
 def _exec_retry(conn, sql, params):
     # The app's startup catch-up thread can briefly hold a write lock on the
-    # shared :memory: DB — retry instead of flaking.
-    import sqlite3, time as _t
+    # shared DB — retry instead of flaking.
+    import psycopg, time as _t
     for _ in range(50):
         try:
             conn.execute(sql, params)
             return
-        except sqlite3.OperationalError:
+        except psycopg.errors.OperationalError:
+            conn.rollback()
             _t.sleep(0.05)
     conn.execute(sql, params)
 
@@ -117,7 +124,9 @@ def test_detail_basic_shape_and_incidents(client):
 def test_detail_scheduler_includes_heartbeat_evidence(client):
     conn = get_conn()
     _exec_retry(conn,
-        "INSERT OR REPLACE INTO scheduler_heartbeats (job_name, last_run_at, last_success_at, last_error, meta) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO scheduler_heartbeats (job_name, last_run_at, last_success_at, last_error, meta) VALUES (%s, %s, %s, %s, %s) "
+        "ON CONFLICT (job_name) DO UPDATE SET last_run_at = EXCLUDED.last_run_at, "
+        "last_success_at = EXCLUDED.last_success_at, last_error = EXCLUDED.last_error, meta = EXCLUDED.meta",
         ("calendar_sync", "2026-07-05T02:00:00", "2026-07-04T20:00:00", "boom: provider 503", json.dumps({"attempted": 3, "succeeded": 2})))
     conn.commit(); conn.close()
     body = client.get("/api/admin/health/checks/scheduler_calendar_sync").json()
@@ -130,9 +139,9 @@ def test_detail_scheduler_includes_heartbeat_evidence(client):
 
 def test_detail_expo_push_includes_recent_sends(client):
     conn = get_conn()
-    _exec_retry(conn, "INSERT INTO expo_push_log (success, detail, created_at) VALUES (?, ?, ?)",
+    _exec_retry(conn, "INSERT INTO expo_push_log (success, detail, created_at) VALUES (%s, %s, %s)",
                 (1, "ok", "2026-07-05T01:00:00"))
-    _exec_retry(conn, "INSERT INTO expo_push_log (success, detail, created_at) VALUES (?, ?, ?)",
+    _exec_retry(conn, "INSERT INTO expo_push_log (success, detail, created_at) VALUES (%s, %s, %s)",
                 (0, "DeviceNotRegistered", "2026-07-05T02:00:00"))
     conn.commit(); conn.close()
     body = client.get("/api/admin/health/checks/expo_push").json()

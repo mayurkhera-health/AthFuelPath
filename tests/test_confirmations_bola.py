@@ -51,11 +51,11 @@ def make_parent(email, full_name="Test Parent"):
     conn = get_conn()
     try:
         cur = conn.execute(
-            "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES (?, ?, ?, ?)",
-            (full_name, email.lower(), datetime.utcnow().isoformat(), 1),
+            "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES (%s, %s, %s, %s) RETURNING id",
+            (full_name, email.lower(), datetime.utcnow().isoformat(), True),
         )
         conn.commit()
-        return cur.lastrowid
+        return cur.fetchone()["id"]
     finally:
         conn.close()
 
@@ -66,11 +66,11 @@ def make_athlete(parent_id, first_name="Alex"):
         cur = conn.execute(
             """INSERT INTO athletes
                (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in)
-               VALUES (?, ?, 14, 'Boy', 120, 5, 6)""",
+               VALUES (%s, %s, 14, 'Boy', 120, 5, 6) RETURNING id""",
             (parent_id, first_name),
         )
         conn.commit()
-        return cur.lastrowid
+        return cur.fetchone()["id"]
     finally:
         conn.close()
 
@@ -79,7 +79,7 @@ def fetch_confirmation(athlete_id, window_key):
     conn = get_conn()
     try:
         return conn.execute(
-            "SELECT * FROM confirmations WHERE athlete_id = ? AND window_key = ?",
+            "SELECT * FROM confirmations WHERE athlete_id = %s AND window_key = %s",
             (athlete_id, window_key),
         ).fetchone()
     finally:
@@ -128,7 +128,7 @@ def test_deleting_another_athletes_confirmation_is_rejected(client):
 
     conn = get_conn()
     conn.execute(
-        "INSERT INTO confirmations (athlete_id, log_date, window_key, window_type) VALUES (?, ?, ?, ?)",
+        "INSERT INTO confirmations (athlete_id, log_date, window_key, window_type) VALUES (%s, %s, %s, %s)",
         (victim_athlete_id, "2026-07-26", "breakfast", "pre_fuel"),
     )
     conn.commit()

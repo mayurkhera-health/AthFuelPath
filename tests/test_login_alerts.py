@@ -21,20 +21,21 @@ _REAL_NOTIFY = founder_alerts.notify_founder
 
 def _wipe(conn):
     conn.commit()
-    conn.execute("PRAGMA foreign_keys=OFF")
-    for (name,) in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall():
-        conn.execute(f"DELETE FROM {name}")
+    tables = [r["table_name"] for r in conn.execute(
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema='public' AND table_name != 'schema_migrations'"
+    ).fetchall()]
+    if tables:
+        conn.execute(f"TRUNCATE TABLE {', '.join(tables)} RESTART IDENTITY CASCADE")
     conn.commit()
-    conn.execute("PRAGMA foreign_keys=ON")
 
 
 def _insert_parent(conn, name, email, *, last_login=None):
     return conn.execute(
         "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed, created_at, last_login_at) "
-        "VALUES (?, ?, 't', 1, '2026-01-01T00:00:00', ?)",
+        "VALUES (%s, %s, 't', TRUE, '2026-01-01T00:00:00', %s) RETURNING id",
         (name, email, last_login),
-    ).lastrowid
+    ).fetchone()["id"]
 
 
 ONBOARD_BODY = {
@@ -91,7 +92,7 @@ def test_first_ever_explicit_login_reads_as_new(ctx):
     assert sent[0][0] == "🎉 New AthFuelPath signup"
     # and the login stamps last_login_at so a NEXT login would be a returning one
     row = ka.execute("SELECT last_login_at FROM parents WHERE email='nate@example.com'").fetchone()
-    assert row[0] is not None
+    assert row["last_login_at"] is not None
 
 
 # ── no throttling by design ──────────────────────────────────────────────────

@@ -45,7 +45,7 @@ def generate_snapshot(team_id: int, week_start: str | None = None) -> dict:
     conn = get_conn()
     try:
         team = conn.execute(
-            "SELECT threshold_pct FROM teams WHERE id = ?", (team_id,)
+            "SELECT threshold_pct FROM teams WHERE id = %s", (team_id,)
         ).fetchone()
         if not team:
             return {"team_id": team_id, "status": "team_not_found"}
@@ -53,7 +53,7 @@ def generate_snapshot(team_id: int, week_start: str | None = None) -> dict:
         threshold_pct = team["threshold_pct"]
 
         roster = conn.execute(
-            "SELECT athlete_id FROM roster_membership WHERE team_id = ?",
+            "SELECT athlete_id FROM roster_membership WHERE team_id = %s",
             (team_id,),
         ).fetchall()
         roster_count = len(roster)
@@ -69,13 +69,13 @@ def generate_snapshot(team_id: int, week_start: str | None = None) -> dict:
         athlete_ids = [r["athlete_id"] for r in roster]
         week_dates = _week_dates(week_start)
         week_end = week_dates[-1]
-        placeholders = ",".join("?" * len(athlete_ids))
+        placeholders = ",".join(["%s"] * len(athlete_ids))
         confirmed = conn.execute(
             f"""SELECT athlete_id, COUNT(*) AS total_confirmed
                 FROM confirmations
                 WHERE athlete_id IN ({placeholders})
-                  AND log_date >= ?
-                  AND log_date <= ?
+                  AND log_date >= %s
+                  AND log_date <= %s
                 GROUP BY athlete_id""",
             (*athlete_ids, week_start, week_end),
         ).fetchall()
@@ -108,12 +108,12 @@ def _upsert(conn, team_id, week_start, threshold_pct, above, roster_count):
     conn.execute(
         """INSERT INTO team_engagement_snapshot
                (team_id, week_start, threshold_pct, players_above_threshold, roster_count)
-           VALUES (?,?,?,?,?)
+           VALUES (%s,%s,%s,%s,%s)
            ON CONFLICT(team_id, week_start) DO UPDATE SET
                threshold_pct=excluded.threshold_pct,
                players_above_threshold=excluded.players_above_threshold,
                roster_count=excluded.roster_count,
-               generated_at=datetime('now')""",
+               generated_at=sqlite_now()""",
         (team_id, week_start, threshold_pct, above, roster_count),
     )
     conn.commit()

@@ -30,10 +30,8 @@ def client():
     keepalive = get_conn()
     init_db()
     run_all()
-    keepalive.execute("PRAGMA foreign_keys = OFF")
     for tbl in ("events", "athletes", "parents"):
         keepalive.execute(f"DELETE FROM {tbl}")
-    keepalive.execute("PRAGMA foreign_keys = ON")
     keepalive.commit()
     with TestClient(app) as c:
         yield c
@@ -45,11 +43,11 @@ def client():
 def _make_parent(conn):
     cur = conn.execute(
         "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) "
-        "VALUES (?, ?, ?, ?)",
-        ("Pat Parent", "pat@example.com", datetime.utcnow().isoformat(), 1),
+        "VALUES (%s, %s, %s, %s) RETURNING id",
+        ("Pat Parent", "pat@example.com", datetime.utcnow().isoformat(), True),
     )
     conn.commit()
-    return cur.lastrowid
+    return cur.fetchone()["id"]
 
 
 def _athlete_body(parent_id, **overrides):
@@ -100,7 +98,7 @@ class TestCreateAthletePhone:
         assert data["phone"] == "(408) 555-1234"
 
         conn = get_conn()
-        row = conn.execute("SELECT phone FROM athletes WHERE id = ?", (data["id"],)).fetchone()
+        row = conn.execute("SELECT phone FROM athletes WHERE id = %s", (data["id"],)).fetchone()
         conn.close()
         assert row["phone"] == "(408) 555-1234"
 
@@ -153,7 +151,7 @@ class TestUpdateAthletePhone:
         assert r.json()["phone"] == "(650) 555-9999"
 
         conn = get_conn()
-        row = conn.execute("SELECT phone FROM athletes WHERE id = ?", (athlete["id"],)).fetchone()
+        row = conn.execute("SELECT phone FROM athletes WHERE id = %s", (athlete["id"],)).fetchone()
         conn.close()
         assert row["phone"] == "(650) 555-9999"
 
@@ -195,7 +193,7 @@ class TestOnboardingPhone:
 
         conn = get_conn()
         row = conn.execute(
-            "SELECT phone FROM athletes WHERE id = ?", (data["athlete"]["id"],)
+            "SELECT phone FROM athletes WHERE id = %s", (data["athlete"]["id"],)
         ).fetchone()
         conn.close()
         assert row["phone"] == "(510) 555-7777"

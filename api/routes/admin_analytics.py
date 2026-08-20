@@ -28,15 +28,18 @@ def _iso_days_ago(days: int) -> str:
 
 def _scalar(conn, sql: str, params=()) -> int:
     row = conn.execute(sql, params).fetchone()
-    return (row[0] or 0) if row else 0
+    return (row["count"] or 0) if row else 0
 
 
 def _active_where(conn) -> str:
     """WHERE fragment (on the parents table) that excludes anonymized tombstones
     from the old AthFuelPath-Admin soft-delete. account_status only exists in prod, so
     this is '1=1' (no-op) on fresh/test DBs."""
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(parents)").fetchall()]
-    return "(account_status IS NULL OR account_status != 'hard_deleted')" if "account_status" in cols else "1=1"
+    has_col = conn.execute(
+        "SELECT 1 FROM information_schema.columns "
+        "WHERE table_schema = 'public' AND table_name = 'parents' AND column_name = 'account_status'"
+    ).fetchone() is not None
+    return "(account_status IS NULL OR account_status != 'hard_deleted')" if has_col else "1=1"
 
 
 # ── Shared DB metrics (single source of truth — reused by the plain /overview) ─
@@ -49,26 +52,26 @@ def db_metrics(conn, days: int = 30) -> dict:
     active_ids = f"SELECT id FROM parents WHERE {aw}"
     active_athletes = f"SELECT id FROM athletes WHERE parent_id IN ({active_ids})"
 
-    families_total = _scalar(conn, f"SELECT COUNT(*) FROM parents WHERE {aw}")
-    signups_window = _scalar(conn, f"SELECT COUNT(*) FROM parents WHERE created_at >= ? AND {aw}", (since_30,))
-    athletes_total = _scalar(conn, f"SELECT COUNT(*) FROM athletes WHERE parent_id IN ({active_ids})")
+    families_total = _scalar(conn, f"SELECT COUNT(*) AS count FROM parents WHERE {aw}")
+    signups_window = _scalar(conn, f"SELECT COUNT(*) AS count FROM parents WHERE created_at >= %s AND {aw}", (since_30,))
+    athletes_total = _scalar(conn, f"SELECT COUNT(*) AS count FROM athletes WHERE parent_id IN ({active_ids})")
     athletes_connected = _scalar(conn,
-        f"SELECT COUNT(*) FROM athletes WHERE (byga_ics_url IS NOT NULL OR playmetrics_ics_url IS NOT NULL) "
+        f"SELECT COUNT(*) AS count FROM athletes WHERE (byga_ics_url IS NOT NULL OR playmetrics_ics_url IS NOT NULL) "
         f"AND parent_id IN ({active_ids})")
     sync_pct = round(100 * athletes_connected / athletes_total) if athletes_total else 0
     active_7d = _scalar(conn, f"""
-        SELECT COUNT(DISTINCT athlete_id) FROM (
-            SELECT athlete_id FROM meal_logs   WHERE logged_at  >= ?
-            UNION SELECT athlete_id FROM window_logs WHERE created_at >= ?
-            UNION SELECT athlete_id FROM water_logs  WHERE updated_at >= ?
+        SELECT COUNT(DISTINCT athlete_id) AS count FROM (
+            SELECT athlete_id FROM meal_logs   WHERE logged_at  >= %s
+            UNION SELECT athlete_id FROM window_logs WHERE created_at >= %s
+            UNION SELECT athlete_id FROM water_logs  WHERE updated_at >= %s
         ) WHERE athlete_id IN ({active_athletes})""", (since_7, since_7, since_7))
     rows = conn.execute(
         f"SELECT substr(created_at,1,10) AS d, COUNT(*) AS n FROM parents "
-        f"WHERE created_at >= ? AND {aw} GROUP BY d ORDER BY d", (since_30,)).fetchall()
+        f"WHERE created_at >= %s AND {aw} GROUP BY d ORDER BY d", (since_30,)).fetchall()
     signup_series = [{"date": r["d"], "count": r["n"]} for r in rows]
-    problem_7d = _scalar(conn, "SELECT COUNT(*) FROM problem_reports WHERE created_at >= ?", (since_7,)) \
+    problem_7d = _scalar(conn, "SELECT COUNT(*) AS count FROM problem_reports WHERE created_at >= %s", (since_7,)) \
         if _table_exists(conn, "problem_reports") else 0
-    ideas_7d = _scalar(conn, "SELECT COUNT(*) FROM feature_requests WHERE submitted_at >= ?", (since_7,)) \
+    ideas_7d = _scalar(conn, "SELECT COUNT(*) AS count FROM feature_requests WHERE submitted_at >= %s", (since_7,)) \
         if _table_exists(conn, "feature_requests") else 0
     src_rows = conn.execute("SELECT COALESCE(source,'manual') AS s, COUNT(*) AS n FROM events GROUP BY s").fetchall()
     event_sources = {r["s"]: r["n"] for r in src_rows}
@@ -86,16 +89,16 @@ def funnel_steps(conn) -> list:
     calendar-connection and meal-plan counts."""
     aw = _active_where(conn)
     active_ids = f"SELECT id FROM parents WHERE {aw}"
-    signed_up = _scalar(conn, f"SELECT COUNT(*) FROM parents WHERE {aw}")
-    created_athlete = _scalar(conn, f"SELECT COUNT(DISTINCT parent_id) FROM athletes WHERE parent_id IN ({active_ids})")
+    signed_up = _scalar(conn, f"SELECT COUNT(*) AS count FROM parents WHERE {aw}")
+    created_athlete = _scalar(conn, f"SELECT COUNT(DISTINCT parent_id) AS count FROM athletes WHERE parent_id IN ({active_ids})")
     # "Connected calendar" = auto-sync URL OR a one-time uploaded .ics file (uid).
     connected_calendar = _scalar(conn, f"""
-        SELECT COUNT(DISTINCT a.parent_id) FROM athletes a
+        SELECT COUNT(DISTINCT a.parent_id) AS count FROM athletes a
         WHERE a.parent_id IN ({active_ids})
           AND (a.byga_ics_url IS NOT NULL OR a.playmetrics_ics_url IS NOT NULL
             OR EXISTS(SELECT 1 FROM events e WHERE e.athlete_id = a.id AND e.uid IS NOT NULL AND e.uid != ''))""")
     planned = _scalar(conn, f"""
-        SELECT COUNT(DISTINCT a.parent_id) FROM athletes a
+        SELECT COUNT(DISTINCT a.parent_id) AS count FROM athletes a
         WHERE a.parent_id IN ({active_ids})
           AND (EXISTS(SELECT 1 FROM meal_plans mp WHERE mp.athlete_id = a.id)
             OR EXISTS(SELECT 1 FROM meal_plan_selections ms WHERE ms.athlete_id = a.id))""")
@@ -123,13 +126,13 @@ def calendar_platform_breakdown(conn) -> dict:
     _calendar_status priority, so each family lands in exactly one bucket."""
     aw = _active_where(conn)
     active_ids = f"SELECT id FROM parents WHERE {aw}"
-    byga = _scalar(conn, f"SELECT COUNT(DISTINCT parent_id) FROM athletes "
+    byga = _scalar(conn, f"SELECT COUNT(DISTINCT parent_id) AS count FROM athletes "
                          f"WHERE parent_id IN ({active_ids}) AND byga_ics_url IS NOT NULL")
     playmetrics = _scalar(conn,
-        f"SELECT COUNT(DISTINCT parent_id) FROM athletes "
+        f"SELECT COUNT(DISTINCT parent_id) AS count FROM athletes "
         f"WHERE parent_id IN ({active_ids}) AND playmetrics_ics_url IS NOT NULL "
         f"AND parent_id NOT IN (SELECT parent_id FROM athletes WHERE byga_ics_url IS NOT NULL)")
-    total = _scalar(conn, f"SELECT COUNT(*) FROM parents WHERE {aw}")
+    total = _scalar(conn, f"SELECT COUNT(*) AS count FROM parents WHERE {aw}")
     return {"source": "db", "byga": byga, "playmetrics": playmetrics,
             "not_connected": max(0, total - byga - playmetrics), "total_families": total}
 
@@ -200,10 +203,10 @@ def retention(weeks: int = 8, force: bool = False, _: bool = Depends(require_adm
             start = _iso_days_ago((w + 1) * 7)
             end = _iso_days_ago(w * 7)
             wau = _scalar(conn, f"""
-                SELECT COUNT(DISTINCT athlete_id) FROM (
-                    SELECT athlete_id FROM meal_logs   WHERE logged_at  >= ? AND logged_at  < ?
-                    UNION SELECT athlete_id FROM window_logs WHERE created_at >= ? AND created_at < ?
-                    UNION SELECT athlete_id FROM water_logs  WHERE updated_at >= ? AND updated_at < ?
+                SELECT COUNT(DISTINCT athlete_id) AS count FROM (
+                    SELECT athlete_id FROM meal_logs   WHERE logged_at  >= %s AND logged_at  < %s
+                    UNION SELECT athlete_id FROM window_logs WHERE created_at >= %s AND created_at < %s
+                    UNION SELECT athlete_id FROM water_logs  WHERE updated_at >= %s AND updated_at < %s
                 ) WHERE athlete_id IN ({active_athletes})""", (start, end, start, end, start, end))
             points.append({"week_start": start[:10], "active": wau})
         return {"source": "db_wau_fallback", "available": True,
@@ -244,12 +247,12 @@ def activity(limit: int = 20, force: bool = False, _: bool = Depends(require_adm
     if ids:
         conn = get_conn()
         try:
-            placeholders = ",".join("?" * len(ids))
-            for pid, full in conn.execute(
+            placeholders = ",".join(["%s"] * len(ids))
+            for r in conn.execute(
                     f"SELECT id, full_name FROM parents WHERE id IN ({placeholders})",
                     tuple(ids)).fetchall():
-                parts = (full or "").strip().split()
-                names[pid] = parts[0] if parts else None
+                parts = (r["full_name"] or "").strip().split()
+                names[r["id"]] = parts[0] if parts else None
         finally:
             conn.close()
 
@@ -271,11 +274,11 @@ def problem_reports(days: int = 7, limit: int = 50, _: bool = Depends(require_ad
             return {"reports": [], "count": 0, "days": days}
         where, params = "", []
         if days and days > 0:
-            where = "WHERE created_at >= ?"
+            where = "WHERE created_at >= %s"
             params.append(_iso_days_ago(days))
         rows = conn.execute(
             f"SELECT id, description, app_version, platform, role_hint, created_at "
-            f"FROM problem_reports {where} ORDER BY datetime(created_at) DESC LIMIT ?",
+            f"FROM problem_reports {where} ORDER BY created_at DESC LIMIT %s",
             (*params, limit)).fetchall()
     finally:
         conn.close()
@@ -299,5 +302,6 @@ def discover(force: bool = False, _: bool = Depends(require_admin)):
 
 def _table_exists(conn, name: str) -> bool:
     return conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+        "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = %s",
+        (name,),
     ).fetchone() is not None

@@ -44,10 +44,10 @@ def get_water_today(athlete_id: int, date: str | None = None, identity=Depends(r
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)
-        if not conn.execute("SELECT id FROM athletes WHERE id = ?", (athlete_id,)).fetchone():
+        if not conn.execute("SELECT id FROM athletes WHERE id = %s", (athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
         row = conn.execute(
-            "SELECT cups FROM water_logs WHERE athlete_id = ? AND log_date = ?",
+            "SELECT cups FROM water_logs WHERE athlete_id = %s AND log_date = %s",
             (athlete_id, today),
         ).fetchone()
         return {"athlete_id": athlete_id, "date": today, "cups": row["cups"] if row else 0}
@@ -61,13 +61,13 @@ def log_water(data: WaterLogCreate, identity=Depends(require_session)):
     conn = get_conn()
     try:
         assert_owns_athlete(identity, data.athlete_id, conn)
-        if not conn.execute("SELECT id FROM athletes WHERE id = ?", (data.athlete_id,)).fetchone():
+        if not conn.execute("SELECT id FROM athletes WHERE id = %s", (data.athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
         conn.execute(
             """INSERT INTO water_logs (athlete_id, log_date, cups, updated_at)
-               VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+               VALUES (%s, %s, %s, sqlite_now())
                ON CONFLICT(athlete_id, log_date)
-               DO UPDATE SET cups = excluded.cups, updated_at = CURRENT_TIMESTAMP""",
+               DO UPDATE SET cups = excluded.cups, updated_at = sqlite_now()""",
             (data.athlete_id, log_date, data.cups),
         )
         conn.commit()

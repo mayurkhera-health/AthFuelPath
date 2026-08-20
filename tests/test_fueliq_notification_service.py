@@ -3,64 +3,61 @@
 and pre-game reminder, layered on top of the shared notification_log dedup
 table and per-athlete fueliq_notification_prefs toggles."""
 
-import sqlite3
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pytest
 
-from api.services.db_migrations import (
-    _create_expo_push_tokens,
-    _add_timezone_to_tokens,
-    _create_notification_log,
-    _create_notification_prefs,
-    _create_fueliq_notification_prefs,
-    _create_fueliq_push_events,
-)
+from api.database import get_conn
 from api.services import fueliq_notification_service as fns
 
 PST = ZoneInfo("America/Los_Angeles")
 
 
 def _mk_conn():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    return get_conn()
 
 
 def _fueliq_notif_db():
+    """Real Postgres connection. All tables here (athletes, events,
+    expo_push_tokens, notification_log, notification_prefs,
+    fueliq_notification_prefs, fueliq_push_events) already exist via
+    db/postgres/001_baseline.sql, applied once per session by
+    tests/conftest.py — the old per-test _create_* migration calls built a
+    throwaway SQLite schema that's now redundant (and those functions are
+    retired raw SQLite DDL that would error immediately against Postgres).
+
+    tests/conftest.py's module-scoped `_fresh_db` fixture only truncates once
+    per module (not per test function), and this file reuses fixed athlete
+    ids (1, 2) across many tests in the same module — so clear out this
+    file's own rows before each test builds its fixture data, the same
+    isolation the old per-test sqlite3.connect(':memory:') gave for free.
+    """
     conn = _mk_conn()
-    conn.executescript("CREATE TABLE athletes (id INTEGER PRIMARY KEY);")
-    conn.executescript("""
-        CREATE TABLE events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            athlete_id INTEGER,
-            event_name TEXT,
-            event_type TEXT NOT NULL,
-            event_date TEXT NOT NULL,
-            start_time TEXT
-        );
-    """)
-    _create_expo_push_tokens(conn)
-    _add_timezone_to_tokens(conn)
-    _create_notification_log(conn)
-    _create_notification_prefs(conn)
-    _create_fueliq_notification_prefs(conn)
-    _create_fueliq_push_events(conn)
+    conn.execute("DELETE FROM fueliq_push_events")
+    conn.execute("DELETE FROM notification_log")
+    conn.execute("DELETE FROM notification_prefs")
+    conn.execute("DELETE FROM fueliq_notification_prefs")
+    conn.execute("DELETE FROM expo_push_tokens")
+    conn.execute("DELETE FROM events")
+    conn.execute("DELETE FROM athletes")
     conn.commit()
     return conn
 
 
 def _add_athlete(conn, athlete_id):
-    conn.execute("INSERT OR IGNORE INTO athletes (id) VALUES (?)", (athlete_id,))
+    conn.execute(
+        "INSERT INTO athletes (id, first_name, age, gender, weight_lbs, height_ft, height_in) "
+        "VALUES (%s, 'A', 14, 'Girl', 100, 5, 0) ON CONFLICT (id) DO NOTHING",
+        (athlete_id,),
+    )
     conn.commit()
 
 
 def _add_token(conn, token, athlete_id, timezone="America/Los_Angeles"):
     _add_athlete(conn, athlete_id)
     conn.execute(
-        "INSERT INTO expo_push_tokens (athlete_id, token, timezone) VALUES (?, ?, ?)",
+        "INSERT INTO expo_push_tokens (athlete_id, token, timezone) VALUES (%s, %s, %s)",
         (athlete_id, token, timezone),
     )
     conn.commit()
@@ -69,7 +66,7 @@ def _add_token(conn, token, athlete_id, timezone="America/Los_Angeles"):
 def _add_event(conn, athlete_id, event_type, event_date, start_time=None):
     conn.execute(
         "INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time) "
-        "VALUES (?, 'E', ?, ?, ?)",
+        "VALUES (%s, 'E', %s, %s, %s)",
         (athlete_id, event_type, event_date, start_time),
     )
     conn.commit()
@@ -78,7 +75,7 @@ def _add_event(conn, athlete_id, event_type, event_date, start_time=None):
 def _set_prefs(conn, athlete_id, morning_enabled=True, pregame_enabled=True):
     conn.execute(
         "INSERT INTO fueliq_notification_prefs (athlete_id, morning_enabled, pregame_enabled) "
-        "VALUES (?, ?, ?) ON CONFLICT(athlete_id) DO UPDATE SET "
+        "VALUES (%s, %s, %s) ON CONFLICT(athlete_id) DO UPDATE SET "
         "morning_enabled = excluded.morning_enabled, pregame_enabled = excluded.pregame_enabled",
         (athlete_id, int(morning_enabled), int(pregame_enabled)),
     )
@@ -194,7 +191,7 @@ class TestLogPushEvent:
         conn = _fueliq_notif_db()
         fns._log_push_event(1, "pregame", "skipped_no_start_time", "2026-07-10", conn)
         fns._log_push_event(1, "pregame", "skipped_no_start_time", "2026-07-10", conn)
-        count = conn.execute("SELECT COUNT(*) FROM fueliq_push_events").fetchone()[0]
+        count = conn.execute("SELECT COUNT(*) AS count FROM fueliq_push_events").fetchone()["count"]
         assert count == 1
 
 
@@ -396,11 +393,12 @@ class TestDailyCap:
     def test_second_push_blocked_once_cap_reached(self, monkeypatch):
         conn = _fueliq_notif_db()
         _add_token(conn, "Tok1", athlete_id=1)
-        conn.executemany(
-            "INSERT INTO notification_log (athlete_id, window_key, send_date, recipient, token) "
-            "VALUES (1, ?, '2026-07-10', 'athlete', 'tok')",
-            [("fueliq_x1",), ("fueliq_x2",)],
-        )
+        for window_key in ("fueliq_x1", "fueliq_x2"):
+            conn.execute(
+                "INSERT INTO notification_log (athlete_id, window_key, send_date, recipient, token) "
+                "VALUES (1, %s, '2026-07-10', 'athlete', 'tok')",
+                (window_key,),
+            )
         conn.commit()
         _add_event(conn, 1, "practice", "2026-07-10")
         sent = _patch_send(monkeypatch)

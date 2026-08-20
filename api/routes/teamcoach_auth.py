@@ -21,7 +21,7 @@ def login(body: LoginRequest, request: Request):
     conn = get_conn()
     try:
         row = conn.execute(
-            "SELECT id, name, password_hash, salt FROM coaches WHERE email = ?",
+            "SELECT id, name, password_hash, salt FROM coaches WHERE email = %s",
             (body.email,),
         ).fetchone()
     finally:
@@ -53,7 +53,7 @@ def me(authorization: str = Header(None)):
     conn = get_conn()
     try:
         row = conn.execute(
-            "SELECT id, name, email FROM coaches WHERE id = ?",
+            "SELECT id, name, email FROM coaches WHERE id = %s",
             (payload["coach_id"],),
         ).fetchone()
     finally:

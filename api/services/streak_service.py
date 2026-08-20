@@ -12,7 +12,7 @@ they cannot drift. The streak_state table stores only non-derivable state
 (freeze tokens, last-celebrated milestone).
 """
 
-import sqlite3
+import psycopg
 from datetime import date, timedelta
 from api.utils.week import get_week_start
 
@@ -39,18 +39,21 @@ def _qualifying_dates(athlete_id: int, conn) -> set:
     """Set of YYYY-MM-DD strings the athlete qualified on (confirmations ∪ window_logs)."""
     min_c = _min_confirms(conn)
     rows = conn.execute(
-        "SELECT log_date, COUNT(*) AS c FROM confirmations WHERE athlete_id = ? GROUP BY log_date",
+        "SELECT log_date, COUNT(*) AS c FROM confirmations WHERE athlete_id = %s GROUP BY log_date",
         (athlete_id,),
     ).fetchall()
     days = {r["log_date"] for r in rows if r["c"] >= min_c}
     try:
         wl = conn.execute(
-            "SELECT DISTINCT log_date FROM window_logs WHERE athlete_id = ?",
+            "SELECT DISTINCT log_date FROM window_logs WHERE athlete_id = %s",
             (athlete_id,),
         ).fetchall()
         days |= {r["log_date"] for r in wl}
-    except sqlite3.OperationalError:
-        pass  # window_logs may be absent in minimal/legacy DBs
+    except psycopg.errors.UndefinedTable:
+        # window_logs may be absent in minimal/legacy DBs. A failed statement
+        # aborts the whole Postgres transaction (unlike SQLite) — roll back
+        # so this connection stays usable for the caller's later queries.
+        conn.rollback()
     return days
 
 
@@ -75,10 +78,11 @@ def _week_strip(qual: set, today: date) -> list:
 def _freeze_tokens(athlete_id: int, conn) -> int:
     try:
         row = conn.execute(
-            "SELECT freeze_tokens FROM streak_state WHERE athlete_id = ?",
+            "SELECT freeze_tokens FROM streak_state WHERE athlete_id = %s",
             (athlete_id,),
         ).fetchone()
-    except sqlite3.OperationalError:
+    except psycopg.errors.UndefinedTable:
+        conn.rollback()
         return DEFAULT_FREEZE_TOKENS
     return int(row["freeze_tokens"]) if row else DEFAULT_FREEZE_TOKENS
 
@@ -121,14 +125,18 @@ def compute_current_streak(athlete_id: int, conn, today=None) -> dict:
 
 
 def _ensure_streak_state(conn) -> None:
+    # streak_state is already created by db/postgres/001_baseline.sql — this
+    # stays a harmless idempotent no-op there. Kept (rather than deleted) to
+    # match existing behavior for any DB that hasn't been migrated yet.
     conn.execute("""
         CREATE TABLE IF NOT EXISTS streak_state (
             athlete_id                INTEGER PRIMARY KEY,
             freeze_tokens             INTEGER NOT NULL DEFAULT 1,
             last_celebrated_milestone INTEGER NOT NULL DEFAULT 0,
-            updated_at                TEXT    NOT NULL DEFAULT (datetime('now'))
+            updated_at                TEXT    NOT NULL DEFAULT sqlite_now()
         )
     """)
+    conn.commit()
 
 
 def get_streak(athlete_id: int, conn, today=None) -> dict:
@@ -159,7 +167,7 @@ def register_confirmation(athlete_id: int, conn, today=None) -> dict:
     reached = max((m for m in MILESTONES if m <= cur), default=0)
 
     row = conn.execute(
-        "SELECT last_celebrated_milestone FROM streak_state WHERE athlete_id = ?",
+        "SELECT last_celebrated_milestone FROM streak_state WHERE athlete_id = %s",
         (athlete_id,),
     ).fetchone()
     last = int(row["last_celebrated_milestone"]) if row else 0
@@ -167,10 +175,10 @@ def register_confirmation(athlete_id: int, conn, today=None) -> dict:
     just = None
     if reached != last:
         conn.execute(
-            "INSERT INTO streak_state (athlete_id, last_celebrated_milestone) VALUES (?, ?) "
+            "INSERT INTO streak_state (athlete_id, last_celebrated_milestone) VALUES (%s, %s) "
             "ON CONFLICT(athlete_id) DO UPDATE SET "
             "last_celebrated_milestone = excluded.last_celebrated_milestone, "
-            "updated_at = datetime('now')",
+            "updated_at = sqlite_now()",
             (athlete_id, reached),
         )
         conn.commit()

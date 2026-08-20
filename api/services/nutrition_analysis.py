@@ -44,18 +44,18 @@ def compute_trend(pcts: list) -> str:
 def _get_day_logged(athlete_id: int, date_str: str, conn):
     """Returns (targets_dict, logged_dict) or (None, None) if no data."""
     targets_row = conn.execute(
-        "SELECT * FROM daily_targets WHERE athlete_id = ? AND target_date = ?",
+        "SELECT * FROM daily_targets WHERE athlete_id = %s AND target_date = %s",
         (athlete_id, date_str),
     ).fetchone()
     meal_rows = conn.execute(
-        "SELECT * FROM meal_logs WHERE athlete_id = ? AND DATE(logged_at) = ?",
+        "SELECT * FROM meal_logs WHERE athlete_id = %s AND DATE(logged_at::timestamp) = %s",
         (athlete_id, date_str),
     ).fetchall()
     if not targets_row or not meal_rows:
         return None, None
     logged = compute_logged_totals([dict(m) for m in meal_rows])
     water_row = conn.execute(
-        "SELECT cups FROM water_logs WHERE athlete_id = ? AND log_date = ?",
+        "SELECT cups FROM water_logs WHERE athlete_id = %s AND log_date = %s",
         (athlete_id, date_str),
     ).fetchone()
     if water_row:

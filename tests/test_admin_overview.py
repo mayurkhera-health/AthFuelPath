@@ -12,25 +12,27 @@ from api.services.db_migrations import run_all
 from api.database import get_conn
 from api.services import admin_auth
 from api.main import app
+from db.postgres_seeds import seed_health_checks
 
 PASSWORD = "s3cret-admin"
 
 
 def _wipe(conn):
     conn.commit()
-    conn.execute("PRAGMA foreign_keys=OFF")
-    for (name,) in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall():
-        conn.execute(f"DELETE FROM {name}")
+    tables = [r["table_name"] for r in conn.execute(
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema='public' AND table_name != 'schema_migrations'"
+    ).fetchall()]
+    if tables:
+        conn.execute(f"TRUNCATE TABLE {', '.join(tables)} RESTART IDENTITY CASCADE")
     conn.commit()
-    conn.execute("PRAGMA foreign_keys=ON")
 
 
 def _add_family(conn, name, email, byga=None):
     pid = conn.execute("INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) "
-                       "VALUES (?, ?, 't', 1)", (name, email)).lastrowid
+                       "VALUES (%s, %s, 't', TRUE) RETURNING id", (name, email)).fetchone()["id"]
     conn.execute("INSERT INTO athletes (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in, byga_ics_url) "
-                 "VALUES (?, 'Kid', 12, 'M', 90, 5, 2, ?)", (pid, byga))
+                 "VALUES (%s, 'Kid', 12, 'M', 90, 5, 2, %s)", (pid, byga))
     conn.commit()
     return pid
 
@@ -40,7 +42,13 @@ def ctx(monkeypatch):
     ka = get_conn()
     init_db()
     run_all()
-    _wipe(ka)  # also clears the seeded health_checks → empty = "all healthy"
+    _wipe(ka)
+    # health_checks is no longer reseeded on app startup (Postgres cloud-run
+    # architecture: seeds are an explicit deploy-pipeline step, not a per-boot
+    # side effect) — reseed here so the 9 named checks exist before each test,
+    # matching what the old SQLite db_migrations.run_all()-on-every-boot gave
+    # this fixture for free.
+    seed_health_checks(ka)
     monkeypatch.setenv("ADMIN_PASSWORD", PASSWORD)
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "unit-test-signing-key")
     admin_auth._failed_logins.clear()
@@ -90,8 +98,8 @@ def test_active_users_warning_toggles(ctx):
     assert active_line["warn"] is True
     assert active_line["text"] == "No athletes active in the last 7 days"
     # log activity today → warning clears
-    aid = ka.execute("SELECT id FROM athletes LIMIT 1").fetchone()[0]
-    ka.execute("INSERT INTO meal_logs (athlete_id, log_method) VALUES (?, 'text')", (aid,))
+    aid = ka.execute("SELECT id FROM athletes LIMIT 1").fetchone()["id"]
+    ka.execute("INSERT INTO meal_logs (athlete_id, log_method) VALUES (%s, 'text')", (aid,))
     ka.commit()
     active_line2 = _section(_get(c), "Engagement")["lines"][0]
     assert active_line2["warn"] is False

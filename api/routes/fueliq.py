@@ -52,7 +52,7 @@ def get_hub(athlete_id: int, identity=Depends(require_session)):
         badges = [
             r["badge_key"]
             for r in conn.execute(
-                "SELECT badge_key FROM fueliq_badges_earned WHERE athlete_id = ?",
+                "SELECT badge_key FROM fueliq_badges_earned WHERE athlete_id = %s",
                 (athlete_id,),
             ).fetchall()
         ]
@@ -74,7 +74,7 @@ def get_hub(athlete_id: int, identity=Depends(require_session)):
         today_str = today_dt.isoformat()
         next_game_row = conn.execute(
             "SELECT event_date, event_type, event_name, start_time "
-            "FROM events WHERE athlete_id = ? AND event_date >= ? "
+            "FROM events WHERE athlete_id = %s AND event_date >= %s "
             "AND event_type IN ('game', 'tournament') ORDER BY event_date, start_time LIMIT 1",
             (athlete_id, today_str),
         ).fetchone()
@@ -114,10 +114,10 @@ def get_hub(athlete_id: int, identity=Depends(require_session)):
             # is consistent. Timezone edge cases (athlete completes lesson at 11 PM local
             # while server rolls to next UTC day) are an accepted limitation for v1.
             lesson_rows = conn.execute(
-                "SELECT DATE(completed_at) AS lesson_date "
+                "SELECT to_char(completed_at::timestamp, 'YYYY-MM-DD') AS lesson_date "
                 "FROM fueliq_lesson_completions "
-                "WHERE athlete_id = ? AND DATE(completed_at) IN ({}) "
-                "GROUP BY lesson_date".format(",".join("?" * 7)),
+                "WHERE athlete_id = %s AND to_char(completed_at::timestamp, 'YYYY-MM-DD') IN ({}) "
+                "GROUP BY lesson_date".format(",".join(["%s"] * 7)),
                 (athlete_id, *arc_dates),
             ).fetchall()
             lesson_dates = {r["lesson_date"] for r in lesson_rows}
@@ -171,14 +171,14 @@ def list_lessons(athlete_id: int, level: int = Query(...), identity=Depends(requ
         unlocked = fq.level_unlocked(progress["score"], level)
         rows = conn.execute(
             "SELECT id, title, hook, points, order_in_level FROM fueliq_lessons "
-            "WHERE level = ? AND is_myth = 0 AND review_status = 'approved' "
+            "WHERE level = %s AND is_myth = 0 AND review_status = 'approved' "
             "ORDER BY order_in_level",
             (level,),
         ).fetchall()
         completed_ids = {
             r["lesson_id"]
             for r in conn.execute(
-                "SELECT lesson_id FROM fueliq_lesson_completions WHERE athlete_id = ?",
+                "SELECT lesson_id FROM fueliq_lesson_completions WHERE athlete_id = %s",
                 (athlete_id,),
             ).fetchall()
         }
@@ -201,7 +201,7 @@ def get_lesson(athlete_id: int, lesson_id: int, identity=Depends(require_session
         assert_owns_athlete(identity, athlete_id, conn)
         lesson = conn.execute(
             "SELECT id, level, title, hook, fact_body, visual_ref, takeaway, points "
-            "FROM fueliq_lessons WHERE id = ? AND is_myth = 0 AND review_status = 'approved'",
+            "FROM fueliq_lessons WHERE id = %s AND is_myth = 0 AND review_status = 'approved'",
             (lesson_id,),
         ).fetchone()
         if not lesson:
@@ -213,7 +213,7 @@ def get_lesson(athlete_id: int, lesson_id: int, identity=Depends(require_session
 
         questions = conn.execute(
             "SELECT id, question_text, option_a, option_b, option_c FROM fueliq_questions "
-            "WHERE lesson_id = ? ORDER BY order_in_lesson",
+            "WHERE lesson_id = %s ORDER BY order_in_lesson",
             (lesson_id,),
         ).fetchall()
     finally:
@@ -231,7 +231,7 @@ def complete_lesson(athlete_id: int, lesson_id: int, body: FuelIQLessonComplete,
     try:
         assert_owns_athlete(identity, athlete_id, conn)
         exists = conn.execute(
-            "SELECT 1 FROM fueliq_lessons WHERE id = ? AND is_myth = 0", (lesson_id,)
+            "SELECT 1 FROM fueliq_lessons WHERE id = %s AND is_myth = 0", (lesson_id,)
         ).fetchone()
         if not exists:
             raise HTTPException(404, f"Lesson {lesson_id} not found")
@@ -251,7 +251,7 @@ def answer_question(athlete_id: int, question_id: int, body: FuelIQQuizAnswer, i
     try:
         assert_owns_athlete(identity, athlete_id, conn)
         exists = conn.execute(
-            "SELECT 1 FROM fueliq_questions WHERE id = ?", (question_id,)
+            "SELECT 1 FROM fueliq_questions WHERE id = %s", (question_id,)
         ).fetchone()
         if not exists:
             raise HTTPException(404, f"Question {question_id} not found")

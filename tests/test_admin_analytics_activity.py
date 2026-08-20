@@ -19,12 +19,13 @@ PASSWORD = "s3cret-admin"
 
 def _wipe(conn):
     conn.commit()
-    conn.execute("PRAGMA foreign_keys=OFF")
-    for (name,) in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall():
-        conn.execute(f"DELETE FROM {name}")
+    tables = [r["table_name"] for r in conn.execute(
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema='public' AND table_name != 'schema_migrations'"
+    ).fetchall()]
+    if tables:
+        conn.execute(f"TRUNCATE TABLE {', '.join(tables)} RESTART IDENTITY CASCADE")
     conn.commit()
-    conn.execute("PRAGMA foreign_keys=ON")
 
 
 @pytest.fixture
@@ -44,15 +45,15 @@ def ctx(monkeypatch):
 
 def _parent(conn, name, email):
     return conn.execute(
-        "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES (?, ?, 't', 1)",
-        (name, email)).lastrowid
+        "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES (%s, %s, 't', TRUE) RETURNING id",
+        (name, email)).fetchone()["id"]
 
 
 def _athlete(conn, pid, *, byga=None, playmetrics=None):
     return conn.execute(
         "INSERT INTO athletes (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in, "
-        "byga_ics_url, playmetrics_ics_url) VALUES (?, 'Kid', 12, 'M', 90, 5, 2, ?, ?)",
-        (pid, byga, playmetrics)).lastrowid
+        "byga_ics_url, playmetrics_ics_url) VALUES (%s, 'Kid', 12, 'M', 90, 5, 2, %s, %s) RETURNING id",
+        (pid, byga, playmetrics)).fetchone()["id"]
 
 
 # ── posthog_client.recent_activity ───────────────────────────────────────────

@@ -46,7 +46,7 @@ def test_report_saved_to_db_and_returns_201(client):
     assert isinstance(body["id"], int)
 
     row = get_conn().execute(
-        "SELECT description, app_version, platform, role_hint FROM problem_reports WHERE id = ?",
+        "SELECT description, app_version, platform, role_hint FROM problem_reports WHERE id = %s",
         (body["id"],),
     ).fetchone()
     assert row is not None
@@ -84,7 +84,7 @@ def test_email_includes_screenshot_when_provided(client):
     assert attachment.endswith(".png")
     # and that path matches what was persisted on the report row
     row = get_conn().execute(
-        "SELECT screenshot_url FROM problem_reports WHERE id = ?", (r.json()["id"],)
+        "SELECT screenshot_url FROM problem_reports WHERE id = %s", (r.json()["id"],)
     ).fetchone()
     assert row["screenshot_url"] == attachment
 
@@ -100,12 +100,12 @@ def test_confirmation_uses_account_email_from_parent_id(client):
     # The confirmation must go to the account holder's email, resolved server-side.
     conn = get_conn()
     conn.execute(
-        "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES (?, ?, ?, ?)",
-        ("Account Holder", "holder@example.com", "2026-07-02T00:00:00", 1),
+        "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES (%s, %s, %s, %s)",
+        ("Account Holder", "holder@example.com", "2026-07-02T00:00:00", True),
     )
     conn.commit()
     pid = conn.execute(
-        "SELECT id FROM parents WHERE email = ?", ("holder@example.com",)
+        "SELECT id FROM parents WHERE email = %s", ("holder@example.com",)
     ).fetchone()["id"]
 
     r = client.post("/api/support/report", data={

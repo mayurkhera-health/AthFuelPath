@@ -67,14 +67,14 @@ async def submit_report(
         cur = conn.execute(
             """INSERT INTO problem_reports
                    (description, screenshot_url, app_version, platform, role_hint, category)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+               VALUES (%s, %s, %s, %s, %s, %s)
+               RETURNING id, created_at""",
             (desc, screenshot_url, app_version, platform, role_hint, category),
         )
         conn.commit()
-        report_id = cur.lastrowid
-        created_at_utc = conn.execute(
-            "SELECT created_at FROM problem_reports WHERE id = ?", (report_id,)
-        ).fetchone()[0]
+        report_row = cur.fetchone()
+        report_id = report_row["id"]
+        created_at_utc = report_row["created_at"]
         # Convert UTC → PST (UTC-8) / PDT (UTC-7); display as PST for simplicity
         PST = timezone(timedelta(hours=-8))
         created_at = datetime.fromisoformat(created_at_utc).replace(tzinfo=timezone.utc).astimezone(PST).strftime("%Y-%m-%d %I:%M %p PST")
@@ -83,7 +83,7 @@ async def submit_report(
         if parent_id is not None:
             try:
                 prow = conn.execute(
-                    "SELECT email FROM parents WHERE id = ?", (parent_id,)
+                    "SELECT email FROM parents WHERE id = %s", (parent_id,)
                 ).fetchone()
                 account_email = prow["email"] if prow else None
             except Exception:

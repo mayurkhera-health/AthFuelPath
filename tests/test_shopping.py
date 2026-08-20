@@ -2,7 +2,7 @@
 import os
 os.environ["DB_PATH"] = ":memory:"
 
-import sqlite3, pytest
+import pytest
 from db.setup import init_db
 from api.database import get_conn
 
@@ -17,28 +17,32 @@ def conn():
 
 def test_fueling_foods_table_exists(conn):
     row = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='fueling_foods'"
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema='public' AND table_name='fueling_foods'"
     ).fetchone()
     assert row is not None
 
 
 def test_athlete_food_prefs_table_exists(conn):
     row = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='athlete_food_prefs'"
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema='public' AND table_name='athlete_food_prefs'"
     ).fetchone()
     assert row is not None
 
 
 def test_shopping_lists_table_exists(conn):
     row = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='shopping_lists'"
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema='public' AND table_name='shopping_lists'"
     ).fetchone()
     assert row is not None
 
 
 def test_shopping_list_items_table_exists(conn):
     row = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='shopping_list_items'"
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema='public' AND table_name='shopping_list_items'"
     ).fetchone()
     assert row is not None
 
@@ -54,7 +58,7 @@ def _csv_row_count() -> int:
 def test_seed_loads_all_foods(conn):
     from db.setup import seed_fueling_foods
     seed_fueling_foods(conn)
-    count = conn.execute("SELECT COUNT(*) FROM fueling_foods").fetchone()[0]
+    count = conn.execute("SELECT COUNT(*) AS count FROM fueling_foods").fetchone()["count"]
     assert count == _csv_row_count()
 
 
@@ -62,7 +66,7 @@ def test_seed_is_idempotent(conn):
     from db.setup import seed_fueling_foods
     seed_fueling_foods(conn)
     seed_fueling_foods(conn)
-    count = conn.execute("SELECT COUNT(*) FROM fueling_foods").fetchone()[0]
+    count = conn.execute("SELECT COUNT(*) AS count FROM fueling_foods").fetchone()["count"]
     assert count == _csv_row_count()
 
 
@@ -152,18 +156,23 @@ def test_classify_week_header_line_matches_counts():
 
 def _insert_athlete(conn, suffix="a") -> int:
     """Helper: insert a minimal parent+athlete, return athlete id."""
-    conn.execute(
-        f"INSERT OR IGNORE INTO parents (full_name, email, consent_timestamp) "
-        f"VALUES ('P{suffix}', 'p{suffix}@t.com', '2026-01-01')"
+    email = f"p{suffix}@t.com"
+    cur = conn.execute(
+        "INSERT INTO parents (full_name, email, consent_timestamp) "
+        "VALUES (%s, %s, '2026-01-01') "
+        "ON CONFLICT (email) DO NOTHING RETURNING id",
+        (f"P{suffix}", email),
     )
-    parent_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-    conn.execute(
-        "INSERT OR IGNORE INTO athletes "
+    row = cur.fetchone()
+    if row is None:
+        row = conn.execute("SELECT id FROM parents WHERE email = %s", (email,)).fetchone()
+    parent_id = row["id"]
+    athlete_id = conn.execute(
+        "INSERT INTO athletes "
         "(parent_id, first_name, age, gender, weight_lbs, height_ft, height_in) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id",
         (parent_id, "Alex", 15, "Boy", 140, 5, 8),
-    )
-    athlete_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    ).fetchone()["id"]
     conn.commit()
     return athlete_id
 
@@ -183,7 +192,7 @@ def test_day_strip_is_sunday_anchored_not_monday(conn):
     aid = _insert_athlete(conn, "daystrip")
     conn.execute(
         "INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, duration_hours) "
-        "VALUES (?, 'Practice', 'practice', '2026-06-17', '16:00', 1.5)",
+        "VALUES (%s, 'Practice', 'practice', '2026-06-17', '16:00', 1.5)",
         (aid,),
     )
     conn.commit()
@@ -210,7 +219,7 @@ def test_build_essentials_practice_week_adds_pre_fuel_and_recovery(conn):
     aid = _insert_athlete(conn, "prac")
     conn.execute(
         "INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, duration_hours) "
-        "VALUES (?, 'Practice', 'practice', '2026-06-16', '16:00', 1.5)",
+        "VALUES (%s, 'Practice', 'practice', '2026-06-16', '16:00', 1.5)",
         (aid,),
     )
     conn.commit()
@@ -225,7 +234,7 @@ def test_build_essentials_game_week_includes_hydration(conn):
     aid = _insert_athlete(conn, "game")
     conn.execute(
         "INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, duration_hours) "
-        "VALUES (?, 'Game', 'game', '2026-06-21', '10:00', 1.5)",
+        "VALUES (%s, 'Game', 'game', '2026-06-21', '10:00', 1.5)",
         (aid,),
     )
     conn.commit()
@@ -239,8 +248,9 @@ def test_build_essentials_disliked_food_absent(conn):
     _seed(conn)
     aid = _insert_athlete(conn, "dis")
     conn.execute(
-        "INSERT OR IGNORE INTO athlete_food_prefs (athlete_id, food_name, preference) "
-        "VALUES (?, 'Cottage cheese', 'disliked')",
+        "INSERT INTO athlete_food_prefs (athlete_id, food_name, preference) "
+        "VALUES (%s, 'Cottage cheese', 'disliked') "
+        "ON CONFLICT (athlete_id, food_name) DO NOTHING",
         (aid,),
     )
     conn.commit()
@@ -253,8 +263,9 @@ def test_build_essentials_allergic_food_absent(conn):
     _seed(conn)
     aid = _insert_athlete(conn, "allergy")
     conn.execute(
-        "INSERT OR IGNORE INTO athlete_food_prefs (athlete_id, food_name, preference) "
-        "VALUES (?, 'Eggs', 'allergic')",
+        "INSERT INTO athlete_food_prefs (athlete_id, food_name, preference) "
+        "VALUES (%s, 'Eggs', 'allergic') "
+        "ON CONFLICT (athlete_id, food_name) DO NOTHING",
         (aid,),
     )
     conn.commit()
@@ -267,8 +278,9 @@ def test_build_essentials_liked_personal_food_appears(conn):
     _seed(conn)
     aid = _insert_athlete(conn, "liked")
     conn.execute(
-        "INSERT OR IGNORE INTO athlete_food_prefs (athlete_id, food_name, preference, category) "
-        "VALUES (?, 'Homemade granola', 'liked', 'breakfast')",
+        "INSERT INTO athlete_food_prefs (athlete_id, food_name, preference, category) "
+        "VALUES (%s, 'Homemade granola', 'liked', 'breakfast') "
+        "ON CONFLICT (athlete_id, food_name) DO NOTHING",
         (aid,),
     )
     conn.commit()
@@ -340,18 +352,23 @@ def _make_athlete_route(client, suffix="r") -> int:
     """Insert athlete via direct DB connection — returns athlete_id."""
     from api.database import get_conn as _gc
     c = _gc()
-    c.execute(
-        f"INSERT OR IGNORE INTO parents (full_name, email, consent_timestamp) "
-        f"VALUES ('P{suffix}', 'pr{suffix}@t.com', '2026-01-01')"
+    email = f"pr{suffix}@t.com"
+    cur = c.execute(
+        "INSERT INTO parents (full_name, email, consent_timestamp) "
+        "VALUES (%s, %s, '2026-01-01') "
+        "ON CONFLICT (email) DO NOTHING RETURNING id",
+        (f"P{suffix}", email),
     )
-    parent_id = c.execute("SELECT last_insert_rowid()").fetchone()[0]
-    c.execute(
-        "INSERT OR IGNORE INTO athletes "
+    row = cur.fetchone()
+    if row is None:
+        row = c.execute("SELECT id FROM parents WHERE email = %s", (email,)).fetchone()
+    parent_id = row["id"]
+    athlete_id = c.execute(
+        "INSERT INTO athletes "
         "(parent_id, first_name, age, gender, weight_lbs, height_ft, height_in) "
-        "VALUES (?, 'Alex', 15, 'Boy', 140, 5, 8)",
+        "VALUES (%s, 'Alex', 15, 'Boy', 140, 5, 8) RETURNING id",
         (parent_id,),
-    )
-    athlete_id = c.execute("SELECT last_insert_rowid()").fetchone()[0]
+    ).fetchone()["id"]
     c.commit()
     c.close()
     return athlete_id
@@ -377,11 +394,11 @@ def test_get_essentials_header_matches_events(client):
     c = _gc()
     c.execute(
         "INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, duration_hours) "
-        "VALUES (?, 'Practice', 'practice', '2026-06-16', '16:00', 1.5)", (aid,)
+        "VALUES (%s, 'Practice', 'practice', '2026-06-16', '16:00', 1.5)", (aid,)
     )
     c.execute(
         "INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, duration_hours) "
-        "VALUES (?, 'Game', 'game', '2026-06-21', '10:00', 1.5)", (aid,)
+        "VALUES (%s, 'Game', 'game', '2026-06-21', '10:00', 1.5)", (aid,)
     )
     c.commit(); c.close()
     resp = client.get(
@@ -498,7 +515,7 @@ def test_set_pref_disliked_removes_from_essentials(client):
     c = _gc()
     c.execute(
         "INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, duration_hours) "
-        "VALUES (?, 'Prac', 'practice', '2026-06-16', '16:00', 1.5)", (aid,)
+        "VALUES (%s, 'Prac', 'practice', '2026-06-16', '16:00', 1.5)", (aid,)
     )
     c.commit(); c.close()
     ess = client.get(f"/api/shopping/essentials?athlete_id={aid}&week_start=2026-06-16", headers=headers)
@@ -519,7 +536,7 @@ def test_game_day_has_game_flag(client):
     c = _gc()
     c.execute(
         "INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, duration_hours) "
-        "VALUES (?, 'Game', 'game', '2026-06-21', '10:00', 1.5)", (aid_game,)
+        "VALUES (%s, 'Game', 'game', '2026-06-21', '10:00', 1.5)", (aid_game,)
     )
     c.commit(); c.close()
     resp2 = client.get(
@@ -539,7 +556,7 @@ def test_my_foods_appears_in_suggestions(client):
     c = _gc()
     c.execute(
         "INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, duration_hours) "
-        "VALUES (?, 'Prac', 'practice', '2026-06-16', '16:00', 1.5)", (aid,)
+        "VALUES (%s, 'Prac', 'practice', '2026-06-16', '16:00', 1.5)", (aid,)
     )
     c.commit(); c.close()
     ess = client.get(f"/api/shopping/essentials?athlete_id={aid}&week_start=2026-06-16", headers=headers)

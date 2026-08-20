@@ -10,14 +10,14 @@ router = APIRouter()
 
 def _get_or_create_list(athlete_id: int, week_start: str, conn) -> int:
     conn.execute(
-        "INSERT OR IGNORE INTO shopping_lists (athlete_id, week_start) VALUES (?, ?)",
+        "INSERT INTO shopping_lists (athlete_id, week_start) VALUES (%s, %s) ON CONFLICT DO NOTHING",
         (athlete_id, week_start),
     )
     conn.commit()
     return conn.execute(
-        "SELECT id FROM shopping_lists WHERE athlete_id = ? AND week_start = ?",
+        "SELECT id FROM shopping_lists WHERE athlete_id = %s AND week_start = %s",
         (athlete_id, week_start),
-    ).fetchone()[0]
+    ).fetchone()["id"]
 
 
 @router.get("/essentials")
@@ -27,7 +27,7 @@ def get_essentials(
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)
-        if not conn.execute("SELECT id FROM athletes WHERE id = ?", (athlete_id,)).fetchone():
+        if not conn.execute("SELECT id FROM athletes WHERE id = %s", (athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
         return build_essentials(athlete_id, week_start, conn)
     finally:
@@ -39,11 +39,11 @@ def get_list(athlete_id: int = Query(...), week_start: str = Query(...), identit
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)
-        if not conn.execute("SELECT id FROM athletes WHERE id = ?", (athlete_id,)).fetchone():
+        if not conn.execute("SELECT id FROM athletes WHERE id = %s", (athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
         list_id = _get_or_create_list(athlete_id, week_start, conn)
         rows = conn.execute(
-            "SELECT * FROM shopping_list_items WHERE list_id = ? ORDER BY category, created_at",
+            "SELECT * FROM shopping_list_items WHERE list_id = %s ORDER BY category, created_at",
             (list_id,),
         ).fetchall()
         items = [dict(r) for r in rows]
@@ -75,7 +75,7 @@ def add_item(data: ShoppingItemCreate, identity=Depends(require_session)):
     conn = get_conn()
     try:
         assert_owns_athlete(identity, data.athlete_id, conn)
-        if not conn.execute("SELECT id FROM athletes WHERE id = ?", (data.athlete_id,)).fetchone():
+        if not conn.execute("SELECT id FROM athletes WHERE id = %s", (data.athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
         list_id = _get_or_create_list(data.athlete_id, data.week_start, conn)
         name = data.name.strip()
@@ -84,19 +84,16 @@ def add_item(data: ShoppingItemCreate, identity=Depends(require_session)):
         # recognized as the same item. The first-inserted row's original
         # casing is preserved; the duplicate just returns it as-is.
         existing = conn.execute(
-            "SELECT * FROM shopping_list_items WHERE list_id = ? AND LOWER(name) = LOWER(?) AND category = ?",
+            "SELECT * FROM shopping_list_items WHERE list_id = %s AND LOWER(name) = LOWER(%s) AND category = %s",
             (list_id, name, data.category),
         ).fetchone()
         if existing:
             return JSONResponse(content=dict(existing), status_code=200)
-        conn.execute(
-            "INSERT INTO shopping_list_items (list_id, name, category, source) VALUES (?, ?, ?, ?)",
-            (list_id, name, data.category, data.source),
-        )
-        conn.commit()
         row = conn.execute(
-            "SELECT * FROM shopping_list_items WHERE rowid = last_insert_rowid()"
+            "INSERT INTO shopping_list_items (list_id, name, category, source) VALUES (%s, %s, %s, %s) RETURNING *",
+            (list_id, name, data.category, data.source),
         ).fetchone()
+        conn.commit()
         return dict(row)
     finally:
         conn.close()
@@ -108,19 +105,19 @@ def patch_item(item_id: int, data: ShoppingItemPatch, identity=Depends(require_s
     try:
         owner_row = conn.execute(
             "SELECT sl.athlete_id FROM shopping_list_items sli "
-            "JOIN shopping_lists sl ON sl.id = sli.list_id WHERE sli.id = ?",
+            "JOIN shopping_lists sl ON sl.id = sli.list_id WHERE sli.id = %s",
             (item_id,),
         ).fetchone()
         if not owner_row:
             raise HTTPException(404, "Item not found.")
         assert_owns_athlete(identity, dict(owner_row)["athlete_id"], conn)
         conn.execute(
-            "UPDATE shopping_list_items SET checked = ? WHERE id = ?",
+            "UPDATE shopping_list_items SET checked = %s WHERE id = %s",
             (int(data.checked), item_id),
         )
         conn.commit()
         updated = conn.execute(
-            "SELECT * FROM shopping_list_items WHERE id = ?", (item_id,)
+            "SELECT * FROM shopping_list_items WHERE id = %s", (item_id,)
         ).fetchone()
         row = dict(updated)
         row["checked"] = bool(row["checked"])
@@ -135,13 +132,13 @@ def delete_item(item_id: int, identity=Depends(require_session)):
     try:
         owner_row = conn.execute(
             "SELECT sl.athlete_id FROM shopping_list_items sli "
-            "JOIN shopping_lists sl ON sl.id = sli.list_id WHERE sli.id = ?",
+            "JOIN shopping_lists sl ON sl.id = sli.list_id WHERE sli.id = %s",
             (item_id,),
         ).fetchone()
         if not owner_row:
             raise HTTPException(404, "Item not found.")
         assert_owns_athlete(identity, dict(owner_row)["athlete_id"], conn)
-        conn.execute("DELETE FROM shopping_list_items WHERE id = ?", (item_id,))
+        conn.execute("DELETE FROM shopping_list_items WHERE id = %s", (item_id,))
         conn.commit()
         return {"deleted": True, "id": item_id}
     finally:
@@ -153,11 +150,11 @@ def set_pref(data: ShoppingPref, identity=Depends(require_session)):
     conn = get_conn()
     try:
         assert_owns_athlete(identity, data.athlete_id, conn)
-        if not conn.execute("SELECT id FROM athletes WHERE id = ?", (data.athlete_id,)).fetchone():
+        if not conn.execute("SELECT id FROM athletes WHERE id = %s", (data.athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
         conn.execute(
             """INSERT INTO athlete_food_prefs (athlete_id, food_name, preference, category)
-               VALUES (?, ?, ?, ?)
+               VALUES (%s, %s, %s, %s)
                ON CONFLICT(athlete_id, food_name) DO UPDATE SET
                  preference = excluded.preference,
                  category   = excluded.category""",
@@ -174,11 +171,11 @@ def save_personal_food(data: PersonalFood, identity=Depends(require_session)):
     conn = get_conn()
     try:
         assert_owns_athlete(identity, data.athlete_id, conn)
-        if not conn.execute("SELECT id FROM athletes WHERE id = ?", (data.athlete_id,)).fetchone():
+        if not conn.execute("SELECT id FROM athletes WHERE id = %s", (data.athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
         conn.execute(
             """INSERT INTO athlete_food_prefs (athlete_id, food_name, preference, category)
-               VALUES (?, ?, 'liked', ?)
+               VALUES (%s, %s, 'liked', %s)
                ON CONFLICT(athlete_id, food_name) DO UPDATE SET
                  preference = 'liked', category = excluded.category""",
             (data.athlete_id, data.name, data.category),

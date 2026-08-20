@@ -45,20 +45,20 @@ def submit_feature_request(payload: FeatureRequest):
         cur = conn.execute(
             """INSERT INTO feature_requests
                    (email, athlete_id, suggestion, reason, submitted_at)
-               VALUES (?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))""",
+               VALUES (%s, %s, %s, %s, COALESCE(%s, sqlite_now()))
+               RETURNING id, submitted_at""",
             (payload.email, payload.athlete_id, suggestion, reason, payload.submitted_at),
         )
         conn.commit()
-        request_id = cur.lastrowid
-        submitted_at = conn.execute(
-            "SELECT submitted_at FROM feature_requests WHERE id = ?", (request_id,)
-        ).fetchone()[0]
+        inserted = cur.fetchone()
+        request_id = inserted["id"]
+        submitted_at = inserted["submitted_at"]
         # Resolve the account holder's email from athlete_id when supplied, so the
         # confirmation reaches the logged-in user even if the payload email is blank.
         if payload.athlete_id is not None:
             try:
                 prow = conn.execute(
-                    "SELECT p.email FROM athletes a JOIN parents p ON a.parent_id = p.id WHERE a.id = ?",
+                    "SELECT p.email FROM athletes a JOIN parents p ON a.parent_id = p.id WHERE a.id = %s",
                     (payload.athlete_id,),
                 ).fetchone()
                 account_email = prow["email"] if prow else None

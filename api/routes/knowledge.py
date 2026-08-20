@@ -72,13 +72,13 @@ def coach_health():
     conn = get_conn()
     try:
         chunk_count = conn.execute(
-            """SELECT COUNT(*) FROM knowledge_chunks kc
+            """SELECT COUNT(*) AS count FROM knowledge_chunks kc
                JOIN knowledge_items ki ON kc.item_id = ki.id
                WHERE ki.review_status = 'approved'"""
-        ).fetchone()[0]
+        ).fetchone()["count"]
         item_count = conn.execute(
-            "SELECT COUNT(*) FROM knowledge_items WHERE review_status = 'approved'"
-        ).fetchone()[0]
+            "SELECT COUNT(*) AS count FROM knowledge_items WHERE review_status = 'approved'"
+        ).fetchone()["count"]
     except Exception as exc:
         return {
             "status": "degraded",
@@ -105,7 +105,7 @@ def ask_knowledge(body: AskRequest, identity=Depends(require_session)):
     try:
         assert_owns_athlete(identity, body.athlete_id, conn)
         athlete = conn.execute(
-            "SELECT * FROM athletes WHERE id = ?", (body.athlete_id,)
+            "SELECT * FROM athletes WHERE id = %s", (body.athlete_id,)
         ).fetchone()
         if not athlete:
             raise HTTPException(404, "Athlete not found.")
@@ -132,12 +132,12 @@ def get_knowledge_item(slug: str, x_admin_key: Optional[str] = Header(None)):
     conn = get_conn()
     try:
         item = conn.execute(
-            "SELECT * FROM knowledge_items WHERE slug = ?", (slug,)
+            "SELECT * FROM knowledge_items WHERE slug = %s", (slug,)
         ).fetchone()
         if not item:
             raise HTTPException(404, f"Knowledge item '{slug}' not found.")
         chunks = conn.execute(
-            "SELECT chunk_index, heading, content FROM knowledge_chunks WHERE item_id = ? ORDER BY chunk_index",
+            "SELECT chunk_index, heading, content FROM knowledge_chunks WHERE item_id = %s ORDER BY chunk_index",
             (item["id"],),
         ).fetchall()
         return {
@@ -160,12 +160,12 @@ def update_status(slug: str, body: StatusUpdate,
     conn = get_conn()
     try:
         row = conn.execute(
-            "SELECT id FROM knowledge_items WHERE slug = ?", (slug,)
+            "SELECT id FROM knowledge_items WHERE slug = %s", (slug,)
         ).fetchone()
         if not row:
             raise HTTPException(404, f"Knowledge item '{slug}' not found.")
         conn.execute(
-            "UPDATE knowledge_items SET review_status = ? WHERE slug = ?",
+            "UPDATE knowledge_items SET review_status = %s WHERE slug = %s",
             (body.review_status, slug),
         )
         conn.commit()
@@ -180,12 +180,12 @@ def archive_item(slug: str, x_admin_key: Optional[str] = Header(None)):
     conn = get_conn()
     try:
         row = conn.execute(
-            "SELECT id FROM knowledge_items WHERE slug = ?", (slug,)
+            "SELECT id FROM knowledge_items WHERE slug = %s", (slug,)
         ).fetchone()
         if not row:
             raise HTTPException(404, f"Knowledge item '{slug}' not found.")
         conn.execute(
-            "UPDATE knowledge_items SET review_status = 'archived' WHERE slug = ?",
+            "UPDATE knowledge_items SET review_status = 'archived' WHERE slug = %s",
             (slug,),
         )
         conn.commit()

@@ -53,7 +53,7 @@ def _qualifying_dates(athlete_id: int, conn) -> set:
     to PST before extracting the date means a lesson logged at 11 PM PST lands on
     the correct local calendar day, not the next UTC day."""
     rows = conn.execute(
-        "SELECT completed_at FROM fueliq_lesson_completions WHERE athlete_id = ?",
+        "SELECT completed_at FROM fueliq_lesson_completions WHERE athlete_id = %s",
         (athlete_id,),
     ).fetchall()
     result = set()
@@ -79,7 +79,7 @@ def _best_streak(qual: set) -> int:
 
 def _freeze_tokens(athlete_id: int, conn) -> int:
     row = conn.execute(
-        "SELECT freeze_tokens FROM fueliq_athlete_progress WHERE athlete_id = ?",
+        "SELECT freeze_tokens FROM fueliq_athlete_progress WHERE athlete_id = %s",
         (athlete_id,),
     ).fetchone()
     return int(row["freeze_tokens"]) if row else DEFAULT_FREEZE_TOKENS
@@ -125,7 +125,7 @@ def register_activity(athlete_id: int, conn, today=None) -> dict:
     best = max(_best_streak(qual), cur["current"])
 
     row = conn.execute(
-        "SELECT last_celebrated_milestone FROM fueliq_athlete_progress WHERE athlete_id = ?",
+        "SELECT last_celebrated_milestone FROM fueliq_athlete_progress WHERE athlete_id = %s",
         (athlete_id,),
     ).fetchone()
     last = int(row["last_celebrated_milestone"])
@@ -133,9 +133,9 @@ def register_activity(athlete_id: int, conn, today=None) -> dict:
 
     today_str = _as_date(today).isoformat()
     conn.execute(
-        "UPDATE fueliq_athlete_progress SET current_streak = ?, best_streak = ?, "
-        "last_activity_date = ?, updated_at = datetime('now') "
-        "WHERE athlete_id = ?",
+        "UPDATE fueliq_athlete_progress SET current_streak = %s, best_streak = %s, "
+        "last_activity_date = %s, updated_at = sqlite_now() "
+        "WHERE athlete_id = %s",
         (cur["current"], best, today_str, athlete_id),
     )
     conn.commit()
@@ -143,7 +143,7 @@ def register_activity(athlete_id: int, conn, today=None) -> dict:
     just = None
     if reached != last:
         conn.execute(
-            "UPDATE fueliq_athlete_progress SET last_celebrated_milestone = ? WHERE athlete_id = ?",
+            "UPDATE fueliq_athlete_progress SET last_celebrated_milestone = %s WHERE athlete_id = %s",
             (reached, athlete_id),
         )
         conn.commit()

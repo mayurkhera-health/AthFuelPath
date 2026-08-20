@@ -35,7 +35,7 @@ def test_feedback_saved_and_201(client):
     assert isinstance(body["id"], int)
 
     row = get_conn().execute(
-        "SELECT athlete_id, outcome, would_use_again, comment FROM instacart_handoff_feedback WHERE id = ?",
+        "SELECT athlete_id, outcome, would_use_again, comment FROM instacart_handoff_feedback WHERE id = %s",
         (body["id"],),
     ).fetchone()
     assert row["athlete_id"] == 1

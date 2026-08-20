@@ -12,14 +12,14 @@ def get_gap_analysis(athlete_id: int, date: str = None, identity=Depends(require
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)
-        row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
+        row = conn.execute("SELECT * FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
         athlete = dict(row)
         target_date = date or str(dt_date.today())
 
         targets_row = conn.execute(
-            "SELECT * FROM daily_targets WHERE athlete_id = ? AND target_date = ?",
+            "SELECT * FROM daily_targets WHERE athlete_id = %s AND target_date = %s",
             (athlete_id, target_date),
         ).fetchone()
         if not targets_row:
@@ -30,7 +30,7 @@ def get_gap_analysis(athlete_id: int, date: str = None, identity=Depends(require
         targets = dict(targets_row)
 
         meals = conn.execute(
-            "SELECT * FROM meal_logs WHERE athlete_id = ? AND DATE(logged_at) = ?",
+            "SELECT * FROM meal_logs WHERE athlete_id = %s AND DATE(logged_at) = %s",
             (athlete_id, target_date),
         ).fetchall()
         meal_list = [dict(m) for m in meals]

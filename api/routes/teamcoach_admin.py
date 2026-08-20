@@ -23,15 +23,15 @@ def create_coach(body: CreateCoachRequest):
     conn = get_conn()
     try:
         if conn.execute(
-            "SELECT id FROM coaches WHERE email = ?", (body.email,)
+            "SELECT id FROM coaches WHERE email = %s", (body.email,)
         ).fetchone():
             raise HTTPException(409, "Email already registered")
         cur = conn.execute(
-            "INSERT INTO coaches (name, email, password_hash, salt) VALUES (?,?,?,?)",
+            "INSERT INTO coaches (name, email, password_hash, salt) VALUES (%s,%s,%s,%s) RETURNING id",
             (body.name, body.email, pw_hash, salt),
         )
         conn.commit()
-        return {"coach_id": cur.lastrowid}
+        return {"coach_id": cur.fetchone()["id"]}
     finally:
         conn.close()
 
@@ -47,11 +47,11 @@ def create_team(body: CreateTeamRequest):
     conn = get_conn()
     try:
         cur = conn.execute(
-            "INSERT INTO teams (name, season, threshold_pct) VALUES (?,?,?)",
+            "INSERT INTO teams (name, season, threshold_pct) VALUES (%s,%s,%s) RETURNING id",
             (body.name, body.season, body.threshold_pct),
         )
         conn.commit()
-        return {"team_id": cur.lastrowid}
+        return {"team_id": cur.fetchone()["id"]}
     finally:
         conn.close()
 
@@ -65,7 +65,7 @@ def grant_coach_access(team_id: int, coach_id: int):
     conn = get_conn()
     try:
         conn.execute(
-            "INSERT OR IGNORE INTO coach_team_access (coach_id, team_id) VALUES (?,?)",
+            "INSERT INTO coach_team_access (coach_id, team_id) VALUES (%s,%s) ON CONFLICT DO NOTHING",
             (coach_id, team_id),
         )
         conn.commit()
@@ -88,12 +88,12 @@ def add_to_roster(team_id: int, body: AddRosterRequest):
     conn = get_conn()
     try:
         if not conn.execute(
-            "SELECT id FROM athletes WHERE id = ?", (body.athlete_id,)
+            "SELECT id FROM athletes WHERE id = %s", (body.athlete_id,)
         ).fetchone():
             raise HTTPException(404, "Athlete not found")
         conn.execute(
-            "INSERT OR IGNORE INTO roster_membership "
-            "(athlete_id, team_id, parent_consent_flag) VALUES (?,?,?)",
+            "INSERT INTO roster_membership "
+            "(athlete_id, team_id, parent_consent_flag) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
             (body.athlete_id, team_id, body.parent_consent_flag),
         )
         conn.commit()

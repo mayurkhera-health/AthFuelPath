@@ -46,7 +46,7 @@ def generate_blueprint_bg(athlete_id: int) -> None:
     """
     conn = get_conn()
     try:
-        row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
+        row = conn.execute("SELECT * FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
         if not row:
             return
         athlete = dict(row)
@@ -55,7 +55,7 @@ def generate_blueprint_bg(athlete_id: int) -> None:
         # GET /blueprint can distinguish "task started" from "task not yet begun".
         started_at = datetime.now(timezone.utc).isoformat()
         conn.execute(
-            "UPDATE athletes SET blueprint_json=? WHERE id=?",
+            "UPDATE athletes SET blueprint_json=%s WHERE id=%s",
             (json.dumps({"__status": "generating", "started_at": started_at}), athlete_id),
         )
         conn.commit()
@@ -63,14 +63,15 @@ def generate_blueprint_bg(athlete_id: int) -> None:
         targets_by_event = {et: calc_daily_targets(athlete, et) for et in _EVENT_TYPES}
         blueprint = claude_ai.prompt0_athlete_blueprint(athlete, targets_by_event)
         conn.execute(
-            "UPDATE athletes SET blueprint_json=? WHERE id=?",
+            "UPDATE athletes SET blueprint_json=%s WHERE id=%s",
             (json.dumps(blueprint), athlete_id),
         )
         conn.commit()
     except Exception as exc:
+        conn.rollback()
         try:
             conn.execute(
-                "UPDATE athletes SET blueprint_json=? WHERE id=?",
+                "UPDATE athletes SET blueprint_json=%s WHERE id=%s",
                 (json.dumps({"__status": "error", "message": str(exc)}), athlete_id),
             )
             conn.commit()
@@ -89,7 +90,7 @@ def _build_blueprint(athlete: dict) -> dict:
 
 def _persist_blueprint(conn, athlete_id: int, blueprint: dict) -> None:
     conn.execute(
-        "UPDATE athletes SET blueprint_json=? WHERE id=?",
+        "UPDATE athletes SET blueprint_json=%s WHERE id=%s",
         (json.dumps(blueprint), athlete_id),
     )
     conn.commit()
@@ -102,24 +103,24 @@ def create_athlete(data: AthleteCreate, background_tasks: BackgroundTasks):
     conn = get_conn()
     try:
         parent = conn.execute(
-            "SELECT * FROM parents WHERE id = ? AND consent_confirmed = TRUE", (data.parent_id,)
+            "SELECT * FROM parents WHERE id = %s AND consent_confirmed = TRUE", (data.parent_id,)
         ).fetchone()
         if not parent:
             raise HTTPException(403, "Parent consent must be confirmed before adding an athlete profile.")
-        conn.execute(
+        row = conn.execute(
             """INSERT INTO athletes
                (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in,
                 position, competition_level, sweat_profile, allergies, dietary_restrictions, supplement_use,
                 season_phase, food_preferences, date_of_birth, lifestyle_activity, diet_pref, phone)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               RETURNING *""",
             (data.parent_id, data.first_name, data.age, data.gender, data.weight_lbs,
              data.height_ft, data.height_in, data.position, data.competition_level,
              data.sweat_profile, data.allergies, data.dietary_restrictions, data.supplement_use,
              normalize_season_phase(data.season_phase), data.food_preferences, data.date_of_birth,
              data.lifestyle_activity, data.diet_pref, data.phone),
-        )
+        ).fetchone()
         conn.commit()
-        row = conn.execute("SELECT * FROM athletes WHERE rowid = last_insert_rowid()").fetchone()
         athlete = dict(row)
         # Blueprint is a deterministic MOCK (instant) — generate inline so it's ready
         # immediately and never lost to a Fly machine-stop / deploy mid-background-task.
@@ -135,7 +136,7 @@ def get_athlete(athlete_id: int, identity=Depends(require_session)):
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)
-        row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
+        row = conn.execute("SELECT * FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
         return dict(row)
@@ -154,7 +155,7 @@ def update_athlete(
     try:
         assert_owns_athlete(identity, athlete_id, conn)
         existing = conn.execute(
-            "SELECT season_phase, food_preferences, phone FROM athletes WHERE id = ?", (athlete_id,)
+            "SELECT season_phase, food_preferences, phone FROM athletes WHERE id = %s", (athlete_id,)
         ).fetchone()
         if not existing:
             raise HTTPException(404, "Athlete not found.")
@@ -174,11 +175,11 @@ def update_athlete(
         phone = data.phone if data.phone is not None else existing["phone"]
         conn.execute(
             """UPDATE athletes SET
-               first_name=?, age=?, gender=?, weight_lbs=?, height_ft=?, height_in=?,
-               position=?, competition_level=?, sweat_profile=?, allergies=?,
-               dietary_restrictions=?, supplement_use=?, season_phase=?, food_preferences=?,
-               date_of_birth=?, lifestyle_activity=?, diet_pref=?, phone=?, blueprint_json=NULL
-               WHERE id=?""",
+               first_name=%s, age=%s, gender=%s, weight_lbs=%s, height_ft=%s, height_in=%s,
+               position=%s, competition_level=%s, sweat_profile=%s, allergies=%s,
+               dietary_restrictions=%s, supplement_use=%s, season_phase=%s, food_preferences=%s,
+               date_of_birth=%s, lifestyle_activity=%s, diet_pref=%s, phone=%s, blueprint_json=NULL
+               WHERE id=%s""",
             (data.first_name, data.age, data.gender, data.weight_lbs, data.height_ft,
              data.height_in, data.position, data.competition_level, data.sweat_profile,
              data.allergies, data.dietary_restrictions, data.supplement_use,
@@ -186,7 +187,7 @@ def update_athlete(
              data.diet_pref, phone, athlete_id),
         )
         conn.commit()
-        row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
+        row = conn.execute("SELECT * FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
         # Kick off blueprint regeneration in the background so it's ready by
         # the time the user navigates to the Blueprint screen.
         background_tasks.add_task(generate_blueprint_bg, athlete_id)
@@ -201,7 +202,7 @@ def get_blueprint(athlete_id: int, identity=Depends(require_session)):
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)
-        row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
+        row = conn.execute("SELECT * FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
         athlete = dict(row)
@@ -285,7 +286,7 @@ def regenerate_blueprint(athlete_id: int, background_tasks: BackgroundTasks, ide
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)
-        row = conn.execute("SELECT id FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
+        row = conn.execute("SELECT id FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
         background_tasks.add_task(generate_blueprint_bg, athlete_id)
@@ -299,11 +300,11 @@ def dismiss_schedule_reminder_athlete(athlete_id: int, identity=Depends(require_
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)
-        row = conn.execute("SELECT id FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
+        row = conn.execute("SELECT id FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
         conn.execute(
-            "UPDATE athletes SET schedule_reminder_dismissed = 1 WHERE id = ?",
+            "UPDATE athletes SET schedule_reminder_dismissed = 1 WHERE id = %s",
             (athlete_id,),
         )
         conn.commit()

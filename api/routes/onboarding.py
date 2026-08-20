@@ -29,31 +29,32 @@ def complete_onboarding(data: OnboardingComplete, background_tasks: BackgroundTa
     try:
         ts = datetime.utcnow().isoformat()
         conn.execute(
-            "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES (?, ?, ?, ?)",
+            "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES (%s, %s, %s, %s)",
             (p.full_name, p.email, ts, p.consent_confirmed),
         )
-        parent_row = conn.execute("SELECT * FROM parents WHERE email = ?", (p.email,)).fetchone()
+        parent_row = conn.execute("SELECT * FROM parents WHERE email = %s", (p.email,)).fetchone()
         parent_id = parent_row["id"]
         # Stamp last_login_at now so a later explicit sign-in reads as a returning
         # login (👋), not another new-signup alert (🎉).
-        conn.execute("UPDATE parents SET last_login_at = ? WHERE id = ?", (ts, parent_id))
-        conn.execute(
+        conn.execute("UPDATE parents SET last_login_at = %s WHERE id = %s", (ts, parent_id))
+        cur = conn.execute(
             """INSERT INTO athletes
                (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in,
                 position, competition_level, sweat_profile, allergies, dietary_restrictions, supplement_use,
                 season_phase, food_preferences, date_of_birth, lifestyle_activity, diet_pref, phone)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               RETURNING *""",
             (parent_id, a.first_name, a.age, a.gender, a.weight_lbs, a.height_ft, a.height_in,
              a.position, a.competition_level, a.sweat_profile, a.allergies, a.dietary_restrictions,
              a.supplement_use, normalize_season_phase(a.season_phase), a.food_preferences,
              a.date_of_birth, a.lifestyle_activity or "light", a.diet_pref or "omnivore", a.phone),
         )
-        athlete_row = conn.execute("SELECT * FROM athletes WHERE rowid = last_insert_rowid()").fetchone()
+        athlete_row = cur.fetchone()
         conn.commit()
     except Exception as e:
         conn.rollback()
         conn.close()
-        if "UNIQUE" in str(e):
+        if "unique" in str(e).lower():
             raise HTTPException(409, "A parent account with this email already exists.")
         raise HTTPException(500, str(e))
     conn.close()

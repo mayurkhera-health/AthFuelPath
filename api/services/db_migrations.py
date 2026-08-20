@@ -1,6 +1,16 @@
 """
 Additive database migrations — CREATE TABLE IF NOT EXISTS and INSERT OR IGNORE only.
 Called at FastAPI startup; safe to run multiple times.
+
+RETIRED on migration/postgres-cloud-run: api/database.py is PostgreSQL-only
+now (no sqlite3 fallback), and everything below this line is raw SQLite DDL
+(AUTOINCREMENT, PRAGMA, etc.) that would fail immediately against Postgres.
+Schema ownership moved to db/postgres/001_baseline.sql + db/postgres_migrate.py
+(see api/startup.py, which no longer calls this module at all). run_all() is
+kept as a no-op — not deleted — purely so the ~50 test files that still call
+`from api.services.db_migrations import run_all; run_all()` keep working
+unmodified; their actual schema/seed setup is now handled by
+tests/conftest.py's session/module-scoped fixtures instead.
 """
 
 from api.database import get_conn
@@ -8,6 +18,7 @@ from api.services.nutrition_calc import derive_intensity
 
 
 def run_all():
+    return  # retired for PostgreSQL — see module docstring above
     conn = get_conn()
     try:
         _create_confirmations(conn)

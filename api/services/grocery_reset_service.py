@@ -28,6 +28,7 @@ def run_grocery_reset_tick() -> None:
             try:
                 _reset_if_due(row["athlete_id"], row["timezone"], conn)
             except Exception as exc:
+                conn.rollback()
                 log.error("Grocery reset tick failed for athlete %s: %s", row["athlete_id"], exc)
     finally:
         conn.close()
@@ -45,13 +46,13 @@ def _reset_if_due(athlete_id: int, tz_str: str | None, conn) -> None:
 
     conn.execute(
         "DELETE FROM shopping_list_items WHERE list_id IN "
-        "(SELECT id FROM shopping_lists WHERE athlete_id = ? AND week_start = ?)",
+        "(SELECT id FROM shopping_lists WHERE athlete_id = %s AND week_start = %s)",
         (athlete_id, prev_week_start),
     )
 
     conn.execute(
         "DELETE FROM recipe_list_items WHERE list_id IN "
-        "(SELECT id FROM recipe_lists WHERE athlete_id = ? AND week_start = ?)",
+        "(SELECT id FROM recipe_lists WHERE athlete_id = %s AND week_start = %s)",
         (athlete_id, prev_week_start),
     )
 

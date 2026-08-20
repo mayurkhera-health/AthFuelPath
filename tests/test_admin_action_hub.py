@@ -19,12 +19,16 @@ PASSWORD = "s3cret-admin"
 
 def _wipe(conn):
     conn.commit()
-    conn.execute("PRAGMA foreign_keys=OFF")
-    for (name,) in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall():
-        conn.execute(f"DELETE FROM {name}")
+    tables = [
+        r["table_name"]
+        for r in conn.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name != 'schema_migrations'"
+        ).fetchall()
+    ]
+    if tables:
+        conn.execute(f"TRUNCATE TABLE {', '.join(tables)} RESTART IDENTITY CASCADE")
     conn.commit()
-    conn.execute("PRAGMA foreign_keys=ON")
 
 
 @pytest.fixture
@@ -54,12 +58,16 @@ def test_requires_token():
 def test_attention_feed_from_real_signals(ctx):
     c, ka = ctx
     # a red health check (error), a never-connected family (warning), a report (warning)
+    # (health_checks rows are no longer pre-seeded by run_all() in Postgres mode —
+    # insert the row this raw UPDATE targets before updating it)
+    ka.execute("INSERT INTO health_checks (check_name, status) VALUES ('disk_space', 'unknown') "
+               "ON CONFLICT (check_name) DO NOTHING")
     ka.execute("UPDATE health_checks SET status='red', detail='84% used' WHERE check_name='disk_space'")
     old = (datetime.utcnow() - timedelta(days=5)).isoformat()
     pid = ka.execute("INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed, created_at) "
-                     "VALUES ('Old Fam', 'o@x.com', 't', 1, ?)", (old,)).lastrowid
+                     "VALUES ('Old Fam', 'o@x.com', 't', TRUE, %s) RETURNING id", (old,)).fetchone()["id"]
     ka.execute("INSERT INTO athletes (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in) "
-               "VALUES (?, 'Kid', 12, 'M', 90, 5, 2)", (pid,))
+               "VALUES (%s, 'Kid', 12, 'M', 90, 5, 2)", (pid,))
     ka.execute("INSERT INTO problem_reports (description) VALUES ('crash on save')")
     ka.commit()
 
@@ -84,10 +92,10 @@ def test_nothing_wrong_is_empty_feed(ctx):
 
 def test_metrics_and_heatmap_shape(ctx):
     c, ka = ctx
-    pid = ka.execute("INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES ('A','a@x.com','t',1)").lastrowid
+    pid = ka.execute("INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES ('A','a@x.com','t',TRUE) RETURNING id").fetchone()["id"]
     aid = ka.execute("INSERT INTO athletes (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in) "
-                     "VALUES (?, 'K', 12, 'M', 90, 5, 2)", (pid,)).lastrowid
-    ka.execute("INSERT INTO meal_logs (athlete_id, log_method) VALUES (?, 'text')", (aid,))
+                     "VALUES (%s, 'K', 12, 'M', 90, 5, 2) RETURNING id", (pid,)).fetchone()["id"]
+    ka.execute("INSERT INTO meal_logs (athlete_id, log_method) VALUES (%s, 'text')", (aid,))
     ka.commit()
     body = _hub(c)
     labels = [m["label"] for m in body["metrics"]]

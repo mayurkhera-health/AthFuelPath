@@ -126,14 +126,14 @@ def _week_start(date_str: str) -> str:
 
 def _get_or_create_recipe_list(athlete_id: int, week_start: str, conn) -> int:
     conn.execute(
-        "INSERT OR IGNORE INTO recipe_lists (athlete_id, week_start) VALUES (?, ?)",
+        "INSERT INTO recipe_lists (athlete_id, week_start) VALUES (%s, %s) ON CONFLICT DO NOTHING",
         (athlete_id, week_start),
     )
     conn.commit()
     return conn.execute(
-        "SELECT id FROM recipe_lists WHERE athlete_id = ? AND week_start = ?",
+        "SELECT id FROM recipe_lists WHERE athlete_id = %s AND week_start = %s",
         (athlete_id, week_start),
-    ).fetchone()[0]
+    ).fetchone()["id"]
 
 
 @router.get("/")
@@ -155,7 +155,7 @@ def list_categories():
 def generate_recipe(req: RecipeGenerateRequest):
     conn = get_conn()
     try:
-        row = conn.execute("SELECT * FROM athletes WHERE id = ?", (req.athlete_id,)).fetchone()
+        row = conn.execute("SELECT * FROM athletes WHERE id = %s", (req.athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
         athlete = dict(row)
@@ -191,7 +191,7 @@ def get_recipes_for_window(
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)
-        row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
+        row = conn.execute("SELECT * FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
         athlete = dict(row)
@@ -213,7 +213,7 @@ def get_week_selections(
     try:
         assert_owns_athlete(identity, athlete_id, conn)
         rows = conn.execute(
-            "SELECT * FROM recipe_selections WHERE athlete_id = ? AND week_start = ?"
+            "SELECT * FROM recipe_selections WHERE athlete_id = %s AND week_start = %s"
             " ORDER BY selection_date, fueling_window_key",
             (athlete_id, week_start),
         ).fetchall()
@@ -240,23 +240,23 @@ def create_selection(data: _SelectionCreate, identity=Depends(require_session)):
     conn = get_conn()
     try:
         assert_owns_athlete(identity, data.athlete_id, conn)
-        if not conn.execute("SELECT id FROM athletes WHERE id = ?", (data.athlete_id,)).fetchone():
+        if not conn.execute("SELECT id FROM athletes WHERE id = %s", (data.athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
         if not recipe_db.get_recipe_by_id(data.recipe_id.upper()):
             raise HTTPException(404, f"Recipe {data.recipe_id} not found.")
         ws = _week_start(data.selection_date)
         conn.execute(
-            """INSERT OR IGNORE INTO recipe_selections
+            """INSERT INTO recipe_selections
                (athlete_id, week_start, selection_date, fueling_window_key, recipe_id, servings)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+               VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING""",
             (data.athlete_id, ws, data.selection_date, data.fueling_window_key,
              data.recipe_id.upper(), data.servings),
         )
         conn.commit()
         row = conn.execute(
             """SELECT * FROM recipe_selections
-               WHERE athlete_id = ? AND week_start = ?
-               AND fueling_window_key = ? AND recipe_id = ?""",
+               WHERE athlete_id = %s AND week_start = %s
+               AND fueling_window_key = %s AND recipe_id = %s""",
             (data.athlete_id, ws, data.fueling_window_key, data.recipe_id.upper()),
         ).fetchone()
         return {"selection": dict(row)}
@@ -270,12 +270,12 @@ def delete_selection(selection_id: int, athlete_id: int = Query(...), identity=D
     try:
         assert_owns_athlete(identity, athlete_id, conn)
         row = conn.execute(
-            "SELECT id FROM recipe_selections WHERE id = ? AND athlete_id = ?",
+            "SELECT id FROM recipe_selections WHERE id = %s AND athlete_id = %s",
             (selection_id, athlete_id),
         ).fetchone()
         if not row:
             raise HTTPException(404, "Selection not found.")
-        conn.execute("DELETE FROM recipe_selections WHERE id = ?", (selection_id,))
+        conn.execute("DELETE FROM recipe_selections WHERE id = %s", (selection_id,))
         conn.commit()
         return {"deleted": True}
     finally:
@@ -293,12 +293,12 @@ def sync_grocery_list(data: _SyncGroceryList, identity=Depends(require_session))
     try:
         assert_owns_athlete(identity, data.athlete_id, conn)
         rows = conn.execute(
-            "SELECT * FROM recipe_selections WHERE athlete_id = ? AND week_start = ?",
+            "SELECT * FROM recipe_selections WHERE athlete_id = %s AND week_start = %s",
             (data.athlete_id, data.week_start),
         ).fetchall()
         list_id = _get_or_create_recipe_list(data.athlete_id, data.week_start, conn)
         existing_rows = conn.execute(
-            "SELECT name, checked FROM recipe_list_items WHERE list_id = ?", (list_id,)
+            "SELECT name, checked FROM recipe_list_items WHERE list_id = %s", (list_id,)
         ).fetchall()
         existing_names = {row["name"] for row in existing_rows}
         # Full delete+reinsert below rebuilds the list from every currently-
@@ -312,10 +312,10 @@ def sync_grocery_list(data: _SyncGroceryList, identity=Depends(require_session))
         previously_checked = {row["name"] for row in existing_rows if row["checked"]}
         conn.execute(
             "DELETE FROM recipe_list_item_sources WHERE list_item_id IN "
-            "(SELECT id FROM recipe_list_items WHERE list_id = ?)",
+            "(SELECT id FROM recipe_list_items WHERE list_id = %s)",
             (list_id,)
         )
-        conn.execute("DELETE FROM recipe_list_items WHERE list_id = ?", (list_id,))
+        conn.execute("DELETE FROM recipe_list_items WHERE list_id = %s", (list_id,))
         for row in rows:
             recipe = recipe_db.get_recipe_by_id(row["recipe_id"])
             if not recipe:
@@ -339,35 +339,35 @@ def sync_grocery_list(data: _SyncGroceryList, identity=Depends(require_session))
                     continue
                 is_staple = _is_pantry_staple(name)
                 conn.execute(
-                    "INSERT OR IGNORE INTO recipe_list_items"
+                    "INSERT INTO recipe_list_items"
                     " (list_id, name, category, ingredient_type, checked)"
-                    " VALUES (?, ?, ?, ?, ?)",
+                    " VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
                     (list_id, name, _categorize_ingredient(name),
                      "staple" if is_staple else "main",
                      1 if is_staple else 0),
                 )
                 item_row = conn.execute(
-                    "SELECT id FROM recipe_list_items WHERE list_id = ? AND name = ?",
+                    "SELECT id FROM recipe_list_items WHERE list_id = %s AND name = %s",
                     (list_id, name),
                 ).fetchone()
                 if item_row:
                     conn.execute(
-                        "INSERT OR IGNORE INTO recipe_list_item_sources"
+                        "INSERT INTO recipe_list_item_sources"
                         " (list_item_id, recipe_id, recipe_name)"
-                        " VALUES (?, ?, ?)",
+                        " VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
                         (item_row["id"], row["recipe_id"], recipe.get("name", row["recipe_id"])),
                     )
         if previously_checked:
-            placeholders = ",".join("?" * len(previously_checked))
+            placeholders = ",".join(["%s"] * len(previously_checked))
             conn.execute(
                 f"UPDATE recipe_list_items SET checked = 1 "
-                f"WHERE list_id = ? AND name IN ({placeholders})",
+                f"WHERE list_id = %s AND name IN ({placeholders})",
                 (list_id, *previously_checked),
             )
         new_names = {
             row["name"]
             for row in conn.execute(
-                "SELECT name FROM recipe_list_items WHERE list_id = ?", (list_id,)
+                "SELECT name FROM recipe_list_items WHERE list_id = %s", (list_id,)
             ).fetchall()
         }
         conn.commit()
@@ -406,20 +406,20 @@ def get_grocery_list(
     try:
         assert_owns_athlete(identity, athlete_id, conn)
         list_row = conn.execute(
-            "SELECT id FROM recipe_lists WHERE athlete_id = ? AND week_start = ?",
+            "SELECT id FROM recipe_lists WHERE athlete_id = %s AND week_start = %s",
             (athlete_id, week_start),
         ).fetchone()
         if not list_row:
             return {"list_id": None, "week_start": week_start, "groups": [], "item_count": 0, "checked_count": 0}
         list_id = list_row["id"]
         item_rows = conn.execute(
-            "SELECT * FROM recipe_list_items WHERE list_id = ? ORDER BY name",
+            "SELECT * FROM recipe_list_items WHERE list_id = %s ORDER BY name",
             (list_id,),
         ).fetchall()
         item_ids = [r["id"] for r in item_rows]
         sources_by_item: dict = {}
         if item_ids:
-            placeholders = ",".join("?" * len(item_ids))
+            placeholders = ",".join(["%s"] * len(item_ids))
             source_rows = conn.execute(
                 f"SELECT list_item_id, recipe_id, recipe_name FROM recipe_list_item_sources "
                 f"WHERE list_item_id IN ({placeholders})",
@@ -474,19 +474,19 @@ def toggle_grocery_list_item(item_id: int, data: _ToggleItem, identity=Depends(r
     try:
         owner_row = conn.execute(
             "SELECT rl.athlete_id FROM recipe_list_items rli "
-            "JOIN recipe_lists rl ON rl.id = rli.list_id WHERE rli.id = ?",
+            "JOIN recipe_lists rl ON rl.id = rli.list_id WHERE rli.id = %s",
             (item_id,),
         ).fetchone()
         if not owner_row:
             raise HTTPException(404, f"Item {item_id} not found.")
         assert_owns_athlete(identity, dict(owner_row)["athlete_id"], conn)
         conn.execute(
-            "UPDATE recipe_list_items SET checked = ? WHERE id = ?",
+            "UPDATE recipe_list_items SET checked = %s WHERE id = %s",
             (int(data.checked), item_id),
         )
         conn.commit()
         updated = conn.execute(
-            "SELECT * FROM recipe_list_items WHERE id = ?", (item_id,)
+            "SELECT * FROM recipe_list_items WHERE id = %s", (item_id,)
         ).fetchone()
         r = dict(updated)
         r["checked"] = bool(r["checked"])
@@ -507,7 +507,7 @@ def get_recipe(recipe_id: str):
 def picky_eater_swap(req: RecipeSwapRequest):
     conn = get_conn()
     try:
-        row = conn.execute("SELECT * FROM athletes WHERE id = ?", (req.athlete_id,)).fetchone()
+        row = conn.execute("SELECT * FROM athletes WHERE id = %s", (req.athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
         allergens = _parse_allergies(dict(row).get("allergies"))

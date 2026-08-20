@@ -1,23 +1,31 @@
 """Unit tests for the Fuel Streak service (api/services/streak_service.py)."""
 
-import sqlite3
 from datetime import date, timedelta
 
 import pytest
 
-from api.services.db_migrations import _create_streak_state
+from api.database import get_conn
 
 
 def _mk_conn():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    return conn
+    return get_conn()
 
 
 def test_streak_state_table_is_created():
+    # streak_state is owned by db/postgres/001_baseline.sql (applied once per
+    # test session) rather than created at runtime now. The old helper this
+    # test used to call directly (db_migrations._create_streak_state) is
+    # retired SQLite DDL (`datetime('now')` with no Postgres cast) that
+    # errors immediately against Postgres even under CREATE TABLE IF NOT
+    # EXISTS, since Postgres still resolves the DEFAULT expression's type
+    # before checking whether the table already exists. Assert the real
+    # (baseline-created) table's shape instead of trying to (re)create it.
     conn = _mk_conn()
-    _create_streak_state(conn)
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(streak_state)").fetchall()}
+    rows = conn.execute(
+        "SELECT column_name FROM information_schema.columns WHERE table_name = %s",
+        ("streak_state",),
+    ).fetchall()
+    cols = {r["column_name"] for r in rows}
     assert cols == {
         "athlete_id",
         "freeze_tokens",
@@ -30,37 +38,48 @@ def test_streak_state_table_is_created():
 from api.services import streak_service as ss
 
 
+_STREAK_ATHLETE_IDS = (1, 7)
+
+
+def _ensure_athletes(conn):
+    # confirmations.athlete_id REFERENCES athletes(id), so every athlete_id
+    # this file exercises must exist as a real row first.
+    for aid in _STREAK_ATHLETE_IDS:
+        conn.execute(
+            "INSERT INTO athletes (id, parent_id, first_name, age, gender, weight_lbs, height_ft, height_in) "
+            "VALUES (%s, NULL, 'Alex', 14, 'Boy', 120, 5, 6) ON CONFLICT (id) DO NOTHING",
+            (aid,),
+        )
+
+
 def _streak_db():
-    """In-memory DB with the tables the streak service reads."""
+    """Real (shared) Postgres connection, reset to a clean slate for this test.
+
+    confirmations/window_logs/report_config/streak_state/events/meal_plans
+    all already exist via db/postgres/001_baseline.sql (applied once per test
+    session; TRUNCATEd once per module by conftest's module-scoped _fresh_db
+    fixture) — so unlike the old per-test in-memory SQLite DB, isolation here
+    means clearing just the rows this file touches, not recreating tables.
+    """
     conn = _mk_conn()
-    conn.executescript("""
-        CREATE TABLE confirmations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            athlete_id INTEGER NOT NULL,
-            log_date TEXT NOT NULL,
-            window_key TEXT NOT NULL,
-            window_type TEXT NOT NULL
-        );
-        CREATE TABLE window_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            athlete_id INTEGER NOT NULL,
-            window_id TEXT NOT NULL,
-            log_date TEXT NOT NULL
-        );
-        CREATE TABLE report_config (
-            key TEXT PRIMARY KEY,
-            value REAL NOT NULL,
-            description TEXT,
-            updated_at TEXT
-        );
-        INSERT INTO report_config VALUES ('streak_min_confirms_per_day', 1.0, '', datetime('now'));
-    """)
+    conn.execute("DELETE FROM confirmations")
+    conn.execute("DELETE FROM window_logs")
+    conn.execute("DELETE FROM report_config")
+    conn.execute("DELETE FROM streak_state")
+    conn.execute("DELETE FROM meal_plans")
+    conn.execute("DELETE FROM events")
+    _ensure_athletes(conn)
+    conn.execute(
+        "INSERT INTO report_config (key, value, description, updated_at) VALUES (%s, %s, %s, sqlite_now())",
+        ("streak_min_confirms_per_day", 1.0, ""),
+    )
+    conn.commit()
     return conn
 
 
 def _confirm(conn, athlete_id, log_date, window_key="pre_event_meal", window_type="pre_fuel"):
     conn.execute(
-        "INSERT INTO confirmations (athlete_id, log_date, window_key, window_type) VALUES (?, ?, ?, ?)",
+        "INSERT INTO confirmations (athlete_id, log_date, window_key, window_type) VALUES (%s, %s, %s, %s)",
         (athlete_id, log_date, window_key, window_type),
     )
     conn.commit()
@@ -152,9 +171,11 @@ def test_no_confirmations_is_zero():
 
 
 def _streak_db_with_state():
-    conn = _streak_db()
-    _create_streak_state(conn)
-    return conn
+    # streak_state already exists (created by the baseline schema) and is
+    # cleared inside _streak_db() above; the extra _create_streak_state()
+    # call this used to make is the same retired SQLite DDL flagged in
+    # test_streak_state_table_is_created, so this is now just an alias.
+    return _streak_db()
 
 
 def test_get_streak_block_shape():
@@ -228,18 +249,10 @@ def test_build_today_view_includes_streak(monkeypatch):
     """build_today_view must add a 'streak' block computed from confirmations."""
     import api.services.today_service as tsvc
 
+    # athletes/events/meal_plans already exist via the baseline schema (and
+    # athlete id 1 is ensured by _streak_db()), so no ad hoc table creation
+    # is needed here — just the confirmation row build_today_view reads.
     conn = _streak_db_with_state()
-    # Minimal athletes/events/meal_plans so build_today_view runs.
-    conn.executescript("""
-        CREATE TABLE athletes (id INTEGER PRIMARY KEY, first_name TEXT, sport TEXT,
-            weight_lbs REAL, height_ft INTEGER, height_in REAL, gender TEXT, age INTEGER);
-        CREATE TABLE events (id INTEGER PRIMARY KEY, athlete_id INTEGER, event_type TEXT,
-            event_name TEXT, event_date TEXT, start_time TEXT, duration_hours REAL);
-        CREATE TABLE meal_plans (id INTEGER PRIMARY KEY, athlete_id INTEGER, plan_date TEXT,
-            slot_name TEXT, logged INTEGER DEFAULT 0);
-        INSERT INTO athletes (id, first_name, sport, weight_lbs, height_ft, height_in, gender, age)
-            VALUES (1, 'Alex', 'soccer', 120, 5, 4, 'boy', 14);
-    """)
     today = "2026-06-17"
     _confirm(conn, 1, today)
 

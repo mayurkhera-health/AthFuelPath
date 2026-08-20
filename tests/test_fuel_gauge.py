@@ -8,10 +8,10 @@ Blueprint consistency (T7): rest-day targets must equal Blueprint exactly.
 """
 
 import json
-import sqlite3
 
 import pytest
 
+from api.database import get_conn
 from api.services import fuel_gauge as fg, fueling_targets as ft
 from api.services.nutrition_calc import calc_daily_targets
 from api.services.today_service import (
@@ -45,44 +45,35 @@ NUTRIENTS = ("protein_g", "carbs_g", "fluids_ml", "sodium_mg", "calcium_mg")
 
 
 def _today_conn(athlete: dict, events: list[tuple] = ()):
-    """In-memory DB with the full set of tables build_today_view + get_streak read.
-    `events` is a list of (event_date, event_type, intensity, start_time, duration)."""
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    """Real Postgres connection, seeded with the rows build_today_view + get_streak
+    read. `events` is a list of (event_date, event_type, intensity, start_time, duration).
+
+    tests/conftest.py's module-scoped `_fresh_db` fixture only truncates once per
+    module (not per test function), and this file calls `_today_conn` repeatedly
+    with a fixed athlete id=1 — so each call clears any leftover rows from a prior
+    test in this module before inserting fresh fixture data, to keep tests isolated
+    from one another the way the old per-test `sqlite3.connect(":memory:")` did.
+
+    Note: the real `athletes` table has no `sport` column (unlike the old
+    standalone in-memory schema) — today_service.py falls back to "soccer" via
+    `athlete.get("sport", "soccer")`, so it's dropped from the INSERT below and
+    otherwise unused for these DB-backed tests.
+    """
+    conn = get_conn()
     _ensure_window_logs_table(conn)
-    conn.execute("""
-        CREATE TABLE meal_plans (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, athlete_id INTEGER NOT NULL,
-            plan_date TEXT NOT NULL, slot_name TEXT NOT NULL, logged INTEGER DEFAULT 0,
-            UNIQUE(athlete_id, plan_date, slot_name))
-    """)
-    conn.execute("""
-        CREATE TABLE athletes (
-            id INTEGER PRIMARY KEY, first_name TEXT, sport TEXT, gender TEXT, age INTEGER,
-            weight_lbs REAL, height_ft INTEGER, height_in REAL, position TEXT,
-            competition_level TEXT, sweat_profile TEXT, season_phase TEXT)
-    """)
-    conn.execute("""
-        CREATE TABLE events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, athlete_id INTEGER NOT NULL,
-            event_name TEXT, event_type TEXT, event_date TEXT, start_time TEXT,
-            duration_hours REAL, intensity TEXT, city TEXT, latitude REAL, longitude REAL)
-    """)
-    conn.execute("""
-        CREATE TABLE confirmations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, athlete_id INTEGER NOT NULL,
-            log_date TEXT NOT NULL, window_key TEXT NOT NULL, window_type TEXT NOT NULL,
-            created_at TEXT DEFAULT (datetime('now')),
-            UNIQUE(athlete_id, window_key, log_date))
-    """)
-    conn.execute("CREATE TABLE report_config (key TEXT, value TEXT)")
-    cols = ",".join(athlete.keys())
-    conn.execute(f"INSERT INTO athletes ({cols}) VALUES ({','.join('?' * len(athlete))})",
-                 tuple(athlete.values()))
+    conn.execute("DELETE FROM window_logs")
+    conn.execute("DELETE FROM confirmations")
+    conn.execute("DELETE FROM meal_plans")
+    conn.execute("DELETE FROM events")
+    conn.execute("DELETE FROM athletes WHERE id = %s", (athlete["id"],))
+    insert_cols = [k for k in athlete.keys() if k != "sport"]
+    placeholders = ",".join(["%s"] * len(insert_cols))
+    conn.execute(f"INSERT INTO athletes ({','.join(insert_cols)}) VALUES ({placeholders})",
+                 tuple(athlete[k] for k in insert_cols))
     for (d, et, inten, st, dur) in events:
         conn.execute(
             "INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, "
-            "duration_hours, intensity) VALUES (?,?,?,?,?,?,?)",
+            "duration_hours, intensity) VALUES (%s,%s,%s,%s,%s,%s,%s)",
             (athlete["id"], et.title(), et, d, st, dur, inten),
         )
     conn.commit()
@@ -416,19 +407,19 @@ def test_remove_window_capture_reverses_both_writes_and_is_idempotent():
     conn = _today_conn(a, [(TODAY, "game", "medium", "10:00", 1.5)])
     try:
         conn.execute("INSERT INTO meal_plans (athlete_id, plan_date, slot_name, logged) "
-                     "VALUES (?,?,?,1)", (a["id"], TODAY, "everyday_breakfast"))
+                     "VALUES (%s,%s,%s,1)", (a["id"], TODAY, "everyday_breakfast"))
         conn.commit()
         record_window_capture(a["id"], "everyday_breakfast", "text", "x", None, None, conn, log_date=TODAY)
         assert conn.execute(
-            "SELECT COUNT(*) FROM window_logs WHERE athlete_id=? AND window_id='everyday_breakfast' "
-            "AND log_date=?", (a["id"], TODAY)).fetchone()[0] == 1
+            "SELECT COUNT(*) AS count FROM window_logs WHERE athlete_id=%s AND window_id='everyday_breakfast' "
+            "AND log_date=%s", (a["id"], TODAY)).fetchone()["count"] == 1
 
         assert remove_window_capture(a["id"], "everyday_breakfast", conn, log_date=TODAY) is True
         assert conn.execute(
-            "SELECT COUNT(*) FROM window_logs WHERE athlete_id=? AND window_id='everyday_breakfast' "
-            "AND log_date=?", (a["id"], TODAY)).fetchone()[0] == 0
+            "SELECT COUNT(*) AS count FROM window_logs WHERE athlete_id=%s AND window_id='everyday_breakfast' "
+            "AND log_date=%s", (a["id"], TODAY)).fetchone()["count"] == 0
         assert conn.execute(
-            "SELECT logged FROM meal_plans WHERE athlete_id=? AND plan_date=? AND slot_name=?",
+            "SELECT logged FROM meal_plans WHERE athlete_id=%s AND plan_date=%s AND slot_name=%s",
             (a["id"], TODAY, "everyday_breakfast")).fetchone()["logged"] == 0
         # nothing left to undo
         assert remove_window_capture(a["id"], "everyday_breakfast", conn, log_date=TODAY) is False
@@ -438,12 +429,12 @@ def test_remove_window_capture_reverses_both_writes_and_is_idempotent():
 
 def _confirm_via_table(conn, aid, slot, log_date=TODAY):
     conn.execute("INSERT INTO confirmations (athlete_id, log_date, window_key, window_type) "
-                 "VALUES (?,?,?, 'pre_fuel')", (aid, log_date, slot))
+                 "VALUES (%s,%s,%s, 'pre_fuel')", (aid, log_date, slot))
     conn.commit()
 
 
 def _unconfirm_via_table(conn, aid, slot, log_date=TODAY):
-    conn.execute("DELETE FROM confirmations WHERE athlete_id=? AND window_key=? AND log_date=?",
+    conn.execute("DELETE FROM confirmations WHERE athlete_id=%s AND window_key=%s AND log_date=%s",
                  (aid, slot, log_date))
     conn.commit()
 

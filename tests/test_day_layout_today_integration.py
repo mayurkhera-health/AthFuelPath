@@ -52,23 +52,21 @@ def _seed_athlete_and_event(conn):
     """Insert a parent + athlete + single afternoon practice for TARGET_DATE."""
     _seed_counter["n"] += 1
     email = f"dl_integration_{_seed_counter['n']}@example.com"
-    conn.execute(
+    parent_id = conn.execute(
         "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) "
-        "VALUES (?, ?, datetime('now'), 1)",
+        "VALUES (%s, %s, sqlite_now(), TRUE) RETURNING id",
         ("Test Parent", email),
-    )
-    parent_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    ).fetchone()["id"]
 
-    conn.execute(
+    athlete_id = conn.execute(
         "INSERT INTO athletes (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id",
         (parent_id, "Tester", 14, "boy", 120, 5, 4),
-    )
-    athlete_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    ).fetchone()["id"]
 
     conn.execute(
         "INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, duration_hours) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
+        "VALUES (%s, %s, %s, %s, %s, %s)",
         (athlete_id, "Afternoon Practice", "practice", TARGET_DATE, "15:00", 1.0),
     )
     conn.commit()
@@ -142,13 +140,13 @@ def test_build_today_view_uses_client_now_for_2h_resolver(monkeypatch):
     monkeypatch.setattr(_dl_mod, "build_day_layout", _spy_build)
 
     conn = get_conn(); init_db(); run_all()
-    conn.execute("INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES ('P','c1@x.com',datetime('now'),1)")
-    pid = conn.execute("SELECT id FROM parents WHERE email='c1@x.com'").fetchone()[0]
+    conn.execute("INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES ('P','c1@x.com',sqlite_now(),TRUE)")
+    pid = conn.execute("SELECT id FROM parents WHERE email='c1@x.com'").fetchone()["id"]
     conn.execute("INSERT INTO athletes (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in) "
-                 "VALUES (?, 'A', 14, 'boy', 120, 5, 4)", (pid,))
-    aid = conn.execute("SELECT id FROM athletes WHERE parent_id=?", (pid,)).fetchone()[0]
+                 "VALUES (%s, 'A', 14, 'boy', 120, 5, 4)", (pid,))
+    aid = conn.execute("SELECT id FROM athletes WHERE parent_id=%s", (pid,)).fetchone()["id"]
     conn.execute("INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, duration_hours) "
-                 "VALUES (?, 'Practice', 'practice', '2026-06-27', '15:00', 1.0)", (aid,))
+                 "VALUES (%s, 'Practice', 'practice', '2026-06-27', '15:00', 1.0)", (aid,))
     conn.commit()
 
     early_now = datetime(2026, 6, 27, 11, 0)
@@ -216,13 +214,13 @@ def _seed_athlete_with_event(conn, email, event_type, activity_type, start="15:0
     from db.setup import init_db
     from api.services.db_migrations import run_all
     init_db(); run_all()
-    conn.execute("INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES ('P',?,datetime('now'),1)", (email,))
-    pid = conn.execute("SELECT id FROM parents WHERE email=?", (email,)).fetchone()[0]
+    conn.execute("INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES ('P',%s,sqlite_now(),TRUE)", (email,))
+    pid = conn.execute("SELECT id FROM parents WHERE email=%s", (email,)).fetchone()["id"]
     conn.execute("INSERT INTO athletes (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in) "
-                 "VALUES (?, 'A', 14, 'boy', 120, 5, 4)", (pid,))
-    aid = conn.execute("SELECT id FROM athletes WHERE parent_id=?", (pid,)).fetchone()[0]
+                 "VALUES (%s, 'A', 14, 'boy', 120, 5, 4)", (pid,))
+    aid = conn.execute("SELECT id FROM athletes WHERE parent_id=%s", (pid,)).fetchone()["id"]
     conn.execute("INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, duration_hours, activity_type) "
-                 "VALUES (?, 'E', ?, '2026-06-27', ?, 1.5, ?)", (aid, event_type, start, activity_type))
+                 "VALUES (%s, 'E', %s, '2026-06-27', %s, 1.5, %s)", (aid, event_type, start, activity_type))
     conn.commit()
     return aid
 
@@ -306,7 +304,7 @@ def test_dismiss_wind_down_persists_and_suppresses_the_card(monkeypatch, db_conn
         assert r.json() == {"wind_down_dismissed": True}
 
     row = db_conn.execute(
-        "SELECT wind_down_dismissed FROM athletes WHERE id = ?", (athlete_id,)
+        "SELECT wind_down_dismissed FROM athletes WHERE id = %s", (athlete_id,)
     ).fetchone()
     assert row["wind_down_dismissed"] == 1
 

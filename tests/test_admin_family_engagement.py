@@ -20,12 +20,16 @@ PASSWORD = "s3cret-admin"
 
 def _wipe(conn):
     conn.commit()
-    conn.execute("PRAGMA foreign_keys=OFF")
-    for (name,) in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall():
-        conn.execute(f"DELETE FROM {name}")
+    tables = [
+        r["table_name"]
+        for r in conn.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name != 'schema_migrations'"
+        ).fetchall()
+    ]
+    if tables:
+        conn.execute(f"TRUNCATE TABLE {', '.join(tables)} RESTART IDENTITY CASCADE")
     conn.commit()
-    conn.execute("PRAGMA foreign_keys=ON")
 
 
 def _iso(days_ago=0):
@@ -44,28 +48,28 @@ def ctx(monkeypatch):
 
     pid = ka.execute(
         "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed, created_at) "
-        "VALUES ('Purvi Shah', 'p@x.com', ?, 1, ?)", (_iso(2), _iso(2))).lastrowid
+        "VALUES ('Purvi Shah', 'p@x.com', %s, TRUE, %s) RETURNING id", (_iso(2), _iso(2))).fetchone()["id"]
     aid = ka.execute(
         "INSERT INTO athletes (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in, "
-        "blueprint_json) VALUES (?, 'Mehr', 17, 'female', 105, 5, 2, '{\"x\":1}')", (pid,)).lastrowid
+        "blueprint_json) VALUES (%s, 'Mehr', 17, 'female', 105, 5, 2, '{\"x\":1}') RETURNING id", (pid,)).fetchone()["id"]
 
-    ka.execute("INSERT INTO meal_logs (athlete_id, logged_at, log_method, description) VALUES (?, ?, 'text', 'oats')",
+    ka.execute("INSERT INTO meal_logs (athlete_id, logged_at, log_method, description) VALUES (%s, %s, 'text', 'oats')",
                (aid, _iso(1)))
-    ka.execute("INSERT INTO meal_logs (athlete_id, logged_at, log_method, description) VALUES (?, ?, 'text', 'rice')",
+    ka.execute("INSERT INTO meal_logs (athlete_id, logged_at, log_method, description) VALUES (%s, %s, 'text', 'rice')",
                (aid, _iso(0)))
-    ka.execute("INSERT INTO water_logs (athlete_id, log_date, cups) VALUES (?, date('now'), 5)", (aid,))
+    ka.execute("INSERT INTO water_logs (athlete_id, log_date, cups) VALUES (%s, sqlite_today(), 5)", (aid,))
     ka.execute("INSERT INTO pantry_list_items (athlete_id, week_start, food_id, name, checked) "
-               "VALUES (?, '2026-06-29', 'banana_ripe', 'Banana', 1)", (aid,))
+               "VALUES (%s, '2026-06-29', 'banana_ripe', 'Banana', 1)", (aid,))
     ka.execute("INSERT INTO pantry_list_items (athlete_id, week_start, food_id, name, checked) "
-               "VALUES (?, '2026-06-29', 'oats_dry', 'Oats', 0)", (aid,))
-    ka.execute("INSERT INTO athlete_logins (email, athlete_id, created_at) VALUES ('mehr@x.com', ?, ?)",
+               "VALUES (%s, '2026-06-29', 'oats_dry', 'Oats', 0)", (aid,))
+    ka.execute("INSERT INTO athlete_logins (email, athlete_id, created_at) VALUES ('mehr@x.com', %s, %s)",
                (aid, _iso(1)))
     ka.execute("INSERT INTO expo_push_tokens (athlete_id, parent_id, token, platform) "
-               "VALUES (NULL, ?, 'ExponentPushToken[p]', 'ios')", (pid,))
+               "VALUES (NULL, %s, 'ExponentPushToken[p]', 'ios')", (pid,))
     ka.execute("INSERT INTO expo_push_tokens (athlete_id, parent_id, token, platform) "
-               "VALUES (?, NULL, 'ExponentPushToken[a]', 'ios')", (aid,))
+               "VALUES (%s, NULL, 'ExponentPushToken[a]', 'ios')", (aid,))
     ka.execute("INSERT INTO notification_log (athlete_id, window_key, send_date, recipient, token, sent_at) "
-               "VALUES (?, 'pre_game', date('now'), 'parent', 'ExponentPushToken[p]', ?)", (aid, _iso(0)))
+               "VALUES (%s, 'pre_game', sqlite_today(), 'parent', 'ExponentPushToken[p]', %s)", (aid, _iso(0)))
     ka.commit()
 
     with TestClient(app) as c:
@@ -115,7 +119,7 @@ def test_engagement_empty_for_fresh_athlete(ctx):
     ka = get_conn()
     aid2 = ka.execute(
         "INSERT INTO athletes (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in) "
-        "VALUES (?, 'Zed', 12, 'male', 90, 4, 8)", (pid,)).lastrowid
+        "VALUES (%s, 'Zed', 12, 'male', 90, 4, 8) RETURNING id", (pid,)).fetchone()["id"]
     ka.commit(); ka.close()
     d = c.get(f"/api/admin/users/{pid}").json()
     a = next(x for x in d["athletes"] if x["id"] == aid2)

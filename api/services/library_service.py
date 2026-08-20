@@ -25,13 +25,13 @@ def generate_weekly_picks(athlete_id: int, conn) -> None:
 
     existing = conn.execute("""
         SELECT COUNT(*) AS cnt FROM athlete_article_picks
-        WHERE athlete_id = ? AND week_start = ?
+        WHERE athlete_id = %s AND week_start = %s
     """, (athlete_id, week_start)).fetchone()
     if existing["cnt"] > 0:
         return
 
     athlete_row = conn.execute(
-        "SELECT * FROM athletes WHERE id = ?", (athlete_id,)
+        "SELECT * FROM athletes WHERE id = %s", (athlete_id,)
     ).fetchone()
     if not athlete_row:
         return
@@ -44,7 +44,7 @@ def generate_weekly_picks(athlete_id: int, conn) -> None:
 
     next_event_row = conn.execute("""
         SELECT event_type FROM events
-        WHERE athlete_id = ? AND event_date >= date('now')
+        WHERE athlete_id = %s AND event_date >= sqlite_today()
         ORDER BY event_date ASC LIMIT 1
     """, (athlete_id,)).fetchone()
 
@@ -72,7 +72,7 @@ def generate_weekly_picks(athlete_id: int, conn) -> None:
         row = conn.execute("""
             SELECT a.* FROM articles a WHERE a.is_active = 1
             AND a.id NOT IN (
-                SELECT article_id FROM athlete_article_picks WHERE athlete_id = ?
+                SELECT article_id FROM athlete_article_picks WHERE athlete_id = %s
             )
             ORDER BY a.published_date DESC LIMIT 1
         """, (athlete_id,)).fetchone()
@@ -81,9 +81,9 @@ def generate_weekly_picks(athlete_id: int, conn) -> None:
 
     for article, reason in selected[:2]:
         conn.execute("""
-            INSERT OR IGNORE INTO athlete_article_picks
+            INSERT INTO athlete_article_picks
                 (athlete_id, article_id, week_start, alex_reason)
-            VALUES (?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING
         """, (athlete_id, article["id"], week_start, reason))
 
 
@@ -112,9 +112,9 @@ def _build_reason(gap: dict) -> str:
 def _get_unread_article(athlete_id: int, category: str, conn):
     row = conn.execute("""
         SELECT a.* FROM articles a
-        WHERE a.category = ? AND a.is_active = 1
+        WHERE a.category = %s AND a.is_active = 1
         AND a.id NOT IN (
-            SELECT article_id FROM athlete_article_picks WHERE athlete_id = ?
+            SELECT article_id FROM athlete_article_picks WHERE athlete_id = %s
         )
         ORDER BY a.published_date DESC LIMIT 1
     """, (category, athlete_id)).fetchone()

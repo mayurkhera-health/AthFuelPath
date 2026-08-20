@@ -1,4 +1,4 @@
-import sqlite3
+from api.database import get_conn
 from api.services.today_service import (
     calculate_performance_forecast,
     get_mission_items,
@@ -214,50 +214,29 @@ def test_windows_done_only_by_logged_flag():
 
 
 def _make_test_conn():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    """Real (shared) Postgres connection. window_logs/meal_plans already exist
+    via db/postgres/001_baseline.sql (applied once per test session, TRUNCATEd
+    once per module by conftest's module-scoped _fresh_db fixture), so unlike
+    the old private in-memory SQLite DB, no ad hoc table creation is needed —
+    just make sure window_logs is present (a harmless no-op there)."""
+    conn = get_conn()
     _ensure_window_logs_table(conn)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS meal_plans (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            athlete_id INTEGER NOT NULL, plan_date TEXT NOT NULL,
-            slot_name TEXT NOT NULL, logged INTEGER DEFAULT 0,
-            UNIQUE(athlete_id, plan_date, slot_name)
-        )
-    """)
     conn.commit()
     return conn
 
 
 def _make_today_conn():
-    """In-memory DB with every table build_today_view + get_streak read from."""
-    conn = _make_test_conn()  # window_logs + meal_plans
-    conn.execute("""
-        CREATE TABLE athletes (
-            id INTEGER PRIMARY KEY, first_name TEXT, sport TEXT, gender TEXT,
-            weight_lbs REAL, height_ft INTEGER, height_in REAL, age INTEGER,
-            date_of_birth TEXT
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            athlete_id INTEGER NOT NULL, event_name TEXT, event_type TEXT,
-            event_date TEXT, start_time TEXT, duration_hours REAL
-        )
-    """)
-    # get_streak reads these two unguarded
-    conn.execute("CREATE TABLE confirmations (athlete_id INTEGER, log_date TEXT, window_key TEXT, window_type TEXT)")
-    conn.execute("CREATE TABLE report_config (key TEXT, value TEXT)")
-    conn.commit()
-    return conn
+    """Every table build_today_view + get_streak read from (athletes, events,
+    confirmations, report_config, window_logs, meal_plans) already exists via
+    the baseline schema — same real connection as _make_test_conn()."""
+    return _make_test_conn()
 
 
 def test_has_schedule_false_with_zero_events():
     """A newly-claimed athlete with no events ever → has_schedule = False
     (distinguishes 'no schedule set up' from a genuine rest day)."""
     conn = _make_today_conn()
-    conn.execute("INSERT INTO athletes (id, first_name, sport, gender, weight_lbs, height_ft, height_in, age) VALUES (1, 'Ryan', 'soccer', 'boy', 120, 5, 4, 14)")
+    conn.execute("INSERT INTO athletes (id, first_name, gender, weight_lbs, height_ft, height_in, age) VALUES (1, 'Ryan', 'boy', 120, 5, 4, 14)")
     conn.commit()
 
     view = build_today_view(1, conn, today="2026-06-22")
@@ -269,7 +248,7 @@ def test_has_schedule_false_with_zero_events():
 def test_has_schedule_true_with_one_event():
     """An athlete with at least one event (any date, any type) → has_schedule = True."""
     conn = _make_today_conn()
-    conn.execute("INSERT INTO athletes (id, first_name, sport, gender, weight_lbs, height_ft, height_in, age) VALUES (2, 'Ryan', 'soccer', 'boy', 120, 5, 4, 14)")
+    conn.execute("INSERT INTO athletes (id, first_name, gender, weight_lbs, height_ft, height_in, age) VALUES (2, 'Ryan', 'boy', 120, 5, 4, 14)")
     conn.execute(
         "INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, duration_hours) "
         "VALUES (2, 'Practice', 'practice', '2026-07-01', '16:00', 1.5)"
@@ -287,7 +266,7 @@ def test_tappable_windows_carry_open_close_time_24h():
     can gate per-window confirm by now vs open/close. eat_by_time unchanged."""
     import re
     conn = _make_today_conn()
-    conn.execute("INSERT INTO athletes (id, first_name, sport, gender, weight_lbs, height_ft, height_in, age) VALUES (3, 'Ana', 'soccer', 'girl', 110, 5, 2, 14)")
+    conn.execute("INSERT INTO athletes (id, first_name, gender, weight_lbs, height_ft, height_in, age) VALUES (3, 'Ana', 'girl', 110, 5, 2, 14)")
     conn.execute(
         "INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, duration_hours) "
         "VALUES (3, 'Practice', 'practice', '2026-06-22', '16:00', 1.5)"

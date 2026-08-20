@@ -5,30 +5,34 @@ confirmation streak — "did you log meals" and "did you learn something" are
 different behaviors and shouldn't be conflated (see the Fuel IQ plan's Q5).
 """
 
-import sqlite3
 from datetime import date, timedelta
 
 import pytest
 
-from api.services.db_migrations import _create_fueliq_tables, _create_report_config
+from api.database import get_conn
 from api.services import fueliq_streak as fs
 
 
 def _mk_conn():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    return get_conn()
 
 
 def _fueliq_db():
+    """Real shared Postgres test connection (tests/conftest.py already applies
+    the full baseline schema + a module-scoped truncate/reseed). Explicitly
+    resets athlete_id=1's Fuel IQ rows here so each test in this module gets
+    clean state, since the module-scoped truncate only runs once per module,
+    not once per test — unlike the old standalone sqlite3.connect(':memory:')
+    this replaces, which gave every test a brand-new isolated DB for free."""
     conn = _mk_conn()
-    conn.executescript("""
-        CREATE TABLE athletes (id INTEGER PRIMARY KEY, first_name TEXT);
-        INSERT INTO athletes (id, first_name) VALUES (1, 'Alex');
-    """)
-    _create_fueliq_tables(conn)
-    _create_report_config(conn)
+    conn.execute(
+        "INSERT INTO athletes (id, first_name, age, gender, weight_lbs, height_ft, height_in) "
+        "VALUES (1, 'Alex', 15, 'female', 120, 5, 5) ON CONFLICT (id) DO NOTHING"
+    )
+    conn.execute("DELETE FROM fueliq_lesson_completions WHERE athlete_id = 1")
+    conn.execute("DELETE FROM fueliq_quiz_attempts WHERE athlete_id = 1")
+    conn.execute("DELETE FROM fueliq_badges_earned WHERE athlete_id = 1")
+    conn.execute("DELETE FROM fueliq_athlete_progress WHERE athlete_id = 1")
     conn.commit()
     return conn
 
@@ -37,11 +41,11 @@ def _lesson_completion(conn, athlete_id, completed_at):
     lesson_id = conn.execute(
         "INSERT INTO fueliq_lessons "
         "(level, order_in_level, is_myth, title, hook, fact_body, takeaway, source_citation, review_status) "
-        "VALUES (1, 1, 0, 'L', 'hook', 'fact', 'takeaway', 'cite', 'approved')"
-    ).lastrowid
+        "VALUES (1, 1, 0, 'L', 'hook', 'fact', 'takeaway', 'cite', 'approved') RETURNING id"
+    ).fetchone()["id"]
     conn.execute(
         "INSERT INTO fueliq_lesson_completions (athlete_id, lesson_id, points_earned, completed_at) "
-        "VALUES (?, ?, 10, ?)",
+        "VALUES (%s, %s, 10, %s)",
         (athlete_id, lesson_id, completed_at),
     )
     conn.commit()

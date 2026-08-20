@@ -19,10 +19,8 @@ def client():
     run_all()
     # Isolate THIS file's count-based assertions without touching seed data other
     # test files rely on: clear only the account tables, in FK-safe order.
-    keepalive.execute("PRAGMA foreign_keys = OFF")
     for tbl in ("events", "athletes", "parents"):
         keepalive.execute(f"DELETE FROM {tbl}")
-    keepalive.execute("PRAGMA foreign_keys = ON")
     keepalive.commit()
     with TestClient(app) as c:
         yield c
@@ -45,8 +43,8 @@ def test_complete_creates_parent_and_athlete(client):
     assert data["athlete"]["first_name"] == "Ari"
     assert data["athlete"]["parent_id"] == data["parent"]["id"]
     conn = get_conn()
-    assert conn.execute("SELECT COUNT(*) FROM parents").fetchone()[0] == 1
-    assert conn.execute("SELECT COUNT(*) FROM athletes").fetchone()[0] == 1
+    assert conn.execute("SELECT COUNT(*) AS n FROM parents").fetchone()["n"] == 1
+    assert conn.execute("SELECT COUNT(*) AS n FROM athletes").fetchone()["n"] == 1
 
 
 def test_duplicate_email_returns_409_and_writes_nothing(client):
@@ -54,8 +52,8 @@ def test_duplicate_email_returns_409_and_writes_nothing(client):
     r = client.post("/api/onboarding/complete", json=_body("dup@example.com"))
     assert r.status_code == 409, r.text
     conn = get_conn()
-    assert conn.execute("SELECT COUNT(*) FROM parents").fetchone()[0] == 1
-    assert conn.execute("SELECT COUNT(*) FROM athletes").fetchone()[0] == 1
+    assert conn.execute("SELECT COUNT(*) AS n FROM parents").fetchone()["n"] == 1
+    assert conn.execute("SELECT COUNT(*) AS n FROM athletes").fetchone()["n"] == 1
 
 
 def test_missing_consent_returns_400_and_writes_nothing(client):
@@ -64,7 +62,7 @@ def test_missing_consent_returns_400_and_writes_nothing(client):
     r = client.post("/api/onboarding/complete", json=body)
     assert r.status_code == 400, r.text
     conn = get_conn()
-    assert conn.execute("SELECT COUNT(*) FROM parents").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) AS n FROM parents").fetchone()["n"] == 0
 
 
 def test_athlete_failure_rolls_back_parent(client, monkeypatch):
@@ -76,8 +74,8 @@ def test_athlete_failure_rolls_back_parent(client, monkeypatch):
     r = client.post("/api/onboarding/complete", json=_body("rollback@example.com"))
     assert r.status_code == 500
     conn = get_conn()
-    assert conn.execute("SELECT COUNT(*) FROM parents").fetchone()[0] == 0
-    assert conn.execute("SELECT COUNT(*) FROM athletes").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) AS n FROM parents").fetchone()["n"] == 0
+    assert conn.execute("SELECT COUNT(*) AS n FROM athletes").fetchone()["n"] == 0
     monkeypatch.setattr(ob, "normalize_season_phase", real_norm)
 
 

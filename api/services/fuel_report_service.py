@@ -51,6 +51,7 @@ def _build_week_skeletons(athlete_id: int, week_dates: list[str], conn) -> dict[
         try:
             out[date_str] = generate_day_windows(athlete_id, date_str, conn)
         except Exception:
+            conn.rollback()
             out[date_str] = {"windows": []}
     return out
 
@@ -77,10 +78,10 @@ def compute_load(athlete_id: int, week_dates: list[str], conn) -> dict:
     config    = _load_config(conn)
     threshold = int(config.get("load_high_game_days", 3))
 
-    placeholders = ",".join("?" * len(week_dates))
+    placeholders = ",".join(["%s"] * len(week_dates))
     rows = conn.execute(
         f"SELECT event_date FROM events "
-        f"WHERE athlete_id = ? AND event_type IN ('game','tournament') "
+        f"WHERE athlete_id = %s AND event_type IN ('game','tournament') "
         f"AND event_date IN ({placeholders})",
         [athlete_id, *week_dates],
     ).fetchall()
@@ -105,10 +106,10 @@ def compute_rates(
             tally_applicable[wtype] += 1
 
     if any(tally_applicable.values()):
-        placeholders = ",".join("?" * len(week_dates))
+        placeholders = ",".join(["%s"] * len(week_dates))
         rows = conn.execute(
             f"SELECT log_date, window_key FROM confirmations "
-            f"WHERE athlete_id = ? AND log_date IN ({placeholders})",
+            f"WHERE athlete_id = %s AND log_date IN ({placeholders})",
             [athlete_id, *week_dates],
         ).fetchall()
         confirmed_set = {(r["log_date"], r["window_key"]) for r in rows}
@@ -140,10 +141,10 @@ def compute_dots(
 ) -> list[dict]:
     today_str = str(dt_date.today())
 
-    placeholders = ",".join("?" * len(week_dates))
+    placeholders = ",".join(["%s"] * len(week_dates))
     rows = conn.execute(
         f"SELECT log_date, window_key FROM confirmations "
-        f"WHERE athlete_id = ? AND log_date IN ({placeholders})",
+        f"WHERE athlete_id = %s AND log_date IN ({placeholders})",
         [athlete_id, *week_dates],
     ).fetchall()
     confirmed_by_date: dict[str, set] = {}
@@ -152,7 +153,7 @@ def compute_dots(
 
     event_rows = conn.execute(
         f"SELECT event_date, event_type FROM events "
-        f"WHERE athlete_id = ? AND event_date IN ({placeholders})",
+        f"WHERE athlete_id = %s AND event_date IN ({placeholders})",
         [athlete_id, *week_dates],
     ).fetchall()
     event_by_date = {r["event_date"]: r["event_type"] for r in event_rows}
@@ -260,7 +261,7 @@ def compute_streak(athlete_id: int, conn) -> int:
 
     rows = conn.execute(
         "SELECT log_date, COUNT(*) as cnt FROM confirmations "
-        "WHERE athlete_id = ? GROUP BY log_date ORDER BY log_date DESC",
+        "WHERE athlete_id = %s GROUP BY log_date ORDER BY log_date DESC",
         (athlete_id,),
     ).fetchall()
     qualifying = {r["log_date"] for r in rows if r["cnt"] >= min_confirms}
@@ -344,7 +345,7 @@ OUTPUT: Return exactly this JSON structure:
 def build_fuel_report(athlete_id: int, week_start: str | None = None) -> dict | None:
     conn = get_conn()
     try:
-        row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
+        row = conn.execute("SELECT * FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
         if not row:
             return None
         athlete_name = dict(row)["first_name"]

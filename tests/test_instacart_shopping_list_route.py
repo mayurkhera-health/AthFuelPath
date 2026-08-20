@@ -5,8 +5,6 @@ endpoint, per the same style as tests/test_weather_location.py."""
 
 import os
 os.environ["DB_PATH"] = ":memory:"
-os.environ["INSTACART_SHOPPING_LIST_ENABLED"] = "true"
-os.environ["INSTACART_API_KEY"] = "test-key"
 
 import pytest
 from fastapi.testclient import TestClient
@@ -17,6 +15,19 @@ from api.database import get_conn
 from api.main import app
 from api.services import instacart_client
 from tests.conftest import auth_headers
+
+
+@pytest.fixture(autouse=True)
+def _instacart_flags(monkeypatch):
+    # Via monkeypatch (reverts after each test) rather than a bare os.environ
+    # assignment, so the flags don't leak into later test files sharing this
+    # process (see the identical fix in test_plate_route.py). pytest's
+    # monkeypatch fixture is function-scoped only, so this can't be
+    # module-scoped alongside the module-scoped `client` fixture below —
+    # function scope is fine since these are plain env reads, not one-time
+    # setup.
+    monkeypatch.setenv("INSTACART_SHOPPING_LIST_ENABLED", "true")
+    monkeypatch.setenv("INSTACART_API_KEY", "test-key")
 
 
 @pytest.fixture(scope="module")

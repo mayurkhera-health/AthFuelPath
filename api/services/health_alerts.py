@@ -35,20 +35,21 @@ def _direction(from_status, to_status):
 
 def _in_cooldown(conn, check_name) -> bool:
     row = conn.execute(
-        "SELECT last_alerted_at FROM health_checks WHERE check_name = ?", (check_name,)).fetchone()
-    if not row or not row[0]:
+        "SELECT last_alerted_at FROM health_checks WHERE check_name = %s", (check_name,)).fetchone()
+    if not row or not row["last_alerted_at"]:
         return False
     try:
-        return (datetime.utcnow() - datetime.fromisoformat(row[0])) < timedelta(hours=COOLDOWN_HOURS)
+        return (datetime.utcnow() - datetime.fromisoformat(row["last_alerted_at"])) < timedelta(hours=COOLDOWN_HOURS)
     except Exception:
         return False
 
 
 def _mark_alerted(conn, check_name):
     try:
-        conn.execute("UPDATE health_checks SET last_alerted_at=? WHERE check_name=?",
+        conn.execute("UPDATE health_checks SET last_alerted_at=%s WHERE check_name=%s",
                      (datetime.utcnow().isoformat(), check_name))
     except Exception:
+        conn.rollback()
         log.debug("mark_alerted failed for %s", check_name, exc_info=True)
 
 

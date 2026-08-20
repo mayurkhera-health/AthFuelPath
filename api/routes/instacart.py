@@ -36,7 +36,7 @@ def create_instacart_shopping_list(payload: ShoppingListCreateRequest, identity=
     conn = get_conn()
     try:
         assert_owns_athlete(identity, payload.athlete_id, conn)
-        if not conn.execute("SELECT id FROM athletes WHERE id = ?", (payload.athlete_id,)).fetchone():
+        if not conn.execute("SELECT id FROM athletes WHERE id = %s", (payload.athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
     finally:
         conn.close()

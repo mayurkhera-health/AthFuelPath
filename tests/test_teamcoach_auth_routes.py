@@ -15,7 +15,8 @@ def seed():
     conn = get_conn()
     pw_hash, salt = hash_password("Str0ng!Pass")
     conn.execute(
-        "INSERT OR IGNORE INTO coaches (name, email, password_hash, salt) VALUES (?,?,?,?)",
+        "INSERT INTO coaches (name, email, password_hash, salt) VALUES (%s,%s,%s,%s) "
+        "ON CONFLICT (email) DO NOTHING",
         ("Jane Coach", "jane@club.com", pw_hash, salt),
     )
     conn.commit()

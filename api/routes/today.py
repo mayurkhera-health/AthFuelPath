@@ -74,14 +74,14 @@ def get_day_timeline(athlete_id: int, date: str = None, v2: bool = False, identi
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)
-        if not conn.execute("SELECT id FROM athletes WHERE id = ?", (athlete_id,)).fetchone():
+        if not conn.execute("SELECT id FROM athletes WHERE id = %s", (athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found")
 
         skeleton = generate_day_windows(athlete_id, plan_date, conn, force_v2=v2)
 
         rows = conn.execute(
             "SELECT id, window_key, item_text, added_by, recipe_json "
-            "FROM meal_plan_selections WHERE athlete_id = ? AND plan_date = ?",
+            "FROM meal_plan_selections WHERE athlete_id = %s AND plan_date = %s",
             (athlete_id, plan_date),
         ).fetchall()
         by_key: dict = {}
@@ -140,10 +140,10 @@ def dismiss_wind_down(athlete_id: int, identity=Depends(require_session)):
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)
-        row = conn.execute("SELECT id FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
+        row = conn.execute("SELECT id FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
-        conn.execute("UPDATE athletes SET wind_down_dismissed = 1 WHERE id = ?", (athlete_id,))
+        conn.execute("UPDATE athletes SET wind_down_dismissed = 1 WHERE id = %s", (athlete_id,))
         conn.commit()
         return {"wind_down_dismissed": True}
     finally:
@@ -228,32 +228,32 @@ def get_daily_summary(athlete_id: int, date: str = None, identity=Depends(requir
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)
-        row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
+        row = conn.execute("SELECT * FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
         athlete = dict(row)
         target_date = date or str(dt_date.today())
 
         events = [dict(e) for e in conn.execute(
-            "SELECT * FROM events WHERE athlete_id = ? AND event_date = ? ORDER BY start_time",
+            "SELECT * FROM events WHERE athlete_id = %s AND event_date = %s ORDER BY start_time",
             (athlete_id, target_date),
         ).fetchall()]
         event_type = events[0]["event_type"] if events else "rest"
 
         targets_row = conn.execute(
-            "SELECT * FROM daily_targets WHERE athlete_id = ? AND target_date = ?",
+            "SELECT * FROM daily_targets WHERE athlete_id = %s AND target_date = %s",
             (athlete_id, target_date),
         ).fetchone()
         targets = dict(targets_row) if targets_row else nutrition_calc.calc_daily_targets(athlete, event_type)
 
         meal_rows = conn.execute(
-            "SELECT * FROM meal_logs WHERE athlete_id = ? AND DATE(logged_at) = ? ORDER BY logged_at",
+            "SELECT * FROM meal_logs WHERE athlete_id = %s AND logged_at::date = %s ORDER BY logged_at",
             (athlete_id, target_date),
         ).fetchall()
         meal_logs = [dict(m) for m in meal_rows]
 
         water_row = conn.execute(
-            "SELECT cups FROM water_logs WHERE athlete_id = ? AND log_date = ?",
+            "SELECT cups FROM water_logs WHERE athlete_id = %s AND log_date = %s",
             (athlete_id, target_date),
         ).fetchone()
         water_cups = water_row["cups"] if water_row else 0
@@ -267,7 +267,7 @@ def get_daily_summary(athlete_id: int, date: str = None, identity=Depends(requir
 
         tomorrow = (dt_date.fromisoformat(target_date) + timedelta(days=1)).isoformat()
         tomorrow_row = conn.execute(
-            "SELECT * FROM events WHERE athlete_id = ? AND event_date = ? ORDER BY start_time LIMIT 1",
+            "SELECT * FROM events WHERE athlete_id = %s AND event_date = %s ORDER BY start_time LIMIT 1",
             (athlete_id, tomorrow),
         ).fetchone()
 
@@ -276,7 +276,7 @@ def get_daily_summary(athlete_id: int, date: str = None, identity=Depends(requir
         duration_hours = events[0]["duration_hours"] if events else None
         slot_defs = compute_meal_slots(event_type, start_time, duration_hours)
         plan_rows = conn.execute(
-            "SELECT slot_name, logged FROM meal_plans WHERE athlete_id = ? AND plan_date = ?",
+            "SELECT slot_name, logged FROM meal_plans WHERE athlete_id = %s AND plan_date = %s",
             (athlete_id, target_date),
         ).fetchall()
         logged_slots = {r["slot_name"]: bool(r["logged"]) for r in plan_rows}
@@ -340,7 +340,7 @@ def get_weekly_summary(athlete_id: int, week_start: str = None, identity=Depends
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)
-        row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
+        row = conn.execute("SELECT * FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
         athlete = dict(row)
@@ -359,15 +359,15 @@ def get_weekly_summary(athlete_id: int, week_start: str = None, identity=Depends
         week = []
         for i, date_str in enumerate(week_dates):
             targets_row = conn.execute(
-                "SELECT * FROM daily_targets WHERE athlete_id = ? AND target_date = ?",
+                "SELECT * FROM daily_targets WHERE athlete_id = %s AND target_date = %s",
                 (athlete_id, date_str),
             ).fetchone()
             event_row = conn.execute(
-                "SELECT event_type FROM events WHERE athlete_id = ? AND event_date = ? LIMIT 1",
+                "SELECT event_type FROM events WHERE athlete_id = %s AND event_date = %s LIMIT 1",
                 (athlete_id, date_str),
             ).fetchone()
             meal_rows = conn.execute(
-                "SELECT * FROM meal_logs WHERE athlete_id = ? AND DATE(logged_at) = ?",
+                "SELECT * FROM meal_logs WHERE athlete_id = %s AND logged_at::date = %s",
                 (athlete_id, date_str),
             ).fetchall()
             meal_logs = [dict(m) for m in meal_rows]
@@ -375,7 +375,7 @@ def get_weekly_summary(athlete_id: int, week_start: str = None, identity=Depends
             score = None
             if targets_row and meal_logs:
                 water_row = conn.execute(
-                    "SELECT cups FROM water_logs WHERE athlete_id = ? AND log_date = ?",
+                    "SELECT cups FROM water_logs WHERE athlete_id = %s AND log_date = %s",
                     (athlete_id, date_str),
                 ).fetchone()
                 water_cups = water_row["cups"] if water_row else 0
@@ -408,11 +408,11 @@ def get_weekly_summary(athlete_id: int, week_start: str = None, identity=Depends
         prev_scores = []
         for date_str in prev_dates:
             t_row = conn.execute(
-                "SELECT * FROM daily_targets WHERE athlete_id = ? AND target_date = ?",
+                "SELECT * FROM daily_targets WHERE athlete_id = %s AND target_date = %s",
                 (athlete_id, date_str),
             ).fetchone()
             m_rows = conn.execute(
-                "SELECT * FROM meal_logs WHERE athlete_id = ? AND DATE(logged_at) = ?",
+                "SELECT * FROM meal_logs WHERE athlete_id = %s AND logged_at::date = %s",
                 (athlete_id, date_str),
             ).fetchall()
             if t_row and m_rows:

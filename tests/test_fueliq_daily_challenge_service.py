@@ -6,35 +6,48 @@ content table, answers table, and streak — see
 api/services/db_migrations.py::_create_fueliq_daily_challenge_tables.
 """
 
-import sqlite3
 from datetime import date
 
+import psycopg
 import pytest
 
-from api.services.db_migrations import (
-    _create_fueliq_daily_challenge_tables,
-    _add_push_sent_to_daily_challenges,
-    _create_report_config,
-    _create_expo_push_tokens,
-)
+from api.database import get_conn
 from api.services import fueliq_daily_challenge_service as fdc
 
 
 def _mk_conn():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    return get_conn()
+
+
+def _clean(conn):
+    """All tables here (athletes, expo_push_tokens, fueliq_daily_challenges,
+    fueliq_daily_challenge_answers, fueliq_daily_challenge_streak,
+    fueliq_athlete_progress, report_config) already exist via
+    db/postgres/001_baseline.sql, applied once per session by
+    tests/conftest.py — the old per-test _create_*/executescript calls built
+    a throwaway SQLite schema that's now redundant (and those functions are
+    retired raw SQLite DDL that would error immediately against Postgres).
+
+    tests/conftest.py's module-scoped `_fresh_db` fixture only truncates once
+    per module (not per test function), and this file reuses fixed ids/dates
+    (athlete id=1, challenge_date='2026-07-10') across many tests in the same
+    module — so clear out this file's own rows (children before parents, to
+    respect FKs) before each test builds its fixture data, the same
+    isolation the old per-test sqlite3.connect(':memory:') gave for free.
+    """
+    conn.execute("DELETE FROM fueliq_daily_challenge_answers")
+    conn.execute("DELETE FROM fueliq_daily_challenge_streak")
+    conn.execute("DELETE FROM fueliq_athlete_progress")
+    conn.execute("DELETE FROM fueliq_daily_challenges")
+    conn.execute("DELETE FROM expo_push_tokens")
+    conn.execute("DELETE FROM athletes")
+    conn.execute("UPDATE report_config SET value = 10 WHERE key = 'fueliq_daily_challenge_points'")
+    conn.commit()
 
 
 def _daily_challenge_db():
     conn = _mk_conn()
-    conn.executescript("CREATE TABLE athletes (id INTEGER PRIMARY KEY);")
-    _create_fueliq_daily_challenge_tables(conn)
-    _add_push_sent_to_daily_challenges(conn)
-    _create_report_config(conn)
-    _create_expo_push_tokens(conn)
-    conn.commit()
+    _clean(conn)
     return conn
 
 
@@ -52,25 +65,35 @@ def _seed_challenge(conn, challenge_date, title="T1", verdict="myth", points=10)
     conn.execute(
         "INSERT INTO fueliq_daily_challenges "
         "(challenge_date, title, hook, verdict, science_text, points) "
-        "VALUES (?, ?, 'hook', ?, 'science', ?)",
+        "VALUES (%s, %s, 'hook', %s, 'science', %s)",
         (challenge_date, title, verdict, points),
     )
     conn.commit()
 
 
 def _add_athlete(conn, athlete_id):
-    conn.execute("INSERT INTO athletes (id) VALUES (?)", (athlete_id,))
+    conn.execute(
+        "INSERT INTO athletes (id, first_name, age, gender, weight_lbs, height_ft, height_in) "
+        "VALUES (%s, 'A', 14, 'Girl', 100, 5, 0)",
+        (athlete_id,),
+    )
     conn.commit()
 
 
 def test_fueliq_daily_challenge_tables_are_created():
+    # _create_fueliq_daily_challenge_tables() (api/services/db_migrations.py) is
+    # retired raw SQLite DDL (AUTOINCREMENT, datetime('now')) that errors
+    # immediately against Postgres — schema ownership moved to
+    # db/postgres/001_baseline.sql, applied once per session by
+    # tests/conftest.py. This verifies the same three tables exist in that
+    # baseline schema instead of invoking the retired SQLite-only creation
+    # function directly.
     conn = _mk_conn()
-    conn.executescript("CREATE TABLE athletes (id INTEGER PRIMARY KEY);")
-    _create_fueliq_daily_challenge_tables(conn)
     tables = {
-        r[0]
+        r["table_name"]
         for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'fueliq_daily_challenge%'"
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name LIKE 'fueliq_daily_challenge%'"
         ).fetchall()
     }
     assert tables == {
@@ -83,8 +106,7 @@ def test_fueliq_daily_challenge_tables_are_created():
 
 def test_fueliq_daily_challenges_challenge_date_is_unique():
     conn = _mk_conn()
-    conn.executescript("CREATE TABLE athletes (id INTEGER PRIMARY KEY);")
-    _create_fueliq_daily_challenge_tables(conn)
+    _clean(conn)
     conn.execute(
         "INSERT INTO fueliq_daily_challenges (challenge_date, title, hook, verdict, science_text) "
         "VALUES ('2026-07-10', 'T1', 'hook1', 'real', 'science1')"
@@ -97,18 +119,15 @@ def test_fueliq_daily_challenges_challenge_date_is_unique():
         )
         conn.commit()
         assert False, "expected UNIQUE constraint on challenge_date to raise"
-    except sqlite3.IntegrityError:
-        pass
+    except psycopg.errors.UniqueViolation:
+        conn.rollback()
     conn.close()
 
 
 def test_fueliq_daily_challenge_answers_unique_per_athlete_per_date():
     conn = _mk_conn()
-    conn.executescript("""
-        CREATE TABLE athletes (id INTEGER PRIMARY KEY);
-        INSERT INTO athletes (id) VALUES (1);
-    """)
-    _create_fueliq_daily_challenge_tables(conn)
+    _clean(conn)
+    _add_athlete(conn, 1)
     conn.execute(
         "INSERT INTO fueliq_daily_challenge_answers (athlete_id, challenge_date, guess, correct) "
         "VALUES (1, '2026-07-10', 'real', 1)"
@@ -121,8 +140,8 @@ def test_fueliq_daily_challenge_answers_unique_per_athlete_per_date():
         )
         conn.commit()
         assert False, "expected UNIQUE constraint on (athlete_id, challenge_date) to raise"
-    except sqlite3.IntegrityError:
-        pass
+    except psycopg.errors.UniqueViolation:
+        conn.rollback()
     conn.close()
 
 
@@ -286,11 +305,8 @@ def test_submit_daily_challenge_verdict_does_not_touch_shared_fueliq_score():
     """Deliberately independent from the lesson/rank score pool — completing
     the Daily Challenge must never move an athlete's Rank or unlock a Level."""
     conn = _daily_challenge_db()
-    conn.executescript("""
-        CREATE TABLE fueliq_athlete_progress (
-            athlete_id INTEGER PRIMARY KEY, score INTEGER NOT NULL DEFAULT 50
-        );
-    """)
+    # fueliq_athlete_progress already exists via db/postgres/001_baseline.sql
+    # (the old inline CREATE TABLE built a throwaway SQLite copy of it).
     _add_athlete(conn, 1)
     _seed_challenge(conn, "2026-07-10", verdict="myth", points=10)
     fdc.submit_daily_challenge_verdict(1, "myth", conn, today=date(2026, 7, 10))
@@ -365,17 +381,37 @@ def test_total_completed_counts_across_the_athletes_history():
 
 
 # ── Migration: push_sent_at ──────────────────────────────────────────────────
+#
+# _add_push_sent_to_daily_challenges() (api/services/db_migrations.py) is
+# retired raw SQLite DDL (PRAGMA table_info + ALTER TABLE) that errors
+# immediately against Postgres — the column it used to add is now a
+# permanent part of the baseline schema (db/postgres/001_baseline.sql), so
+# these two tests check for the column's presence (and single occurrence)
+# in that baseline schema instead of invoking the retired function.
 
 def test_push_sent_at_column_is_added():
     conn = _daily_challenge_db()
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(fueliq_daily_challenges)").fetchall()]
+    cols = [
+        r["column_name"]
+        for r in conn.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = 'fueliq_daily_challenges'"
+        ).fetchall()
+    ]
     assert "push_sent_at" in cols
     conn.close()
 
 
 def test_add_push_sent_column_is_idempotent():
     conn = _daily_challenge_db()
-    _add_push_sent_to_daily_challenges(conn)  # running it again must not error
+    cols = [
+        r["column_name"]
+        for r in conn.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = 'fueliq_daily_challenges'"
+        ).fetchall()
+    ]
+    assert cols.count("push_sent_at") == 1  # never duplicated — running the old migration twice must not error
     conn.close()
 
 
@@ -383,7 +419,7 @@ def test_add_push_sent_column_is_idempotent():
 
 def _add_token(conn, token, athlete_id=None, parent_id=None):
     conn.execute(
-        "INSERT INTO expo_push_tokens (athlete_id, parent_id, token) VALUES (?, ?, ?)",
+        "INSERT INTO expo_push_tokens (athlete_id, parent_id, token) VALUES (%s, %s, %s)",
         (athlete_id, parent_id, token),
     )
     conn.commit()

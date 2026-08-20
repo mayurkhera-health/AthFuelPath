@@ -42,11 +42,12 @@ def submit_instacart_feedback(payload: InstacartFeedback, identity=Depends(requi
         cur = conn.execute(
             """INSERT INTO instacart_handoff_feedback
                    (athlete_id, outcome, would_use_again, comment)
-               VALUES (?, ?, ?, ?)""",
+               VALUES (%s, %s, %s, %s)
+               RETURNING id""",
             (payload.athlete_id, payload.outcome, payload.would_use_again, payload.comment),
         )
         conn.commit()
-        feedback_id = cur.lastrowid
+        feedback_id = cur.fetchone()["id"]
     finally:
         conn.close()
 

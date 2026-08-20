@@ -38,7 +38,7 @@ def test_thumbs_up_saved_and_201(client):
 
     row = get_conn().execute(
         "SELECT rating, question, window_key, recipe_intent, role_hint, reason "
-        "FROM coach_feedback WHERE id = ?", (body["id"],),
+        "FROM coach_feedback WHERE id = %s", (body["id"],),
     ).fetchone()
     assert row["rating"] == "up"
     assert row["question"] == "What should I eat before practice?"

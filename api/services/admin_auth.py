@@ -152,7 +152,7 @@ def write_audit(action: str, target_type: str, target_id, detail: dict | None = 
         conn.execute(
             "INSERT INTO admin_audit_log "
             "(actor_id, actor_email, actor_role, action, target_type, target_id, after_state, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
             (ACTOR_ID, ACTOR_EMAIL, ACTOR_ROLE, action, target_type, target_id, after_state, created_at),
         )
         if own:

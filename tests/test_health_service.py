@@ -19,12 +19,16 @@ from api.services import founder_alerts
 
 def _wipe(conn):
     conn.commit()
-    conn.execute("PRAGMA foreign_keys=OFF")
-    for (name,) in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall():
-        conn.execute(f"DELETE FROM {name}")
+    tables = [
+        r["table_name"]
+        for r in conn.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name != 'schema_migrations'"
+        ).fetchall()
+    ]
+    if tables:
+        conn.execute(f"TRUNCATE TABLE {', '.join(tables)} RESTART IDENTITY CASCADE")
     conn.commit()
-    conn.execute("PRAGMA foreign_keys=ON")
 
 
 @pytest.fixture
@@ -34,8 +38,11 @@ def conn(monkeypatch):
     run_all()
     _wipe(ka)
     # Re-seed the check rows the migration seeds (wiped above).
-    ka.executemany("INSERT OR IGNORE INTO health_checks (check_name, status) VALUES (?, 'unknown')",
-                   [(n,) for n in H.CHECK_ORDER])
+    with ka.cursor() as cur:
+        cur.executemany(
+            "INSERT INTO health_checks (check_name, status) VALUES (%s, 'unknown') "
+            "ON CONFLICT (check_name) DO NOTHING",
+            [(n,) for n in H.CHECK_ORDER])
     ka.commit()
     # No real external calls in unit tests.
     monkeypatch.delenv("ADMIN_ALERT_PARENT_ID", raising=False)
@@ -64,6 +71,8 @@ def test_db_writable_green_and_red(conn):
     class Bad:
         def execute(self, *a, **k):
             raise RuntimeError("readonly database")
+        def rollback(self):
+            pass
     st, detail, _ = H.check_db_writable(Bad())
     assert st == "red" and "readonly" in detail
 
@@ -83,10 +92,10 @@ def test_scheduler_freshness(conn):
     assert H.check_scheduler_notifications(conn)[0] == "unknown"
     fresh = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
     stale = (datetime.utcnow() - timedelta(minutes=45)).isoformat()
-    conn.execute("INSERT INTO scheduler_heartbeats (job_name, last_run_at) VALUES ('notifications', ?)", (fresh,))
+    conn.execute("INSERT INTO scheduler_heartbeats (job_name, last_run_at) VALUES ('notifications', %s)", (fresh,))
     conn.commit()
     assert H.check_scheduler_notifications(conn)[0] == "green"
-    conn.execute("UPDATE scheduler_heartbeats SET last_run_at=? WHERE job_name='notifications'", (stale,))
+    conn.execute("UPDATE scheduler_heartbeats SET last_run_at=%s WHERE job_name='notifications'", (stale,))
     conn.commit()
     assert H.check_scheduler_notifications(conn)[0] == "red"
 
@@ -95,8 +104,10 @@ def test_calendar_sync_systemic(conn):
     import json
     assert H.check_calendar_sync_systemic(conn)[0] == "unknown"  # no meta
     def setmeta(a, s):
-        conn.execute("INSERT OR REPLACE INTO scheduler_heartbeats (job_name, meta) VALUES ('calendar_sync', ?)",
-                     (json.dumps({"attempted": a, "succeeded": s}),))
+        conn.execute(
+            "INSERT INTO scheduler_heartbeats (job_name, meta) VALUES ('calendar_sync', %s) "
+            "ON CONFLICT (job_name) DO UPDATE SET meta = EXCLUDED.meta",
+            (json.dumps({"attempted": a, "succeeded": s}),))
         conn.commit()
     setmeta(0, 0)
     assert H.check_calendar_sync_systemic(conn)[0] == "unknown"   # 0 attempts
@@ -134,7 +145,7 @@ def test_transition_creates_incident_and_alerts_once(conn, monkeypatch):
     # red -> red: no new incident, no alert
     H._run_checks(conn, [("gmail_smtp", lambda c: ("red", "still failing", None))])
     assert len(calls) == 1
-    assert conn.execute("SELECT COUNT(*) FROM health_incidents WHERE check_name='gmail_smtp'").fetchone()[0] == 1
+    assert conn.execute("SELECT COUNT(*) AS count FROM health_incidents WHERE check_name='gmail_smtp'").fetchone()["count"] == 1
     # red -> green: recovery alert
     H._run_checks(conn, [("gmail_smtp", lambda c: ("green", "login OK", None))])
     assert len(calls) == 2 and calls[1][2] == "green"

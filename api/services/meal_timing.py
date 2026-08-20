@@ -402,7 +402,7 @@ def generate_day_windows(athlete_id: int, plan_date: str, conn, force_v2: bool =
     from api.services.window_templates import generate_windows_for_day
 
     event_rows = conn.execute(
-        "SELECT * FROM events WHERE athlete_id = ? AND event_date = ? ORDER BY start_time",
+        "SELECT * FROM events WHERE athlete_id = %s AND event_date = %s ORDER BY start_time",
         (athlete_id, plan_date),
     ).fetchall()
     events = [dict(r) for r in event_rows]

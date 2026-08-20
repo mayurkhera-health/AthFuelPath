@@ -9,9 +9,9 @@ Covers every pure function the notification service exposes:
   - send_notification_guarded() (DB, monkeypatched send)
 """
 
-import sqlite3
 import pytest
 
+from api.database import get_conn
 from api.services.notification_service import (
     in_quiet_hours,
     rank_for_notification,
@@ -46,47 +46,33 @@ def _window(
 
 @pytest.fixture
 def suppress_conn():
-    """In-memory DB with window_logs and confirmations — for already_logged tests."""
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    conn.executescript("""
-        CREATE TABLE window_logs (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            athlete_id INTEGER NOT NULL,
-            window_id  TEXT NOT NULL,
-            log_date   TEXT NOT NULL,
-            UNIQUE(athlete_id, window_id, log_date)
-        );
-        CREATE TABLE confirmations (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            athlete_id  INTEGER NOT NULL,
-            log_date    TEXT NOT NULL,
-            window_key  TEXT NOT NULL,
-            window_type TEXT NOT NULL DEFAULT '',
-            UNIQUE(athlete_id, window_key, log_date)
-        );
-    """)
+    """Real Postgres connection, isolated to window_logs/confirmations — for
+    already_logged tests. confirmations.athlete_id FKs to athletes, so seed
+    two real athletes (ids 1 and 2) first."""
+    conn = get_conn()
+    conn.execute("TRUNCATE TABLE window_logs, confirmations RESTART IDENTITY CASCADE")
+    conn.execute(
+        "INSERT INTO parents (id, full_name, email, consent_timestamp) VALUES "
+        "(1,'P','p@e.com','2026-01-01'), (2,'P2','p2@e.com','2026-01-01') "
+        "ON CONFLICT (id) DO NOTHING"
+    )
+    conn.execute(
+        "INSERT INTO athletes (id, parent_id, first_name, age, gender, weight_lbs, height_ft, height_in) "
+        "VALUES (1,1,'Alice',15,'female',130,5,4), (2,2,'Bea',15,'female',130,5,4) "
+        "ON CONFLICT (id) DO NOTHING"
+    )
+    conn.commit()
     yield conn
     conn.close()
 
 
 @pytest.fixture
 def notif_conn():
-    """In-memory DB with notification_log — for send_notification_guarded tests."""
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    conn.executescript("""
-        CREATE TABLE notification_log (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            athlete_id INTEGER NOT NULL,
-            window_key TEXT NOT NULL,
-            send_date  TEXT NOT NULL,
-            recipient  TEXT NOT NULL,
-            token      TEXT NOT NULL,
-            sent_at    TEXT NOT NULL DEFAULT (datetime('now')),
-            UNIQUE (athlete_id, window_key, send_date, recipient)
-        );
-    """)
+    """Real Postgres connection, isolated to notification_log — for
+    send_notification_guarded tests."""
+    conn = get_conn()
+    conn.execute("TRUNCATE TABLE notification_log RESTART IDENTITY CASCADE")
+    conn.commit()
     yield conn
     conn.close()
 
@@ -239,7 +225,8 @@ class TestAlreadyLogged:
 
     def test_in_confirmations_returns_true(self, suppress_conn):
         suppress_conn.execute(
-            "INSERT INTO confirmations (athlete_id, window_key, log_date) VALUES (1, 'pre_event_meal', '2026-06-19')"
+            "INSERT INTO confirmations (athlete_id, window_key, log_date, window_type) "
+            "VALUES (1, 'pre_event_meal', '2026-06-19', '')"
         )
         assert already_logged(1, "pre_event_meal", "2026-06-19", suppress_conn) is True
 
@@ -303,7 +290,7 @@ class TestSendNotificationGuarded:
         )
         assert result is True
 
-        row_count = notif_conn.execute("SELECT COUNT(*) FROM notification_log").fetchone()[0]
+        row_count = notif_conn.execute("SELECT COUNT(*) AS n FROM notification_log").fetchone()["n"]
         assert row_count == 0, "dry-run must not write to notification_log"
 
     def test_real_send_after_dry_run_is_not_suppressed(self, notif_conn, monkeypatch):
@@ -459,22 +446,9 @@ class TestShouldNotifyRecipient:
 
 @pytest.fixture
 def prefs_conn():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    conn.executescript("""
-        CREATE TABLE notification_prefs (
-            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-            profile_type        TEXT NOT NULL,
-            profile_id          INTEGER NOT NULL,
-            training_days       INTEGER NOT NULL DEFAULT 1,
-            game_days           INTEGER NOT NULL DEFAULT 1,
-            quiet_hours_enabled INTEGER NOT NULL DEFAULT 1,
-            quiet_start         TEXT NOT NULL DEFAULT '22:00',
-            quiet_end           TEXT NOT NULL DEFAULT '07:00',
-            updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
-            UNIQUE(profile_type, profile_id)
-        );
-    """)
+    conn = get_conn()
+    conn.execute("TRUNCATE TABLE notification_prefs RESTART IDENTITY CASCADE")
+    conn.commit()
     yield conn
     conn.close()
 

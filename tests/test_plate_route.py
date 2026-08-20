@@ -1,7 +1,6 @@
 """Integration tests for the Performance Plate route (GET /api/plate/window)."""
 import os
 os.environ["DB_PATH"] = ":memory:"
-os.environ["PERFORMANCE_PLATE_ENABLED"] = "true"  # flag ships dark; on for these tests
 
 import json
 import pytest
@@ -12,6 +11,15 @@ from api.services.db_migrations import run_all
 from api.database import get_conn
 from api.main import app
 from tests.conftest import auth_headers
+
+
+@pytest.fixture(autouse=True)
+def _plate_enabled(monkeypatch):
+    # Flag ships dark (see api/services/plate_config.py) — on for these tests.
+    # Via monkeypatch (not a bare os.environ assignment) so it reverts after
+    # this module instead of leaking PERFORMANCE_PLATE_ENABLED=true into every
+    # test file that runs afterward in the same process.
+    monkeypatch.setenv("PERFORMANCE_PLATE_ENABLED", "true")
 
 
 @pytest.fixture
@@ -47,7 +55,7 @@ def _make_athlete(client, *, allergies=None, dietary=None):
     if allergies is not None or dietary is not None:
         conn = get_conn()
         conn.execute(
-            "UPDATE athletes SET allergies = ?, dietary_restrictions = ? WHERE id = ?",
+            "UPDATE athletes SET allergies = %s, dietary_restrictions = %s WHERE id = %s",
             (json.dumps(allergies) if allergies is not None else None,
              json.dumps(dietary) if dietary is not None else None, aid),
         )

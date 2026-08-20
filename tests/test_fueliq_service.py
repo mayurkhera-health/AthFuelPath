@@ -1,41 +1,60 @@
 """Unit tests for Fuel IQ (api/services/fueliq_service.py)."""
 
-import sqlite3
-
 import pytest
 
-from api.services.db_migrations import _create_fueliq_tables, _create_report_config
+from api.database import get_conn
 from api.services import fueliq_service as fq
 
 
 def _mk_conn():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    return get_conn()
+
+
+@pytest.fixture(autouse=True)
+def _clean_fueliq_state():
+    """Each test in this module hardcodes athlete_id 1/2 and expects a blank
+    slate for fueliq_* tables — the old sqlite3(':memory:') connection gave
+    that for free every test. tests/conftest.py's shared Postgres DB is only
+    truncated once per module, so re-truncate just the tables this file
+    touches before every test to keep that same per-test isolation."""
+    conn = get_conn()
+    conn.execute(
+        "TRUNCATE TABLE fueliq_badges_earned, fueliq_quiz_attempts, "
+        "fueliq_lesson_completions, fueliq_questions, fueliq_lessons, "
+        "fueliq_athlete_progress, athletes RESTART IDENTITY CASCADE"
+    )
+    conn.commit()
+    conn.close()
+    yield
 
 
 def _fueliq_db():
-    """In-memory DB with athletes + the fueliq_* tables the service reads/writes."""
+    """Postgres test DB — the fueliq_* tables and report_config are already
+    created/seeded by tests/conftest.py's session/module-scoped fixtures
+    (db/postgres/001_baseline.sql + seed_report_config), so this only needs
+    to seed the two athletes these tests exercise."""
     conn = _mk_conn()
-    conn.executescript("""
-        CREATE TABLE athletes (id INTEGER PRIMARY KEY, first_name TEXT, age INTEGER);
-        INSERT INTO athletes (id, first_name, age) VALUES (1, 'Alex', 14);
-        INSERT INTO athletes (id, first_name, age) VALUES (2, 'Sam', 14);
-    """)
-    _create_fueliq_tables(conn)
-    _create_report_config(conn)
+    conn.execute(
+        "INSERT INTO athletes (id, first_name, age, gender, weight_lbs, height_ft, height_in) "
+        "VALUES (1, 'Alex', 14, 'Boy', 100, 5, 0)"
+    )
+    conn.execute(
+        "INSERT INTO athletes (id, first_name, age, gender, weight_lbs, height_ft, height_in) "
+        "VALUES (2, 'Sam', 14, 'Boy', 100, 5, 0)"
+    )
     conn.commit()
     return conn
 
 
 def _add_athlete(conn, athlete_id, age, score=None):
     conn.execute(
-        "INSERT INTO athletes (id, first_name, age) VALUES (?, 'Cohort', ?)", (athlete_id, age)
+        "INSERT INTO athletes (id, first_name, age, gender, weight_lbs, height_ft, height_in) "
+        "VALUES (%s, 'Cohort', %s, 'Boy', 100, 5, 0)",
+        (athlete_id, age),
     )
     if score is not None:
         conn.execute(
-            "INSERT INTO fueliq_athlete_progress (athlete_id, score) VALUES (?, ?)",
+            "INSERT INTO fueliq_athlete_progress (athlete_id, score) VALUES (%s, %s)",
             (athlete_id, score),
         )
     conn.commit()
@@ -46,11 +65,13 @@ def _insert_lesson(conn, points=10, level=1, order_in_level=1, category=None, ti
         "INSERT INTO fueliq_lessons "
         "(level, order_in_level, is_myth, title, hook, fact_body, takeaway, "
         " source_citation, points, review_status, category) "
-        "VALUES (?, ?, 0, ?, 'hook', 'fact', 'takeaway', 'cite', ?, 'approved', ?)",
+        "VALUES (%s, %s, 0, %s, 'hook', 'fact', 'takeaway', 'cite', %s, 'approved', %s) "
+        "RETURNING id",
         (level, order_in_level, title, points, category),
     )
+    row_id = cur.fetchone()["id"]
     conn.commit()
-    return cur.lastrowid
+    return row_id
 
 
 def _insert_question(conn, lesson_id, correct_option="b"):
@@ -58,31 +79,38 @@ def _insert_question(conn, lesson_id, correct_option="b"):
         "INSERT INTO fueliq_questions "
         "(lesson_id, question_text, option_a, option_b, option_c, correct_option, "
         " explanation, misconception_tag, order_in_lesson) "
-        "VALUES (?, 'q', 'A', 'B', 'C', ?, 'because', 'tag1', 1)",
+        "VALUES (%s, 'q', 'A', 'B', 'C', %s, 'because', 'tag1', 1) "
+        "RETURNING id",
         (lesson_id, correct_option),
     )
+    row_id = cur.fetchone()["id"]
     conn.commit()
-    return cur.lastrowid
+    return row_id
 
 
 def test_fueliq_tables_are_created():
+    # _create_fueliq_tables() (api/services/db_migrations.py) is retired raw
+    # SQLite DDL (AUTOINCREMENT, datetime('now')) that errors immediately
+    # against Postgres — schema ownership moved to db/postgres/001_baseline.sql,
+    # applied once per session by tests/conftest.py. This now verifies the
+    # same six fueliq_* tables exist in that baseline schema instead of
+    # invoking the retired SQLite-only creation function directly.
     conn = _mk_conn()
-    conn.executescript("CREATE TABLE athletes (id INTEGER PRIMARY KEY);")
-    _create_fueliq_tables(conn)
     tables = {
-        r[0]
+        r["table_name"]
         for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'fueliq_%'"
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name LIKE 'fueliq_%'"
         ).fetchall()
     }
-    assert tables == {
+    assert {
         "fueliq_lessons",
         "fueliq_questions",
         "fueliq_athlete_progress",
         "fueliq_lesson_completions",
         "fueliq_quiz_attempts",
         "fueliq_badges_earned",
-    }
+    } <= tables
     conn.close()
 
 
@@ -131,8 +159,11 @@ def test_get_progress_is_idempotent():
 
 
 def test_report_config_seeds_fueliq_point_values():
+    # report_config is already seeded by tests/conftest.py's module-scoped
+    # fixture (db/postgres_seeds.py::seed_report_config, verbatim same
+    # key/value/description data as the retired _create_report_config()) —
+    # no need to call the retired SQLite-only creator directly.
     conn = _mk_conn()
-    _create_report_config(conn)
     rows = {
         r["key"]: r["value"]
         for r in conn.execute(
@@ -219,7 +250,7 @@ def test_import_lessons_gives_each_lesson_its_own_questions():
     counts = {}
     for lesson in lessons:
         questions = conn.execute(
-            "SELECT correct_option FROM fueliq_questions WHERE lesson_id = ?", (lesson["id"],)
+            "SELECT correct_option FROM fueliq_questions WHERE lesson_id = %s", (lesson["id"],)
         ).fetchall()
         counts[lesson["title"]] = len(questions)
         assert all(q["correct_option"] in ("a", "b", "c") for q in questions)
@@ -236,7 +267,7 @@ def test_import_lessons_questions_are_answerable_end_to_end():
         "SELECT id FROM fueliq_lessons WHERE is_myth = 0 AND order_in_level = 1"
     ).fetchone()
     questions = conn.execute(
-        "SELECT id, correct_option FROM fueliq_questions WHERE lesson_id = ? ORDER BY order_in_lesson",
+        "SELECT id, correct_option FROM fueliq_questions WHERE lesson_id = %s ORDER BY order_in_lesson",
         (lesson["id"],),
     ).fetchall()
     assert len(questions) == 3  # guards against the empty-list-passes-vacuously bug
@@ -382,7 +413,7 @@ def test_full_tank_requires_perfect_quiz_on_every_lesson_in_a_level():
     fq.complete_lesson(1, l2, conn, perfect_quiz=False)
     assert "full_tank" not in fq.check_and_award_badges(1, conn)
     conn.execute(
-        "UPDATE fueliq_lesson_completions SET perfect_quiz = 1 WHERE athlete_id = 1 AND lesson_id = ?",
+        "UPDATE fueliq_lesson_completions SET perfect_quiz = 1 WHERE athlete_id = 1 AND lesson_id = %s",
         (l2,),
     )
     conn.commit()

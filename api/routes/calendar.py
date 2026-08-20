@@ -48,7 +48,7 @@ class CalendarSyncRequest(BaseModel):
 
 def _require_athlete(conn, athlete_id: int):
     row = conn.execute(
-        "SELECT id, competition_level FROM athletes WHERE id = ?", (athlete_id,)
+        "SELECT id, competition_level FROM athletes WHERE id = %s", (athlete_id,)
     ).fetchone()
     if not row:
         raise HTTPException(404, "Athlete not found.")
@@ -73,7 +73,7 @@ def save_sync_url(athlete_id: int, body: CalendarSyncRequest, identity=Depends(r
             raise HTTPException(400, f"Couldn't read that calendar link: {exc}")
 
         conn.execute(
-            f"UPDATE athletes SET {_COLUMN[body.platform]} = ? WHERE id = ?",
+            f"UPDATE athletes SET {_COLUMN[body.platform]} = %s WHERE id = %s",
             (body.ics_url, athlete_id),
         )
         conn.commit()
@@ -91,7 +91,7 @@ def save_sync_url(athlete_id: int, body: CalendarSyncRequest, identity=Depends(r
             parent = conn.execute(
                 "SELECT p.email, p.full_name, a.first_name "
                 "FROM parents p JOIN athletes a ON a.parent_id = p.id "
-                "WHERE a.id = ?",
+                "WHERE a.id = %s",
                 (athlete_id,),
             ).fetchone()
             if parent and parent["email"]:
@@ -121,7 +121,7 @@ def sync_status(athlete_id: int, identity=Depends(require_session)):
     try:
         assert_owns_athlete(identity, athlete_id, conn)
         athlete = conn.execute(
-            "SELECT byga_ics_url, playmetrics_ics_url FROM athletes WHERE id = ?",
+            "SELECT byga_ics_url, playmetrics_ics_url FROM athletes WHERE id = %s",
             (athlete_id,),
         ).fetchone()
         if not athlete:
@@ -131,7 +131,7 @@ def sync_status(athlete_id: int, identity=Depends(require_session)):
         for platform in _PLATFORMS:
             agg = conn.execute(
                 "SELECT COUNT(*) AS n, MAX(synced_at) AS last FROM events "
-                "WHERE athlete_id = ? AND source = ?",
+                "WHERE athlete_id = %s AND source = %s",
                 (athlete_id, platform),
             ).fetchone()
             out[platform] = {
@@ -156,7 +156,7 @@ def remove_sync_url(athlete_id: int, platform: str, identity=Depends(require_ses
         assert_owns_athlete(identity, athlete_id, conn)
         _require_athlete(conn, athlete_id)
         conn.execute(
-            f"UPDATE athletes SET {_COLUMN[platform]} = NULL WHERE id = ?", (athlete_id,)
+            f"UPDATE athletes SET {_COLUMN[platform]} = NULL WHERE id = %s", (athlete_id,)
         )
         conn.commit()
         return {"ok": True, "platform": platform, "message": "Sync disconnected. Existing events kept."}

@@ -19,12 +19,16 @@ PASSWORD = "s3cret-admin"
 
 def _wipe(conn):
     conn.commit()
-    conn.execute("PRAGMA foreign_keys=OFF")
-    for (name,) in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall():
-        conn.execute(f"DELETE FROM {name}")
+    tables = [
+        r["table_name"]
+        for r in conn.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name != 'schema_migrations'"
+        ).fetchall()
+    ]
+    if tables:
+        conn.execute(f"TRUNCATE TABLE {', '.join(tables)} RESTART IDENTITY CASCADE")
     conn.commit()
-    conn.execute("PRAGMA foreign_keys=ON")
 
 
 @pytest.fixture
@@ -33,9 +37,11 @@ def client(monkeypatch):
     init_db()
     run_all()
     _wipe(keepalive)
-    keepalive.executemany(
-        "INSERT OR IGNORE INTO health_checks (check_name, status) VALUES (?, 'unknown')",
-        [(n,) for n in health_service.CHECK_ORDER])
+    for n in health_service.CHECK_ORDER:
+        keepalive.execute(
+            "INSERT INTO health_checks (check_name, status) VALUES (%s, 'unknown') "
+            "ON CONFLICT (check_name) DO NOTHING",
+            (n,))
     keepalive.commit()
 
     monkeypatch.setenv("ADMIN_PASSWORD", PASSWORD)

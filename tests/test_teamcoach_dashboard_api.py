@@ -17,28 +17,28 @@ def seed():
     conn = get_conn()
     pw_hash, salt = hash_password("pw")
     conn.execute(
-        "INSERT OR IGNORE INTO coaches (id,name,email,password_hash,salt) "
-        "VALUES (1,'Coach','c@c.com',?,?)", (pw_hash, salt)
+        "INSERT INTO coaches (id,name,email,password_hash,salt) "
+        "VALUES (1,'Coach','c@c.com',%s,%s) ON CONFLICT DO NOTHING", (pw_hash, salt)
     )
     conn.execute(
-        "INSERT OR IGNORE INTO teams (id,name,season,threshold_pct) "
-        "VALUES (1,'U16','Fall 2026',80)"
+        "INSERT INTO teams (id,name,season,threshold_pct) "
+        "VALUES (1,'U16','Fall 2026',80) ON CONFLICT DO NOTHING"
     )
     conn.execute(
-        "INSERT OR IGNORE INTO coach_team_access (coach_id,team_id) VALUES (1,1)"
+        "INSERT INTO coach_team_access (coach_id,team_id) VALUES (1,1) ON CONFLICT DO NOTHING"
     )
     conn.execute(
-        "INSERT OR IGNORE INTO parents (id,full_name,email,consent_timestamp) "
-        "VALUES (1,'P','p@e.com','2026-01-01')"
+        "INSERT INTO parents (id,full_name,email,consent_timestamp) "
+        "VALUES (1,'P','p@e.com','2026-01-01') ON CONFLICT DO NOTHING"
     )
     conn.execute(
-        "INSERT OR IGNORE INTO athletes "
+        "INSERT INTO athletes "
         "(id,parent_id,first_name,age,gender,weight_lbs,height_ft,height_in) "
-        "VALUES (1,1,'Alice',15,'female',130,5,4)"
+        "VALUES (1,1,'Alice',15,'female',130,5,4) ON CONFLICT DO NOTHING"
     )
     conn.execute(
-        "INSERT OR IGNORE INTO roster_membership (athlete_id,team_id,parent_consent_flag) "
-        "VALUES (1,1,1)"
+        "INSERT INTO roster_membership (athlete_id,team_id,parent_consent_flag) "
+        "VALUES (1,1,1) ON CONFLICT DO NOTHING"
     )
     conn.commit()
     conn.close()

@@ -6,36 +6,37 @@ Focus on the two correctness guarantees that make full add/update/delete safe:
 and that every mutation triggers a fuel-window recompute.
 """
 
-import sqlite3
 from datetime import datetime, timezone, timedelta
 
 import pytest
 
+from api.database import get_conn
 from api.services import ics_sync
-from api.services.db_migrations import _add_calendar_sync_to_athletes, _add_source_to_events
 
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
 def _fresh_conn():
-    """A PRIVATE in-memory DB per test. Deliberately NOT get_conn() — that uses a
-    process-wide shared-cache :memory: DB, and these tests drop/recreate tables,
-    which would clobber other test modules' schema when the suite runs together.
-    sync_platform() operates on the conn we pass, so a private connection is fully
-    isolated."""
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    conn.executescript("""
-        CREATE TABLE athletes (id INTEGER PRIMARY KEY, competition_level TEXT);
-        CREATE TABLE events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            athlete_id INTEGER, event_name TEXT, event_type TEXT, event_date TEXT,
-            start_time TEXT, duration_hours REAL, city TEXT, venue_name TEXT,
-            intensity TEXT, uid TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        );
-    """)
-    _add_source_to_events(conn)          # adds source + synced_at (as in prod)
-    _add_calendar_sync_to_athletes(conn)
-    conn.execute("INSERT INTO athletes (id, competition_level) VALUES (1, 'competitive')")
+    """Real (shared) Postgres connection, reset to a clean slate for this test.
+
+    athletes/events already exist via db/postgres/001_baseline.sql (applied
+    once per test session; TRUNCATEd once per module by conftest's
+    module-scoped _fresh_db fixture) with every column this file needs
+    (byga_ics_url/playmetrics_ics_url/source/synced_at included) — so unlike
+    the old private in-memory SQLite DB (built from a minimal ad hoc schema
+    and patched via the retired, PRAGMA-based
+    _add_source_to_events/_add_calendar_sync_to_athletes migration helpers,
+    which are a syntax error against Postgres), isolation here just means
+    clearing the athlete-1 rows this file touches on the real tables.
+    sync_platform() operates on the conn we pass, so this stays fully
+    isolated from other test modules.
+    """
+    conn = get_conn()
+    conn.execute("DELETE FROM events WHERE athlete_id = 1")
+    conn.execute("DELETE FROM athletes WHERE id = 1")
+    conn.execute(
+        "INSERT INTO athletes (id, first_name, age, gender, weight_lbs, height_ft, height_in, competition_level) "
+        "VALUES (1, 'Tester', 14, 'boy', 120, 5, 4, 'competitive')"
+    )
     conn.commit()
     return conn
 
@@ -111,14 +112,14 @@ def test_future_removal_deletes_but_past_preserved(monkeypatch, _spy_windows):
     # Seed one future + one PAST synced event directly.
     conn.execute("INSERT INTO events (athlete_id, event_name, event_type, event_date, "
                  "start_time, duration_hours, uid, source) VALUES "
-                 "(1,'Future','game',?, '10:00',1.5,'fut','byga')", (FUT1.strftime("%Y-%m-%d"),))
+                 "(1,'Future','game',%s, '10:00',1.5,'fut','byga')", (FUT1.strftime("%Y-%m-%d"),))
     conn.execute("INSERT INTO events (athlete_id, event_name, event_type, event_date, "
                  "start_time, duration_hours, uid, source) VALUES "
-                 "(1,'History','game',?, '10:00',1.5,'hist','byga')", (PAST.strftime("%Y-%m-%d"),))
+                 "(1,'History','game',%s, '10:00',1.5,'hist','byga')", (PAST.strftime("%Y-%m-%d"),))
     # Also a manual event with the SAME future date — must never be touched.
     conn.execute("INSERT INTO events (athlete_id, event_name, event_type, event_date, "
                  "start_time, duration_hours, uid, source) VALUES "
-                 "(1,'Manual','practice',?, '08:00',1.0,NULL,'manual')", (FUT1.strftime("%Y-%m-%d"),))
+                 "(1,'Manual','practice',%s, '08:00',1.0,NULL,'manual')", (FUT1.strftime("%Y-%m-%d"),))
     conn.commit()
 
     # Feed no longer contains 'fut' (game cancelled/removed) and never had 'hist'.
@@ -138,7 +139,7 @@ def test_failed_feed_never_deletes(monkeypatch, _spy_windows):
     conn = _fresh_conn()
     conn.execute("INSERT INTO events (athlete_id, event_name, event_type, event_date, "
                  "start_time, duration_hours, uid, source) VALUES "
-                 "(1,'Future','game',?, '10:00',1.5,'fut','byga')", (FUT1.strftime("%Y-%m-%d"),))
+                 "(1,'Future','game',%s, '10:00',1.5,'fut','byga')", (FUT1.strftime("%Y-%m-%d"),))
     conn.commit()
 
     def _boom(url):
@@ -149,7 +150,7 @@ def test_failed_feed_never_deletes(monkeypatch, _spy_windows):
     assert counts["error"] is not None
     assert counts["deleted"] == 0
     # The event survives a transient failure.
-    assert conn.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 1
+    assert conn.execute("SELECT COUNT(*) AS count FROM events").fetchone()["count"] == 1
     assert _spy_windows == []
 
 
@@ -165,11 +166,11 @@ def test_name_time_fallback_adopts_manual_duplicate(monkeypatch, _spy_windows):
     conn.execute(
         "INSERT INTO events (athlete_id, event_name, event_type, event_date, "
         "start_time, duration_hours, uid, source) VALUES "
-        "(1,'Team Practice','practice',?,?  ,1.5,'old-uid-from-client-import','manual')",
+        "(1,'Team Practice','practice',%s,%s  ,1.5,'old-uid-from-client-import','manual')",
         (event_date, start_time),
     )
     conn.commit()
-    manual_id = conn.execute("SELECT id FROM events").fetchone()[0]
+    manual_id = conn.execute("SELECT id FROM events").fetchone()["id"]
 
     # BYGA feed contains the same event but with a freshly-rotated UID.
     _feed(monkeypatch, _cal(_vevent("byga-new-uid", FUT1, "Team Practice")))
@@ -205,7 +206,7 @@ def test_name_time_fallback_skips_ambiguous_duplicates(monkeypatch, _spy_windows
         conn.execute(
             "INSERT INTO events (athlete_id, event_name, event_type, event_date, "
             "start_time, duration_hours, uid, source) VALUES "
-            "(1,'Team Practice','practice',?,?,1.5,?,?)",
+            "(1,'Team Practice','practice',%s,%s,1.5,%s,%s)",
             (event_date, start_time, f"old-uid-{suffix}", "manual"),
         )
     conn.commit()
@@ -234,11 +235,11 @@ def test_name_time_fallback_adopts_prior_byga_duplicate_on_uid_rotation(monkeypa
     conn.execute(
         "INSERT INTO events (athlete_id, event_name, event_type, event_date, "
         "start_time, duration_hours, uid, source) VALUES "
-        "(1,'Team Practice','practice',?,?,1.5,'byga-uid-from-last-sync','byga')",
+        "(1,'Team Practice','practice',%s,%s,1.5,'byga-uid-from-last-sync','byga')",
         (event_date, start_time),
     )
     conn.commit()
-    prior_id = conn.execute("SELECT id FROM events").fetchone()[0]
+    prior_id = conn.execute("SELECT id FROM events").fetchone()["id"]
 
     # BYGA rotated the UID again on this export — same event, new uid.
     _feed(monkeypatch, _cal(_vevent("byga-rotated-uid", FUT1, "Team Practice")))
@@ -269,22 +270,22 @@ def test_name_time_fallback_adopts_byga_row_despite_ambiguous_manual_dupes(monke
         conn.execute(
             "INSERT INTO events (athlete_id, event_name, event_type, event_date, "
             "start_time, duration_hours, uid, source) VALUES "
-            "(1,'Team Practice','practice',?,?,1.5,?,?)",
+            "(1,'Team Practice','practice',%s,%s,1.5,%s,%s)",
             (event_date, start_time, f"stale-manual-{suffix}", "manual"),
         )
     conn.execute(
         "INSERT INTO events (athlete_id, event_name, event_type, event_date, "
         "start_time, duration_hours, uid, source) VALUES "
-        "(1,'Team Practice','practice',?,?,1.5,'byga-uid-from-last-sync','byga')",
+        "(1,'Team Practice','practice',%s,%s,1.5,'byga-uid-from-last-sync','byga')",
         (event_date, start_time),
     )
     conn.commit()
-    byga_id = conn.execute("SELECT id FROM events WHERE source='byga'").fetchone()[0]
+    byga_id = conn.execute("SELECT id FROM events WHERE source='byga'").fetchone()["id"]
 
     _feed(monkeypatch, _cal(_vevent("byga-rotated-uid", FUT1, "Team Practice")))
     counts = ics_sync.sync_platform(conn, 1, "byga", "http://x", "competitive")
 
-    byga_row = dict(conn.execute("SELECT * FROM events WHERE id=?", (byga_id,)).fetchone())
+    byga_row = dict(conn.execute("SELECT * FROM events WHERE id=%s", (byga_id,)).fetchone())
     assert byga_row["uid"] == "byga-rotated-uid", "Byga row must be adopted despite manual dupes"
     assert counts["updated"] == 1
     assert counts["inserted"] == 0, "Must not re-report as new because of unrelated manual clutter"
@@ -307,7 +308,7 @@ def test_name_time_fallback_does_not_merge_across_platforms(monkeypatch, _spy_wi
     conn.execute(
         "INSERT INTO events (athlete_id, event_name, event_type, event_date, "
         "start_time, duration_hours, uid, source) VALUES "
-        "(1,'Team Practice','practice',?,?,1.5,'playmetrics-uid','playmetrics')",
+        "(1,'Team Practice','practice',%s,%s,1.5,'playmetrics-uid','playmetrics')",
         (event_date, start_time),
     )
     conn.commit()
@@ -323,15 +324,35 @@ def test_name_time_fallback_does_not_merge_across_platforms(monkeypatch, _spy_wi
 
 
 def test_migrations_idempotent():
-    conn = sqlite3.connect(":memory:")
-    conn.execute("CREATE TABLE athletes (id INTEGER PRIMARY KEY)")
-    conn.execute("CREATE TABLE events (id INTEGER PRIMARY KEY, athlete_id INTEGER, event_type TEXT)")
-    for _ in range(2):  # run twice — must be a no-op the second time
-        _add_calendar_sync_to_athletes(conn)
-        _add_source_to_events(conn)
-    acols = [r[1] for r in conn.execute("PRAGMA table_info(athletes)").fetchall()]
-    ecols = [r[1] for r in conn.execute("PRAGMA table_info(events)").fetchall()]
+    # The columns this used to add at runtime (twice, to prove idempotency)
+    # via the retired SQLite-only helpers _add_calendar_sync_to_athletes /
+    # _add_source_to_events (PRAGMA table_info + ALTER TABLE — a syntax
+    # error against Postgres) are now just part of the baseline schema
+    # (db/postgres/001_baseline.sql), applied once per test session. Assert
+    # the real table already has that shape and that `source` still
+    # defaults to 'manual' for a bare insert.
+    conn = get_conn()
+    acols = {
+        r["column_name"] for r in conn.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'athletes'"
+        ).fetchall()
+    }
+    ecols = {
+        r["column_name"] for r in conn.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'events'"
+        ).fetchall()
+    }
     assert "byga_ics_url" in acols and "playmetrics_ics_url" in acols
     assert "source" in ecols and "synced_at" in ecols
-    conn.execute("INSERT INTO events (event_type) VALUES ('practice')")
-    assert conn.execute("SELECT source FROM events").fetchone()[0] == "manual"  # default
+
+    conn.execute("DELETE FROM events WHERE athlete_id = 1")
+    conn.execute("DELETE FROM athletes WHERE id = 1")
+    conn.execute(
+        "INSERT INTO athletes (id, first_name, age, gender, weight_lbs, height_ft, height_in) "
+        "VALUES (1, 'Tester', 14, 'boy', 120, 5, 4)"
+    )
+    conn.execute("INSERT INTO events (athlete_id, event_name, event_type, event_date) "
+                 "VALUES (1, 'E', 'practice', '2026-06-27')")
+    conn.commit()
+    assert conn.execute("SELECT source FROM events WHERE athlete_id = 1").fetchone()["source"] == "manual"  # default
+    conn.close()

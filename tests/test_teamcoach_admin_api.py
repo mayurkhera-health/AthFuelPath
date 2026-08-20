@@ -18,13 +18,13 @@ def seed():
     init_db()
     conn = get_conn()
     conn.execute(
-        "INSERT OR IGNORE INTO parents (id,full_name,email,consent_timestamp) "
-        "VALUES (1,'P','p@e.com','2026-01-01')"
+        "INSERT INTO parents (id,full_name,email,consent_timestamp) "
+        "VALUES (1,'P','p@e.com','2026-01-01') ON CONFLICT (id) DO NOTHING"
     )
     conn.execute(
-        "INSERT OR IGNORE INTO athletes "
+        "INSERT INTO athletes "
         "(id,parent_id,first_name,age,gender,weight_lbs,height_ft,height_in) "
-        "VALUES (1,1,'Alice',15,'female',130,5,4)"
+        "VALUES (1,1,'Alice',15,'female',130,5,4) ON CONFLICT (id) DO NOTHING"
     )
     conn.commit()
     conn.close()

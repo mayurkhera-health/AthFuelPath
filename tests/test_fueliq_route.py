@@ -46,11 +46,11 @@ def _seed_lesson(conn, level=1, points=10):
         "INSERT INTO fueliq_lessons "
         "(level, order_in_level, is_myth, title, hook, fact_body, takeaway, "
         " source_citation, points, review_status) "
-        "VALUES (?, 1, 0, 'Test Lesson', 'hook', 'fact', 'takeaway', 'cite', ?, 'approved')",
+        "VALUES (%s, 1, 0, 'Test Lesson', 'hook', 'fact', 'takeaway', 'cite', %s, 'approved') RETURNING id",
         (level, points),
     )
     conn.commit()
-    return cur.lastrowid
+    return cur.fetchone()["id"]
 
 
 def _seed_question(conn, lesson_id, correct_option="b"):
@@ -58,11 +58,11 @@ def _seed_question(conn, lesson_id, correct_option="b"):
         "INSERT INTO fueliq_questions "
         "(lesson_id, question_text, option_a, option_b, option_c, correct_option, "
         " explanation, misconception_tag, order_in_lesson) "
-        "VALUES (?, 'q', 'A', 'B', 'C', ?, 'because', 'tag1', 1)",
+        "VALUES (%s, 'q', 'A', 'B', 'C', %s, 'because', 'tag1', 1) RETURNING id",
         (lesson_id, correct_option),
     )
     conn.commit()
-    return cur.lastrowid
+    return cur.fetchone()["id"]
 
 
 def test_hub_returns_disabled_when_flag_off(client, monkeypatch):

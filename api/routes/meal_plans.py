@@ -23,7 +23,7 @@ def _build_week(athlete_id: int, week_start: date, conn) -> list:
 
         # Fetch ALL events for this day to detect double-day
         event_rows = conn.execute(
-            "SELECT * FROM events WHERE athlete_id = ? AND event_date = ? ORDER BY start_time",
+            "SELECT * FROM events WHERE athlete_id = %s AND event_date = %s ORDER BY start_time",
             (athlete_id, date_str),
         ).fetchall()
         events = [dict(r) for r in event_rows]
@@ -37,14 +37,14 @@ def _build_week(athlete_id: int, week_start: date, conn) -> list:
 
         # Calorie target
         target_row = conn.execute(
-            "SELECT total_calories FROM daily_targets WHERE athlete_id = ? AND target_date = ?",
+            "SELECT total_calories FROM daily_targets WHERE athlete_id = %s AND target_date = %s",
             (athlete_id, date_str),
         ).fetchone()
         calorie_target = dict(target_row)["total_calories"] if target_row else None
 
         # Filled slots from DB
         rows = conn.execute(
-            "SELECT * FROM meal_plans WHERE athlete_id = ? AND plan_date = ?",
+            "SELECT * FROM meal_plans WHERE athlete_id = %s AND plan_date = %s",
             (athlete_id, date_str),
         ).fetchall()
         filled = {dict(r)["slot_name"]: dict(r) for r in rows}
@@ -102,7 +102,7 @@ def _build_week(athlete_id: int, week_start: date, conn) -> list:
 def get_meal_plan(athlete_id: int, week_start: str = Query(None)):
     conn = get_conn()
     try:
-        if not conn.execute("SELECT id FROM athletes WHERE id = ?", (athlete_id,)).fetchone():
+        if not conn.execute("SELECT id FROM athletes WHERE id = %s", (athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
 
         if week_start:
@@ -120,7 +120,7 @@ def get_meal_plan(athlete_id: int, week_start: str = Query(None)):
 def set_slot(athlete_id: int, data: MealPlanSlotUpdate):
     conn = get_conn()
     try:
-        if not conn.execute("SELECT id FROM athletes WHERE id = ?", (athlete_id,)).fetchone():
+        if not conn.execute("SELECT id FROM athletes WHERE id = %s", (athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
 
         recipe = recipe_db.get_recipe_by_id(data.recipe_id)
@@ -132,7 +132,7 @@ def set_slot(athlete_id: int, data: MealPlanSlotUpdate):
             """INSERT INTO meal_plans
                (athlete_id, plan_date, slot_name, recipe_id, recipe_name,
                 calories, carbs_g, protein_g, fat_g, is_ai_generated, logged)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 0, 0)
                ON CONFLICT(athlete_id, plan_date, slot_name)
                DO UPDATE SET recipe_id=excluded.recipe_id, recipe_name=excluded.recipe_name,
                  calories=excluded.calories, carbs_g=excluded.carbs_g,
@@ -157,7 +157,7 @@ def clear_slot(athlete_id: int, plan_date: str = Query(...), slot_name: str = Qu
     conn = get_conn()
     try:
         conn.execute(
-            "DELETE FROM meal_plans WHERE athlete_id = ? AND plan_date = ? AND slot_name = ?",
+            "DELETE FROM meal_plans WHERE athlete_id = %s AND plan_date = %s AND slot_name = %s",
             (athlete_id, plan_date, slot_name),
         )
         conn.commit()
@@ -171,7 +171,7 @@ def log_slot(athlete_id: int, data: MealPlanLogSlot):
     conn = get_conn()
     try:
         row = conn.execute(
-            "SELECT * FROM meal_plans WHERE athlete_id = ? AND plan_date = ? AND slot_name = ?",
+            "SELECT * FROM meal_plans WHERE athlete_id = %s AND plan_date = %s AND slot_name = %s",
             (athlete_id, data.plan_date, data.slot_name),
         ).fetchone()
         if not row:
@@ -181,17 +181,18 @@ def log_slot(athlete_id: int, data: MealPlanLogSlot):
             raise HTTPException(400, "This meal has already been logged.")
 
         # Insert into meal_logs
-        conn.execute(
+        inserted = conn.execute(
             """INSERT INTO meal_logs
                (athlete_id, log_method, description, calories, carbs_g, protein_g, fat_g)
-               VALUES (?, 'meal-plan', ?, ?, ?, ?, ?)""",
+               VALUES (%s, 'meal-plan', %s, %s, %s, %s, %s)
+               RETURNING id""",
             (athlete_id, r["recipe_name"], r["calories"], r["carbs_g"], r["protein_g"], r["fat_g"]),
         )
-        meal_log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        meal_log_id = inserted.fetchone()["id"]
 
         # Mark slot as logged
         conn.execute(
-            "UPDATE meal_plans SET logged = 1 WHERE athlete_id = ? AND plan_date = ? AND slot_name = ?",
+            "UPDATE meal_plans SET logged = 1 WHERE athlete_id = %s AND plan_date = %s AND slot_name = %s",
             (athlete_id, data.plan_date, data.slot_name),
         )
         conn.commit()
@@ -204,7 +205,7 @@ def log_slot(athlete_id: int, data: MealPlanLogSlot):
 def generate_plan(data: MealPlanGenerateRequest):
     conn = get_conn()
     try:
-        athlete_row = conn.execute("SELECT * FROM athletes WHERE id = ?", (data.athlete_id,)).fetchone()
+        athlete_row = conn.execute("SELECT * FROM athletes WHERE id = %s", (data.athlete_id,)).fetchone()
         if not athlete_row:
             raise HTTPException(404, "Athlete not found.")
         athlete = dict(athlete_row)
@@ -217,12 +218,12 @@ def generate_plan(data: MealPlanGenerateRequest):
             day_date = sunday + timedelta(days=i)
             date_str = day_date.isoformat()
             event = conn.execute(
-                "SELECT * FROM events WHERE athlete_id = ? AND event_date = ? ORDER BY start_time LIMIT 1",
+                "SELECT * FROM events WHERE athlete_id = %s AND event_date = %s ORDER BY start_time LIMIT 1",
                 (data.athlete_id, date_str),
             ).fetchone()
             event_type = dict(event)["event_type"] if event else "rest"
             target_row = conn.execute(
-                "SELECT total_calories FROM daily_targets WHERE athlete_id = ? AND target_date = ?",
+                "SELECT total_calories FROM daily_targets WHERE athlete_id = %s AND target_date = %s",
                 (data.athlete_id, date_str),
             ).fetchone()
             calorie_target = dict(target_row)["total_calories"] if target_row else 2000
@@ -261,7 +262,7 @@ def generate_plan(data: MealPlanGenerateRequest):
                 # Skip if slot occupied and overwrite_existing=False
                 if not data.overwrite_existing:
                     existing = conn.execute(
-                        "SELECT id FROM meal_plans WHERE athlete_id = ? AND plan_date = ? AND slot_name = ?",
+                        "SELECT id FROM meal_plans WHERE athlete_id = %s AND plan_date = %s AND slot_name = %s",
                         (data.athlete_id, date_str, slot_name),
                     ).fetchone()
                     if existing:
@@ -271,7 +272,7 @@ def generate_plan(data: MealPlanGenerateRequest):
                     """INSERT INTO meal_plans
                        (athlete_id, plan_date, slot_name, recipe_id, recipe_name,
                         calories, carbs_g, protein_g, fat_g, is_ai_generated, logged)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 1, 0)
                        ON CONFLICT(athlete_id, plan_date, slot_name)
                        DO UPDATE SET recipe_id=excluded.recipe_id, recipe_name=excluded.recipe_name,
                          calories=excluded.calories, carbs_g=excluded.carbs_g,

@@ -76,7 +76,7 @@ def get_notification_prefs(profile_type: str, profile_id: int, conn) -> dict:
     22:00-07:00), matching today's actual behavior for existing users."""
     row = conn.execute(
         "SELECT training_days, game_days, quiet_hours_enabled, quiet_start, quiet_end "
-        "FROM notification_prefs WHERE profile_type = ? AND profile_id = ?",
+        "FROM notification_prefs WHERE profile_type = %s AND profile_id = %s",
         (profile_type, profile_id),
     ).fetchone()
     if not row:
@@ -147,12 +147,12 @@ def already_logged(athlete_id: int, window_key: str, date_str: str, conn) -> boo
     """Return True if this window was already captured or confirmed today."""
     captured = conn.execute(
         "SELECT 1 FROM window_logs "
-        "WHERE athlete_id = ? AND window_id = ? AND log_date = ? LIMIT 1",
+        "WHERE athlete_id = %s AND window_id = %s AND log_date = %s LIMIT 1",
         (athlete_id, window_key, date_str),
     ).fetchone()
     confirmed = conn.execute(
         "SELECT 1 FROM confirmations "
-        "WHERE athlete_id = ? AND window_key = ? AND log_date = ? LIMIT 1",
+        "WHERE athlete_id = %s AND window_key = %s AND log_date = %s LIMIT 1",
         (athlete_id, window_key, date_str),
     ).fetchone()
     return bool(captured or confirmed)
@@ -226,16 +226,18 @@ def send_notification_guarded(
         )
         return True
     try:
-        conn.execute(
-            "INSERT OR IGNORE INTO notification_log "
-            "(athlete_id, window_key, send_date, recipient, token) VALUES (?, ?, ?, ?, ?)",
+        cur = conn.execute(
+            "INSERT INTO notification_log "
+            "(athlete_id, window_key, send_date, recipient, token) VALUES (%s, %s, %s, %s, %s) "
+            "ON CONFLICT DO NOTHING",
             (athlete_id, window_key, date_str, recipient, tokens[0]),
         )
         conn.commit()
     except Exception:
+        conn.rollback()
         return False
 
-    if conn.execute("SELECT changes()").fetchone()[0] == 0:
+    if cur.rowcount == 0:
         return False  # UNIQUE fired — already sent
 
     send_expo_push(tokens, title, body)
@@ -355,7 +357,7 @@ def _notify_athlete(athlete_id: int, conn) -> None:
 
     # Tokens + timezone for this athlete
     token_rows = conn.execute(
-        "SELECT token, timezone FROM expo_push_tokens WHERE athlete_id = ?",
+        "SELECT token, timezone FROM expo_push_tokens WHERE athlete_id = %s",
         (athlete_id,),
     ).fetchall()
     if not token_rows:
@@ -370,7 +372,7 @@ def _notify_athlete(athlete_id: int, conn) -> None:
 
     # Today's events
     event_rows = conn.execute(
-        "SELECT * FROM events WHERE athlete_id = ? AND event_date = ? ORDER BY start_time",
+        "SELECT * FROM events WHERE athlete_id = %s AND event_date = %s ORDER BY start_time",
         (athlete_id, local_date),
     ).fetchall()
     events = [
@@ -392,7 +394,7 @@ def _notify_athlete(athlete_id: int, conn) -> None:
         return
 
     # Athlete context for copy
-    athlete_row = conn.execute("SELECT * FROM athletes WHERE id = ?", (athlete_id,)).fetchone()
+    athlete_row = conn.execute("SELECT * FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
     if not athlete_row:
         return
     athlete    = dict(athlete_row)
@@ -414,7 +416,7 @@ def _notify_athlete(athlete_id: int, conn) -> None:
         parent_tokens = [
             r["token"]
             for r in conn.execute(
-                "SELECT token FROM expo_push_tokens WHERE parent_id = ?", (parent_id,)
+                "SELECT token FROM expo_push_tokens WHERE parent_id = %s", (parent_id,)
             ).fetchall()
         ]
 
@@ -467,6 +469,7 @@ def run_notification_tick() -> None:
             try:
                 _notify_athlete(row["athlete_id"], conn)
             except Exception as exc:
+                conn.rollback()
                 log.error("Notification tick failed for athlete %s: %s", row["athlete_id"], exc)
     finally:
         conn.close()

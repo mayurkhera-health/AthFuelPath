@@ -40,9 +40,24 @@ def _make_athlete(client, n):
 def test_migration_adds_the_unique_index(client):
     conn = get_conn()
     found = any(
-        {r["name"] for r in conn.execute(f"PRAGMA index_info('{idx['name']}')").fetchall()}
-        == {"athlete_id", "target_date"}
-        for idx in conn.execute("PRAGMA index_list(daily_targets)").fetchall()
+        cols == {"athlete_id", "target_date"}
+        for cols in (
+            {
+                r["column_name"]
+                for r in conn.execute(
+                    "SELECT kcu.column_name FROM information_schema.table_constraints tc "
+                    "JOIN information_schema.key_column_usage kcu "
+                    "ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema "
+                    "WHERE tc.table_name = 'daily_targets' AND tc.constraint_type = 'UNIQUE' "
+                    "AND tc.constraint_name = %s",
+                    (row["constraint_name"],),
+                ).fetchall()
+            }
+            for row in conn.execute(
+                "SELECT DISTINCT constraint_name FROM information_schema.table_constraints "
+                "WHERE table_name = 'daily_targets' AND constraint_type = 'UNIQUE'"
+            ).fetchall()
+        )
     )
     conn.close()
     assert found
@@ -64,7 +79,7 @@ def test_recalculating_targets_twice_updates_in_place_not_duplicates(client):
 
     conn = get_conn()
     row = conn.execute(
-        "SELECT COUNT(*) c FROM daily_targets WHERE athlete_id = ? AND target_date = ?",
+        "SELECT COUNT(*) c FROM daily_targets WHERE athlete_id = %s AND target_date = %s",
         (aid, "2026-08-01"),
     ).fetchone()
     conn.close()
@@ -74,39 +89,14 @@ def test_recalculating_targets_twice_updates_in_place_not_duplicates(client):
     assert r2.json()["event_type"] == "practice"
 
 
-def test_migration_dedupes_pre_existing_duplicate_rows(tmp_path):
-    """Simulate the pre-fix bug state (two rows for the same athlete/day, as
-    the old INSERT OR REPLACE would have left behind) against a fresh, never-
-    migrated DB file, then confirm the migration collapses them to the most
-    recently inserted row. Uses a real temp DB file (not the shared in-memory
-    test DB) so daily_targets starts out truly unmigrated."""
-    db_file = str(tmp_path / "dedupe_test.db")
-    old_db_path = os.environ.get("DB_PATH")
-    os.environ["DB_PATH"] = db_file
-    try:
-        init_db()  # original schema only — no UNIQUE(athlete_id, target_date) yet
-        conn = get_conn()
-        conn.execute("PRAGMA foreign_keys=OFF")  # no real athlete row needed for this schema-only test
-        conn.execute(
-            "INSERT INTO daily_targets (athlete_id, target_date, event_type, total_calories) VALUES (1, '2026-08-02', 'rest', 1000)"
-        )
-        conn.execute(
-            "INSERT INTO daily_targets (athlete_id, target_date, event_type, total_calories) VALUES (1, '2026-08-02', 'game', 2500)"
-        )
-        conn.commit()
-        before = conn.execute("SELECT COUNT(*) c FROM daily_targets").fetchone()["c"]
-        conn.close()
-        assert before == 2  # duplicate state successfully simulated
-
-        run_all()  # includes _add_intensity_to_daily_targets, a real prerequisite in production order
-
-        conn = get_conn()
-        rows = conn.execute("SELECT event_type, total_calories FROM daily_targets").fetchall()
-        conn.close()
-        assert len(rows) == 1
-        assert rows[0]["event_type"] == "game"  # the higher-id (later-inserted) row survives
-    finally:
-        if old_db_path is None:
-            os.environ.pop("DB_PATH", None)
-        else:
-            os.environ["DB_PATH"] = old_db_path
+# test_migration_dedupes_pre_existing_duplicate_rows was intentionally removed
+# during the Postgres migration (migration/postgres-cloud-run): it simulated a
+# "never-migrated" DB file missing the UNIQUE(athlete_id, target_date)
+# constraint, then replayed the historical SQLite dedup migration to collapse
+# duplicates. Under Postgres that premise is structurally impossible — the
+# constraint ships in db/postgres/001_baseline.sql, so every database has it
+# from creation; there is no unmigrated state and nothing to dedupe. The
+# migration brief explicitly rules out replaying db_migrations.py against
+# Postgres or reproducing the historical SQLite migration sequence, so this
+# scenario has no Postgres equivalent to port to. test_migration_adds_the_
+# unique_index above already covers "the constraint exists".

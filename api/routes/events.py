@@ -1,4 +1,4 @@
-import sqlite3
+import psycopg
 import urllib.request
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List
@@ -37,7 +37,7 @@ def create_event(data: EventCreate):
     conn = get_conn()
     try:
         athlete = conn.execute(
-            "SELECT id, competition_level FROM athletes WHERE id = ?", (data.athlete_id,)
+            "SELECT id, competition_level FROM athletes WHERE id = %s", (data.athlete_id,)
         ).fetchone()
         if not athlete:
             raise HTTPException(404, "Athlete not found.")
@@ -45,27 +45,26 @@ def create_event(data: EventCreate):
         intensity = data.intensity or derive_intensity(data.event_type, athlete["competition_level"])
 
         try:
-            conn.execute(
+            row = conn.execute(
                 "INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, duration_hours, city, venue_name, address, latitude, longitude, intensity, activity_type, uid, source) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *",
                 (data.athlete_id, data.event_name, data.event_type, data.event_date, data.start_time, data.duration_hours,
                  data.city, data.venue_name, data.address, data.latitude, data.longitude, intensity, data.activity_type, data.uid, data.source),
-            )
+            ).fetchone()
             conn.commit()
-        except sqlite3.IntegrityError:
+        except psycopg.errors.UniqueViolation:
             # Partial unique index on (athlete_id, uid) tripped — this ICS event is
             # already on the schedule. Make the POST idempotent: return the existing
             # row, skip the window recompute. The client also pre-skips duplicates,
             # so this only catches races / direct re-POSTs.
             conn.rollback()
             existing = conn.execute(
-                "SELECT * FROM events WHERE athlete_id = ? AND uid = ?",
+                "SELECT * FROM events WHERE athlete_id = %s AND uid = %s",
                 (data.athlete_id, data.uid),
             ).fetchone()
             if existing:
                 return dict(existing)
             raise
-        row = conn.execute("SELECT * FROM events WHERE rowid = last_insert_rowid()").fetchone()
         on_event_added_or_changed(data.athlete_id, data.event_date, conn)
         return dict(row)
     finally:
@@ -76,7 +75,7 @@ def create_event(data: EventCreate):
 def update_event(event_id: int, data: EventUpdate, identity=Depends(require_session)):
     conn = get_conn()
     try:
-        row = conn.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
+        row = conn.execute("SELECT * FROM events WHERE id = %s", (event_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Event not found.")
         existing = dict(row)
@@ -105,7 +104,7 @@ def update_event(event_id: int, data: EventUpdate, identity=Depends(require_sess
             new_intensity = existing["intensity"]
         else:
             athlete = conn.execute(
-                "SELECT competition_level FROM athletes WHERE id = ?", (existing["athlete_id"],)
+                "SELECT competition_level FROM athletes WHERE id = %s", (existing["athlete_id"],)
             ).fetchone()
             level = athlete["competition_level"] if athlete else None
             new_intensity = derive_intensity(new_type, level)
@@ -113,13 +112,13 @@ def update_event(event_id: int, data: EventUpdate, identity=Depends(require_sess
         new_activity_type = data.activity_type if data.activity_type is not None else existing["activity_type"]
 
         conn.execute(
-            "UPDATE events SET event_name=?, event_type=?, event_date=?, start_time=?, duration_hours=?, "
-            "city=?, venue_name=?, address=?, latitude=?, longitude=?, intensity=?, activity_type=? WHERE id=?",
+            "UPDATE events SET event_name=%s, event_type=%s, event_date=%s, start_time=%s, duration_hours=%s, "
+            "city=%s, venue_name=%s, address=%s, latitude=%s, longitude=%s, intensity=%s, activity_type=%s WHERE id=%s",
             (new_name, new_type, new_date, new_start, new_dur,
              new_city, new_venue, new_address, new_lat, new_lng, new_intensity, new_activity_type, event_id),
         )
         conn.commit()
-        updated = dict(conn.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone())
+        updated = dict(conn.execute("SELECT * FROM events WHERE id = %s", (event_id,)).fetchone())
         on_event_added_or_changed(existing["athlete_id"], new_date, conn)
         # Also recalculate old date if date changed
         if data.event_date and data.event_date != existing["event_date"]:
@@ -133,16 +132,16 @@ def update_event(event_id: int, data: EventUpdate, identity=Depends(require_sess
 def tag_activity_type(event_id: int, data: ActivityTypePatch, identity=Depends(require_session)):
     conn = get_conn()
     try:
-        row = conn.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
+        row = conn.execute("SELECT * FROM events WHERE id = %s", (event_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Event not found.")
         assert_owns_athlete(identity, dict(row)["athlete_id"], conn)
         conn.execute(
-            "UPDATE events SET activity_type = ? WHERE id = ?",
+            "UPDATE events SET activity_type = %s WHERE id = %s",
             (data.activity_type, event_id),
         )
         conn.commit()
-        ev = dict(conn.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone())
+        ev = dict(conn.execute("SELECT * FROM events WHERE id = %s", (event_id,)).fetchone())
         on_event_added_or_changed(ev["athlete_id"], ev["event_date"], conn)
         return ev
     finally:
@@ -156,12 +155,12 @@ def get_athlete_events(athlete_id: int, date: str = None, identity=Depends(requi
         assert_owns_athlete(identity, athlete_id, conn)
         if date:
             rows = conn.execute(
-                "SELECT * FROM events WHERE athlete_id = ? AND event_date = ? ORDER BY start_time",
+                "SELECT * FROM events WHERE athlete_id = %s AND event_date = %s ORDER BY start_time",
                 (athlete_id, date),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM events WHERE athlete_id = ? ORDER BY event_date, start_time",
+                "SELECT * FROM events WHERE athlete_id = %s ORDER BY event_date, start_time",
                 (athlete_id,),
             ).fetchall()
         return [dict(r) for r in rows]
@@ -173,7 +172,7 @@ def get_athlete_events(athlete_id: int, date: str = None, identity=Depends(requi
 def get_event(event_id: int, identity=Depends(require_session)):
     conn = get_conn()
     try:
-        row = conn.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
+        row = conn.execute("SELECT * FROM events WHERE id = %s", (event_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Event not found.")
         assert_owns_athlete(identity, dict(row)["athlete_id"], conn)
@@ -186,7 +185,7 @@ def get_event(event_id: int, identity=Depends(require_session)):
 def delete_event(event_id: int, identity=Depends(require_session)):
     conn = get_conn()
     try:
-        row = conn.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
+        row = conn.execute("SELECT * FROM events WHERE id = %s", (event_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Event not found.")
         ev = dict(row)
@@ -196,7 +195,7 @@ def delete_event(event_id: int, identity=Depends(require_session)):
         if (ev.get("source") or "manual") != "manual":
             raise HTTPException(
                 409, f"Cannot delete {ev['source']} synced events. Remove them in your club's calendar app.")
-        conn.execute("DELETE FROM events WHERE id = ?", (event_id,))
+        conn.execute("DELETE FROM events WHERE id = %s", (event_id,))
         conn.commit()
         on_event_added_or_changed(ev["athlete_id"], ev["event_date"], conn)
         return {"message": "Event deleted.", "event_id": event_id}

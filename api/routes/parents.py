@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import random
+import psycopg
 from datetime import datetime, timedelta
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from api.models import ParentCreate, ParentResponse, ParentProfileUpdate, OTPRequest, OTPVerify
@@ -24,15 +25,15 @@ def create_parent(data: ParentCreate):
     try:
         ts = datetime.utcnow().isoformat()
         conn.execute(
-            "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES (?, ?, ?, ?)",
+            "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES (%s, %s, %s, %s)",
             (data.full_name, data.email, ts, data.consent_confirmed),
         )
         conn.commit()
-        row = conn.execute("SELECT * FROM parents WHERE email = ?", (data.email,)).fetchone()
+        row = conn.execute("SELECT * FROM parents WHERE email = %s", (data.email,)).fetchone()
         return dict(row)
+    except psycopg.errors.UniqueViolation:
+        raise HTTPException(409, "A parent account with this email already exists.")
     except Exception as e:
-        if "UNIQUE" in str(e):
-            raise HTTPException(409, "A parent account with this email already exists.")
         raise HTTPException(500, str(e))
     finally:
         conn.close()
@@ -42,10 +43,10 @@ def create_parent(data: ParentCreate):
 def confirm_consent(parent_id: int):
     conn = get_conn()
     try:
-        row = conn.execute("SELECT * FROM parents WHERE id = ?", (parent_id,)).fetchone()
+        row = conn.execute("SELECT * FROM parents WHERE id = %s", (parent_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Parent not found.")
-        conn.execute("UPDATE parents SET consent_confirmed = TRUE WHERE id = ?", (parent_id,))
+        conn.execute("UPDATE parents SET consent_confirmed = TRUE WHERE id = %s", (parent_id,))
         conn.commit()
         return {"message": "Consent confirmed. Welcome to Fueling2Win!", "parent_id": parent_id}
     finally:
@@ -63,11 +64,11 @@ def login(data: OTPRequest, request: Request):
     email = data.email.strip().lower()
     conn = get_conn()
     try:
-        parent = conn.execute("SELECT * FROM parents WHERE lower(email) = lower(?)", (email,)).fetchone()
+        parent = conn.execute("SELECT * FROM parents WHERE lower(email) = lower(%s)", (email,)).fetchone()
         if not parent:
             raise HTTPException(404, "No account found with that email address.")
         parent_id = dict(parent)["id"]
-        athletes = conn.execute("SELECT * FROM athletes WHERE parent_id = ?", (parent_id,)).fetchall()
+        athletes = conn.execute("SELECT * FROM athletes WHERE parent_id = %s", (parent_id,)).fetchall()
         token = mint_session_token(role="parent", parent_id=parent_id)
         return {"parent": dict(parent), "athletes": [dict(a) for a in athletes], "session_token": token}
     finally:
@@ -79,7 +80,7 @@ def request_otp(data: OTPRequest):
     email = data.email.strip().lower()
     conn = get_conn()
     try:
-        parent = conn.execute("SELECT * FROM parents WHERE lower(email) = lower(?)", (email,)).fetchone()
+        parent = conn.execute("SELECT * FROM parents WHERE lower(email) = lower(%s)", (email,)).fetchone()
         if not parent:
             raise HTTPException(404, "No account found with that email address.")
         parent_id = dict(parent)["id"]
@@ -87,7 +88,7 @@ def request_otp(data: OTPRequest):
         # Rate limit: block if a code was issued in the last 60 seconds
         cutoff = (datetime.utcnow() - timedelta(seconds=60)).isoformat()
         recent = conn.execute(
-            "SELECT id FROM otp_codes WHERE parent_id = ? AND created_at > ? AND used = 0",
+            "SELECT id FROM otp_codes WHERE parent_id = %s AND created_at > %s AND used = 0",
             (parent_id, cutoff),
         ).fetchone()
         if recent:
@@ -98,7 +99,7 @@ def request_otp(data: OTPRequest):
         expires_at = (datetime.utcnow() + timedelta(minutes=10)).isoformat()
 
         conn.execute(
-            "INSERT INTO otp_codes (parent_id, code_hash, expires_at) VALUES (?, ?, ?)",
+            "INSERT INTO otp_codes (parent_id, code_hash, expires_at) VALUES (%s, %s, %s)",
             (parent_id, code_hash, expires_at),
         )
         conn.commit()
@@ -117,14 +118,14 @@ def verify_otp(data: OTPVerify):
 
     conn = get_conn()
     try:
-        parent = conn.execute("SELECT * FROM parents WHERE lower(email) = lower(?)", (email,)).fetchone()
+        parent = conn.execute("SELECT * FROM parents WHERE lower(email) = lower(%s)", (email,)).fetchone()
         if not parent:
             raise HTTPException(404, "No account found with that email address.")
         parent_id = dict(parent)["id"]
 
         row = conn.execute(
             """SELECT id FROM otp_codes
-               WHERE parent_id = ? AND code_hash = ? AND used = 0 AND expires_at > ?
+               WHERE parent_id = %s AND code_hash = %s AND used = 0 AND expires_at > %s
                ORDER BY created_at DESC LIMIT 1""",
             (parent_id, code_hash, now),
         ).fetchone()
@@ -132,11 +133,11 @@ def verify_otp(data: OTPVerify):
         if not row:
             raise HTTPException(401, "Invalid or expired code. Please request a new one.")
 
-        conn.execute("UPDATE otp_codes SET used = 1 WHERE id = ?", (dict(row)["id"],))
+        conn.execute("UPDATE otp_codes SET used = 1 WHERE id = %s", (dict(row)["id"],))
         conn.commit()
 
         athletes = conn.execute(
-            "SELECT * FROM athletes WHERE parent_id = ?", (parent_id,)
+            "SELECT * FROM athletes WHERE parent_id = %s", (parent_id,)
         ).fetchall()
         return {"parent": dict(parent), "athletes": [dict(a) for a in athletes]}
     finally:
@@ -150,17 +151,17 @@ def test_reset(email: str):
         raise HTTPException(403, "Test reset is only permitted for test@gmail.com.")
     conn = get_conn()
     try:
-        parent = conn.execute("SELECT id FROM parents WHERE email = ?", (email.strip().lower(),)).fetchone()
+        parent = conn.execute("SELECT id FROM parents WHERE email = %s", (email.strip().lower(),)).fetchone()
         if parent:
             parent_id = dict(parent)["id"]
-            athletes = conn.execute("SELECT id FROM athletes WHERE parent_id = ?", (parent_id,)).fetchall()
+            athletes = conn.execute("SELECT id FROM athletes WHERE parent_id = %s", (parent_id,)).fetchall()
             for a in athletes:
                 athlete_id = dict(a)["id"]
-                conn.execute("DELETE FROM meal_logs WHERE athlete_id = ?", (athlete_id,))
-                conn.execute("DELETE FROM events WHERE athlete_id = ?", (athlete_id,))
-                conn.execute("DELETE FROM daily_targets WHERE athlete_id = ?", (athlete_id,))
-            conn.execute("DELETE FROM athletes WHERE parent_id = ?", (parent_id,))
-            conn.execute("DELETE FROM parents WHERE id = ?", (parent_id,))
+                conn.execute("DELETE FROM meal_logs WHERE athlete_id = %s", (athlete_id,))
+                conn.execute("DELETE FROM events WHERE athlete_id = %s", (athlete_id,))
+                conn.execute("DELETE FROM daily_targets WHERE athlete_id = %s", (athlete_id,))
+            conn.execute("DELETE FROM athletes WHERE parent_id = %s", (parent_id,))
+            conn.execute("DELETE FROM parents WHERE id = %s", (parent_id,))
             conn.commit()
         return {"message": "Test data cleared."}
     finally:
@@ -180,23 +181,23 @@ def delete_parent_account(parent_id: int, identity=Depends(require_session)):
     conn = get_conn()
     try:
         row = conn.execute(
-            "SELECT full_name, email FROM parents WHERE id = ?", (parent_id,)
+            "SELECT full_name, email FROM parents WHERE id = %s", (parent_id,)
         ).fetchone()
         if not row:
             raise HTTPException(404, "Parent not found.")
         parent = dict(row)
         athlete_rows = conn.execute(
-            "SELECT first_name FROM athletes WHERE parent_id = ?", (parent_id,)
+            "SELECT first_name FROM athletes WHERE parent_id = %s", (parent_id,)
         ).fetchall()
         athlete_names = ", ".join(dict(a)["first_name"] for a in athlete_rows) or "(no athletes on file)"
 
         cur = conn.execute(
             """INSERT INTO account_deletion_requests (parent_id, parent_name, parent_email, athlete_names)
-               VALUES (?, ?, ?, ?)""",
+               VALUES (%s, %s, %s, %s) RETURNING id""",
             (parent_id, parent["full_name"], parent["email"], athlete_names),
         )
+        request_id = cur.fetchone()["id"]
         conn.commit()
-        request_id = cur.lastrowid
     finally:
         conn.close()
 
@@ -224,11 +225,11 @@ def dismiss_schedule_reminder(parent_id: int, identity=Depends(require_session))
     assert_owns_parent(identity, parent_id)
     conn = get_conn()
     try:
-        row = conn.execute("SELECT id FROM parents WHERE id = ?", (parent_id,)).fetchone()
+        row = conn.execute("SELECT id FROM parents WHERE id = %s", (parent_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Parent not found.")
         conn.execute(
-            "UPDATE parents SET schedule_reminder_dismissed = 1 WHERE id = ?",
+            "UPDATE parents SET schedule_reminder_dismissed = 1 WHERE id = %s",
             (parent_id,),
         )
         conn.commit()
@@ -243,7 +244,7 @@ def email_exists(email: str):
     conn = get_conn()
     try:
         row = conn.execute(
-            "SELECT 1 FROM parents WHERE email = ?", (email.strip().lower(),)
+            "SELECT 1 FROM parents WHERE email = %s", (email.strip().lower(),)
         ).fetchone()
         return {"exists": row is not None}
     finally:
@@ -255,15 +256,15 @@ def update_parent_profile(parent_id: int, data: ParentProfileUpdate, identity=De
     assert_owns_parent(identity, parent_id)
     conn = get_conn()
     try:
-        row = conn.execute("SELECT * FROM parents WHERE id = ?", (parent_id,)).fetchone()
+        row = conn.execute("SELECT * FROM parents WHERE id = %s", (parent_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Parent not found.")
         conn.execute(
-            "UPDATE parents SET full_name = ?, phone = ? WHERE id = ?",
+            "UPDATE parents SET full_name = %s, phone = %s WHERE id = %s",
             (data.full_name.strip(), data.phone, parent_id),
         )
         conn.commit()
-        row = conn.execute("SELECT * FROM parents WHERE id = ?", (parent_id,)).fetchone()
+        row = conn.execute("SELECT * FROM parents WHERE id = %s", (parent_id,)).fetchone()
         return dict(row)
     finally:
         conn.close()
@@ -274,7 +275,7 @@ def get_parent(parent_id: int, identity=Depends(require_session)):
     assert_owns_parent(identity, parent_id)
     conn = get_conn()
     try:
-        row = conn.execute("SELECT * FROM parents WHERE id = ?", (parent_id,)).fetchone()
+        row = conn.execute("SELECT * FROM parents WHERE id = %s", (parent_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Parent not found.")
         return dict(row)
@@ -290,7 +291,7 @@ def blueprint_viewed(parent_id: int, background_tasks: BackgroundTasks, identity
     assert_owns_parent(identity, parent_id)
     conn = get_conn()
     try:
-        row = conn.execute("SELECT * FROM parents WHERE id = ?", (parent_id,)).fetchone()
+        row = conn.execute("SELECT * FROM parents WHERE id = %s", (parent_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Parent not found.")
         parent = dict(row)
@@ -301,13 +302,13 @@ def blueprint_viewed(parent_id: int, background_tasks: BackgroundTasks, identity
 
         now = datetime.utcnow().isoformat()
         conn.execute(
-            "UPDATE parents SET blueprint_first_viewed_at = ? WHERE id = ?",
+            "UPDATE parents SET blueprint_first_viewed_at = %s WHERE id = %s",
             (now, parent_id),
         )
         conn.commit()
 
         athletes = [dict(a) for a in conn.execute(
-            "SELECT * FROM athletes WHERE parent_id = ? ORDER BY id", (parent_id,)
+            "SELECT * FROM athletes WHERE parent_id = %s ORDER BY id", (parent_id,)
         ).fetchall()]
 
         background_tasks.add_task(_send_blueprint_summary, parent, athletes, now)
@@ -354,10 +355,10 @@ def _send_blueprint_summary(parent: dict, athletes: list, viewed_at: str) -> Non
                     stats = conn.execute(
                         "SELECT COUNT(*) as total, "
                         "MIN(event_date) as first_date, MAX(event_date) as last_date, "
-                        "source FROM events WHERE athlete_id = ? GROUP BY source",
+                        "source FROM events WHERE athlete_id = %s GROUP BY source",
                         (a["id"],),
                     ).fetchall()
-                    total_events = sum(s[0] for s in stats)
+                    total_events = sum(s["total"] for s in stats)
                     if total_events == 0:
                         lines.append("            Calendar: No events imported yet")
                     else:

@@ -1,24 +1,22 @@
-import sqlite3
 import pytest
 import json
 from pathlib import Path
 import sys, os
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-DB_PATH = Path(__file__).parent.parent / "fuelup.db"
+from api.database import get_conn
 
 
 @pytest.fixture(autouse=True)
 def _ensure_knowledge_schema():
-    from api.startup import ensure_schema
-    ensure_schema()
+    from api.startup import verify_db_ready
+    verify_db_ready()
 
 def test_knowledge_tables_exist():
     """DB must have knowledge_items and knowledge_chunks tables."""
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
+    conn = get_conn()
     tables = {r["name"] for r in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table'"
+        "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = 'public'"
     ).fetchall()}
     conn.close()
     assert "knowledge_items" in tables
@@ -26,10 +24,9 @@ def test_knowledge_tables_exist():
 
 def test_knowledge_items_schema():
     """knowledge_items must have required columns."""
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
+    conn = get_conn()
     cols = {r["name"] for r in conn.execute(
-        "PRAGMA table_info(knowledge_items)"
+        "SELECT column_name AS name FROM information_schema.columns WHERE table_name = 'knowledge_items'"
     ).fetchall()}
     conn.close()
     required = {"id", "slug", "title", "category", "source", "source_urls",
@@ -39,10 +36,9 @@ def test_knowledge_items_schema():
 
 def test_knowledge_chunks_schema():
     """knowledge_chunks must have required columns."""
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
+    conn = get_conn()
     cols = {r["name"] for r in conn.execute(
-        "PRAGMA table_info(knowledge_chunks)"
+        "SELECT column_name AS name FROM information_schema.columns WHERE table_name = 'knowledge_chunks'"
     ).fetchall()}
     conn.close()
     required = {"id", "item_id", "chunk_index", "heading", "content", "created_at"}
@@ -52,10 +48,7 @@ def test_knowledge_chunks_schema():
 
 
 def _get_conn():
-    import sqlite3
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-    return conn
+    return get_conn()
 
 def test_ingest_creates_knowledge_item():
     """Ingesting an approved file creates a knowledge_items row."""
@@ -86,7 +79,7 @@ def test_ingest_creates_chunks():
             "SELECT id FROM knowledge_items WHERE slug = 'iron_magnesium'"
         ).fetchone()
     chunks = conn.execute(
-        "SELECT * FROM knowledge_chunks WHERE item_id = ?", (item["id"],)
+        "SELECT * FROM knowledge_chunks WHERE item_id = %s", (item["id"],)
     ).fetchall()
     conn.close()
     assert len(chunks) >= 3

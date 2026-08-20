@@ -41,11 +41,11 @@ def incidents(limit: int = 50, check_name: str | None = None, _: bool = Depends(
     try:
         if check_name:
             rows = conn.execute(
-                "SELECT * FROM health_incidents WHERE check_name = ? ORDER BY id DESC LIMIT ?",
+                "SELECT * FROM health_incidents WHERE check_name = %s ORDER BY id DESC LIMIT %s",
                 (check_name, limit)).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM health_incidents ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+                "SELECT * FROM health_incidents ORDER BY id DESC LIMIT %s", (limit,)).fetchall()
         return {"items": [dict(r) for r in rows]}
     finally:
         conn.close()

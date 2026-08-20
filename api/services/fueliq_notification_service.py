@@ -57,10 +57,10 @@ def _within_window(target: str, now: str, slop: int = FUELIQ_SLOP_MINUTES) -> bo
 def _today_fueliq_sent(athlete_id: int, date_str: str, conn) -> int:
     """Count Fuel IQ pushes already sent to the athlete stream today."""
     return conn.execute(
-        "SELECT COUNT(*) FROM notification_log "
-        "WHERE athlete_id = ? AND send_date = ? AND window_key LIKE 'fueliq_%' AND recipient = 'athlete'",
-        (athlete_id, date_str),
-    ).fetchone()[0]
+        "SELECT COUNT(*) AS count FROM notification_log "
+        "WHERE athlete_id = %s AND send_date = %s AND window_key LIKE %s AND recipient = 'athlete'",
+        (athlete_id, date_str, "fueliq_%"),
+    ).fetchone()["count"]
 
 
 # ── Audit log ──────────────────────────────────────────────────────────────────
@@ -73,12 +73,13 @@ def _log_push_event(athlete_id: int, trigger: str, outcome: str, date_str: str, 
     """
     try:
         conn.execute(
-            "INSERT OR IGNORE INTO fueliq_push_events (athlete_id, trigger, outcome, event_date) "
-            "VALUES (?, ?, ?, ?)",
+            "INSERT INTO fueliq_push_events (athlete_id, trigger, outcome, event_date) "
+            "VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING",
             (athlete_id, trigger, outcome, date_str),
         )
         conn.commit()
     except Exception as exc:
+        conn.rollback()
         log.warning("[FUELIQ] push event log failed for athlete %s: %s", athlete_id, exc)
 
 
@@ -90,7 +91,7 @@ def _notify_athlete_fueliq(athlete_id: int, conn, now: datetime | None = None) -
     )
 
     token_rows = conn.execute(
-        "SELECT token, timezone FROM expo_push_tokens WHERE athlete_id = ?",
+        "SELECT token, timezone FROM expo_push_tokens WHERE athlete_id = %s",
         (athlete_id,),
     ).fetchall()
     if not token_rows:
@@ -104,12 +105,12 @@ def _notify_athlete_fueliq(athlete_id: int, conn, now: datetime | None = None) -
 
     # Read per-athlete prefs; default row is created on first access.
     conn.execute(
-        "INSERT OR IGNORE INTO fueliq_notification_prefs (athlete_id) VALUES (?)",
+        "INSERT INTO fueliq_notification_prefs (athlete_id) VALUES (%s) ON CONFLICT DO NOTHING",
         (athlete_id,),
     )
     conn.commit()
     prefs_row   = conn.execute(
-        "SELECT morning_enabled, pregame_enabled FROM fueliq_notification_prefs WHERE athlete_id = ?",
+        "SELECT morning_enabled, pregame_enabled FROM fueliq_notification_prefs WHERE athlete_id = %s",
         (athlete_id,),
     ).fetchone()
     morning_on  = bool(prefs_row["morning_enabled"])
@@ -133,7 +134,7 @@ def _notify_athlete_fueliq(athlete_id: int, conn, now: datetime | None = None) -
     tokens = [r["token"] for r in token_rows]
 
     event_rows = conn.execute(
-        "SELECT event_type, start_time FROM events WHERE athlete_id = ? AND event_date = ?",
+        "SELECT event_type, start_time FROM events WHERE athlete_id = %s AND event_date = %s",
         (athlete_id, local_date),
     ).fetchall()
 

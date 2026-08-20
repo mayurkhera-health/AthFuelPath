@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 load_dotenv()
@@ -7,76 +8,91 @@ logging.basicConfig(level=logging.INFO)
 from pathlib import Path
 from fastapi import FastAPI
 
-from api.startup import run_startup
+from api.startup import run_startup, StartupError
 
 logger = logging.getLogger(__name__)
+
+# Cloud Run runs multiple instances; an in-process APScheduler duplicated
+# across every instance means duplicate/unreliable job execution. Fly.io
+# (single instance) can keep it — Cloud Run sets this to "false" and instead
+# triggers api/job_runner.py's entry points via Cloud Run Jobs / Cloud
+# Scheduler. Defaults to enabled so existing (Fly.io) deployments are
+# unaffected unless this is explicitly set.
+IN_PROCESS_SCHEDULER_ENABLED = os.getenv("IN_PROCESS_SCHEDULER_ENABLED", "true").lower() not in ("false", "0", "")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # CRITICAL: schema migrations are no longer run from the API process (see
+    # db/postgres_migrate.py — run it before deploying instead). run_startup()
+    # verifies the DB is reachable and migrated; if that fails, the exception
+    # is allowed to propagate and stop the process from serving traffic — do
+    # NOT wrap this in a broad try/except that logs and continues.
     try:
-        # Starlette ignores @app.on_event("startup") when a lifespan is set, so the
-        # db_migrations.run_all() registered there never runs. Invoke it here (first,
-        # before knowledge ingest) so schema migrations actually apply on deploy.
-        from api.services import db_migrations
-        db_migrations.run_all()
         run_startup()
-    except Exception:
-        logger.exception("Startup migrations/ingest failed — coach may be unavailable")
+    except StartupError:
+        logger.exception("FATAL: startup readiness check failed — refusing to serve traffic")
+        raise
 
-    # Start the 15-min notification scheduler HERE — @app.on_event("startup") is
-    # ignored by Starlette when a lifespan handler is set.
-    try:
-        from api.services.notification_service import run_notification_tick
-        from api.services.fueliq_notification_service import run_fueliq_notification_tick
-        from api.services.ics_sync import build_calendar_sync_job, configure_calendar_sync_startup
-        from api.services.health_service import instrument_job, run_health_tick, run_health_daily
-        from api.services.fueliq_daily_challenge_service import run_daily_challenge_push
-        from api.services.grocery_reset_service import run_grocery_reset_tick
-        from api.services.grocery_reminder_service import run_grocery_reminder_tick
-        # Wrap the two existing jobs so they record scheduler heartbeats — no change
-        # to the jobs' own logic; the wrapper only stamps last_run/last_success.
-        _scheduler.add_job(instrument_job("notifications", run_notification_tick), "interval", minutes=15,
-                           id="notifications", replace_existing=True)
-        _scheduler.add_job(instrument_job("fueliq_notifications", run_fueliq_notification_tick),
-                           "interval", minutes=15,
-                           id="fueliq_notifications", replace_existing=True)
-        _scheduler.add_job(run_grocery_reset_tick, "interval", minutes=15,
-                           id="grocery_reset", replace_existing=True)
-        _scheduler.add_job(run_grocery_reminder_tick, "interval", minutes=15,
-                           id="grocery_reminder", replace_existing=True)
-        # calendar_sync is registered via build_calendar_sync_job() (instrument + skip-
-        # if-running lock); configure_calendar_sync_startup() then handles Option B
-        # (catch-up if stale/initial, re-anchor next run if fresh) — see ics_sync.py.
-        _scheduler.add_job(build_calendar_sync_job(), "interval", hours=6,
-                           id="calendar_sync", replace_existing=True)
-        # System Health: active probes every 15 min, one daily inference probe.
-        _scheduler.add_job(run_health_tick, "interval", minutes=15,
-                           id="health", replace_existing=True)
-        _scheduler.add_job(run_health_daily, "cron", hour=9,
-                           id="health_daily", replace_existing=True)
-        # Fuel IQ Daily Challenge: announce the day's challenge once, at a fixed
-        # 5pm Pacific — explicit IANA timezone (not server-local) so it stays
-        # correct across the PST/PDT transition. instrument_job() gives it the
-        # same System Health heartbeat as the other daily jobs; the job itself
-        # is separately guarded against double-send via push_sent_at.
-        _scheduler.add_job(instrument_job("daily_challenge_push", run_daily_challenge_push),
-                           "cron", hour=17, timezone="America/Los_Angeles",
-                           id="daily_challenge_push", replace_existing=True)
-        from api.services.snapshot_job import generate_all_snapshots
-        _scheduler.add_job(
-            generate_all_snapshots, "cron", hour=23,
-            timezone="America/Los_Angeles",
-            id="teamcoach_snapshot", replace_existing=True,
-        )
-        if not _scheduler.running:
-            _scheduler.start()
-        configure_calendar_sync_startup(_scheduler)
-        logger.info("Schedulers started (notifications 15-min, fueliq_notifications 15-min, "
-                    "calendar sync 6-hr, health 15-min + daily, daily challenge push 5pm PT, "
-                    "grocery reset 15-min, grocery reminder 15-min, teamcoach snapshot 11pm PT).")
-    except Exception:
-        logger.exception("Scheduler failed to start")
+    # Start the in-process scheduler HERE — @app.on_event("startup") is
+    # ignored by Starlette when a lifespan handler is set. Only when
+    # IN_PROCESS_SCHEDULER_ENABLED (see api/job_runner.py for the Cloud Run
+    # alternative — same job functions, triggered externally instead).
+    if IN_PROCESS_SCHEDULER_ENABLED:
+        try:
+            from api.services.notification_service import run_notification_tick
+            from api.services.fueliq_notification_service import run_fueliq_notification_tick
+            from api.services.ics_sync import build_calendar_sync_job, configure_calendar_sync_startup
+            from api.services.health_service import instrument_job, run_health_tick, run_health_daily
+            from api.services.fueliq_daily_challenge_service import run_daily_challenge_push
+            from api.services.grocery_reset_service import run_grocery_reset_tick
+            from api.services.grocery_reminder_service import run_grocery_reminder_tick
+            # Wrap the two existing jobs so they record scheduler heartbeats — no change
+            # to the jobs' own logic; the wrapper only stamps last_run/last_success.
+            _scheduler.add_job(instrument_job("notifications", run_notification_tick), "interval", minutes=15,
+                               id="notifications", replace_existing=True)
+            _scheduler.add_job(instrument_job("fueliq_notifications", run_fueliq_notification_tick),
+                               "interval", minutes=15,
+                               id="fueliq_notifications", replace_existing=True)
+            _scheduler.add_job(run_grocery_reset_tick, "interval", minutes=15,
+                               id="grocery_reset", replace_existing=True)
+            _scheduler.add_job(run_grocery_reminder_tick, "interval", minutes=15,
+                               id="grocery_reminder", replace_existing=True)
+            # calendar_sync is registered via build_calendar_sync_job() (instrument + skip-
+            # if-running lock); configure_calendar_sync_startup() then handles Option B
+            # (catch-up if stale/initial, re-anchor next run if fresh) — see ics_sync.py.
+            _scheduler.add_job(build_calendar_sync_job(), "interval", hours=6,
+                               id="calendar_sync", replace_existing=True)
+            # System Health: active probes every 15 min, one daily inference probe.
+            _scheduler.add_job(run_health_tick, "interval", minutes=15,
+                               id="health", replace_existing=True)
+            _scheduler.add_job(run_health_daily, "cron", hour=9,
+                               id="health_daily", replace_existing=True)
+            # Fuel IQ Daily Challenge: announce the day's challenge once, at a fixed
+            # 5pm Pacific — explicit IANA timezone (not server-local) so it stays
+            # correct across the PST/PDT transition. instrument_job() gives it the
+            # same System Health heartbeat as the other daily jobs; the job itself
+            # is separately guarded against double-send via push_sent_at.
+            _scheduler.add_job(instrument_job("daily_challenge_push", run_daily_challenge_push),
+                               "cron", hour=17, timezone="America/Los_Angeles",
+                               id="daily_challenge_push", replace_existing=True)
+            from api.services.snapshot_job import generate_all_snapshots
+            _scheduler.add_job(
+                generate_all_snapshots, "cron", hour=23,
+                timezone="America/Los_Angeles",
+                id="teamcoach_snapshot", replace_existing=True,
+            )
+            if not _scheduler.running:
+                _scheduler.start()
+            configure_calendar_sync_startup(_scheduler)
+            logger.info("In-process schedulers started (notifications 15-min, fueliq_notifications 15-min, "
+                        "calendar sync 6-hr, health 15-min + daily, daily challenge push 5pm PT, "
+                        "grocery reset 15-min, grocery reminder 15-min, teamcoach snapshot 11pm PT).")
+        except Exception:
+            logger.exception("Scheduler failed to start")
+    else:
+        logger.info("IN_PROCESS_SCHEDULER_ENABLED=false — scheduled jobs must be triggered externally "
+                    "via `python -m api.job_runner <job>` (Cloud Run Jobs / Cloud Scheduler).")
 
     yield
 
@@ -85,7 +101,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from api.routes import parents, athletes, events, nutrition, meals, recipes, analysis, reports, notifications, meal_plans, meal_plan_selections, today, water, knowledge, legal, library, auth, fuel_report, report_config, coach, shopping, support, onboarding, feedback, calendar, admin, admin_analytics, admin_health, admin_overview, admin_action_hub, plate, fueliq, fueliq_daily_challenge, instacart_feedback, instacart, teamcoach_auth, teamcoach_admin, teamcoach_dashboard
-from api.services import db_migrations
 from apscheduler.schedulers.background import BackgroundScheduler
 
 app = FastAPI(
@@ -173,6 +188,31 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "healthy"}
+
+
+@app.get("/ready")
+def ready():
+    """Readiness check (migration/postgres-cloud-run, Phase 13): verifies DB
+    connectivity AND that at least one migration has actually been applied —
+    distinct from /health, which is pure liveness. Returns 503 (not 200) when
+    not ready, so a load balancer / Cloud Run health check correctly holds
+    traffic back. Never includes connection strings, credentials, or any
+    other infrastructure detail in the response."""
+    from fastapi import Response
+    from fastapi.responses import JSONResponse
+    from api.database import db_is_ready
+    from db.postgres_migrate import latest_applied_version
+
+    db_ok = db_is_ready()
+    version = latest_applied_version() if db_ok else None
+    ready_state = db_ok and version is not None
+
+    body = {
+        "status": "ready" if ready_state else "not_ready",
+        "database": "connected" if db_ok else "unreachable",
+        "schema_version": version,
+    }
+    return JSONResponse(body, status_code=200 if ready_state else 503)
 
 
 class SPAStaticFiles(StaticFiles):

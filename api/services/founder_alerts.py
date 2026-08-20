@@ -24,9 +24,10 @@ def _push(conn, title, body) -> bool:
     if not pid:
         return False
     try:
-        tokens = [r[0] for r in conn.execute(
-            "SELECT token FROM expo_push_tokens WHERE parent_id = ?", (int(pid),)).fetchall()]
+        tokens = [r["token"] for r in conn.execute(
+            "SELECT token FROM expo_push_tokens WHERE parent_id = %s", (int(pid),)).fetchall()]
     except Exception:
+        conn.rollback()
         tokens = []
     if not tokens:
         return False

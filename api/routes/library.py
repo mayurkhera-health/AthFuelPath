@@ -45,13 +45,13 @@ def get_articles(category: str = None, search: str = None, audience: str = None)
         query = "SELECT * FROM articles WHERE is_active = 1"
         params = []
         if category and category != "all":
-            query += " AND category = ?"
+            query += " AND category = %s"
             params.append(category)
         if search:
-            query += " AND (title LIKE ? OR summary LIKE ? OR category LIKE ? OR author LIKE ?)"
+            query += " AND (title LIKE %s OR summary LIKE %s OR category LIKE %s OR author LIKE %s)"
             params.extend([f"%{search}%"] * 4)
         if audience in ("athlete", "parent"):
-            query += " AND audience IN (?, 'both')"
+            query += " AND audience IN (%s, 'both')"
             params.append(audience)
         query += " ORDER BY published_date DESC"
         rows = conn.execute(query, params).fetchall()
@@ -81,7 +81,7 @@ def get_athlete_picks(athlete_id: int, identity=Depends(require_session)):
             SELECT a.*, p.alex_reason
             FROM articles a
             JOIN athlete_article_picks p ON a.id = p.article_id
-            WHERE p.athlete_id = ? AND p.week_start = ? AND a.is_active = 1
+            WHERE p.athlete_id = %s AND p.week_start = %s AND a.is_active = 1
             ORDER BY p.generated_at ASC
         """, (athlete_id, week_start)).fetchall()
         return [dict(r) for r in rows]
@@ -94,7 +94,7 @@ def get_article(article_id: int):
     conn = get_conn()
     try:
         row = conn.execute(
-            "SELECT * FROM articles WHERE id = ? AND is_active = 1",
+            "SELECT * FROM articles WHERE id = %s AND is_active = 1",
             (article_id,),
         ).fetchone()
         if not row:
@@ -115,15 +115,17 @@ def create_article(payload: ArticleCreate, x_admin_key: Optional[str] = Header(N
             INSERT INTO articles
                 (title, summary, body_markdown, category, audience,
                  read_time_min, author, science_source, published_date, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
         """, (
             payload.title, payload.summary, payload.body_markdown,
             payload.category, payload.audience, payload.read_time_min,
             payload.author, payload.science_source, payload.published_date,
             payload.is_active,
         ))
+        new_id = cursor.fetchone()["id"]
         conn.commit()
-        return {"status": "created", "id": cursor.lastrowid}
+        return {"status": "created", "id": new_id}
     finally:
         conn.close()
 
@@ -137,14 +139,14 @@ def update_article(
     _require_admin(x_admin_key)
     conn = get_conn()
     try:
-        if not conn.execute("SELECT id FROM articles WHERE id = ?", (article_id,)).fetchone():
+        if not conn.execute("SELECT id FROM articles WHERE id = %s", (article_id,)).fetchone():
             raise HTTPException(status_code=404, detail="Article not found")
         fields = {k: v for k, v in payload.dict().items() if v is not None}
         if not fields:
             return {"status": "no_change"}
-        set_clause = ", ".join(f"{k} = ?" for k in fields)
+        set_clause = ", ".join(f"{k} = %s" for k in fields)
         conn.execute(
-            f"UPDATE articles SET {set_clause} WHERE id = ?",
+            f"UPDATE articles SET {set_clause} WHERE id = %s",
             list(fields.values()) + [article_id],
         )
         conn.commit()
@@ -170,9 +172,9 @@ def publish_article(article_id: int, x_admin_key: Optional[str] = Header(None)):
     _require_admin(x_admin_key)
     conn = get_conn()
     try:
-        if not conn.execute("SELECT id FROM articles WHERE id = ?", (article_id,)).fetchone():
+        if not conn.execute("SELECT id FROM articles WHERE id = %s", (article_id,)).fetchone():
             raise HTTPException(status_code=404, detail="Article not found")
-        conn.execute("UPDATE articles SET is_active = 1 WHERE id = ?", (article_id,))
+        conn.execute("UPDATE articles SET is_active = 1 WHERE id = %s", (article_id,))
         conn.commit()
         return {"status": "published"}
     finally:
@@ -184,9 +186,9 @@ def unpublish_article(article_id: int, x_admin_key: Optional[str] = Header(None)
     _require_admin(x_admin_key)
     conn = get_conn()
     try:
-        if not conn.execute("SELECT id FROM articles WHERE id = ?", (article_id,)).fetchone():
+        if not conn.execute("SELECT id FROM articles WHERE id = %s", (article_id,)).fetchone():
             raise HTTPException(status_code=404, detail="Article not found")
-        conn.execute("UPDATE articles SET is_active = 0 WHERE id = ?", (article_id,))
+        conn.execute("UPDATE articles SET is_active = 0 WHERE id = %s", (article_id,))
         conn.commit()
         return {"status": "unpublished"}
     finally:

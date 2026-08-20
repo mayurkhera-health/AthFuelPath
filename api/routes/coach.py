@@ -34,12 +34,13 @@ def post_feedback(body: CoachFeedbackRequest):
         cur = conn.execute(
             """INSERT INTO coach_feedback
                    (rating, question, answer_excerpt, window_key, recipe_intent, role_hint, reason)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s)
+               RETURNING id""",
             (body.rating, body.question, body.answer_excerpt, body.window_key,
              body.recipe_intent, body.role_hint, body.reason),
         )
         conn.commit()
-        return {"ok": True, "id": cur.lastrowid}
+        return {"ok": True, "id": cur.fetchone()["id"]}
     finally:
         conn.close()
 
@@ -64,21 +65,21 @@ def post_dietitian_booking(body: DietitianBookingRequest, identity=Depends(requi
     try:
         assert_owns_athlete(identity, body.athlete_id, conn)
         athlete = conn.execute(
-            "SELECT first_name FROM athletes WHERE id = ?", (body.athlete_id,)
+            "SELECT first_name FROM athletes WHERE id = %s", (body.athlete_id,)
         ).fetchone()
         if not athlete:
             raise HTTPException(404, "Athlete not found.")
 
         cur = conn.execute(
             """INSERT INTO dietitian_bookings (athlete_id, session_type, about_athlete, reason)
-               VALUES (?, ?, ?, ?)""",
+               VALUES (%s, %s, %s, %s)
+               RETURNING id, created_at""",
             (body.athlete_id, body.session_type, body.about_athlete.strip(), (body.reason or "").strip() or None),
         )
         conn.commit()
-        booking_id = cur.lastrowid
-        created_at_utc = conn.execute(
-            "SELECT created_at FROM dietitian_bookings WHERE id = ?", (booking_id,)
-        ).fetchone()[0]
+        booking_row = cur.fetchone()
+        booking_id = booking_row["id"]
+        created_at_utc = booking_row["created_at"]
     finally:
         conn.close()
 

@@ -53,12 +53,13 @@ def client():
     conn = get_conn()
     cur = conn.execute(
         "INSERT INTO parents (full_name, email, consent_confirmed, consent_timestamp) "
-        "VALUES (?, ?, 1, ?)",
+        "VALUES (%s, %s, TRUE, %s) RETURNING id",
         ("Test Parent", f"fp-{uuid.uuid4().hex}@test.com", "2026-06-24T00:00:00Z"),
     )
+    parent_id = cur.fetchone()["id"]
     conn.commit()
     with TestClient(app) as c:
-        c.parent_id = cur.lastrowid
+        c.parent_id = parent_id
         yield c
     keepalive.close()
 

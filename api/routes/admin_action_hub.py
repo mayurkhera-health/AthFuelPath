@@ -25,7 +25,10 @@ router = APIRouter()
 
 
 def _table_exists(conn, name):
-    return conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() is not None
+    return conn.execute(
+        "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = %s",
+        (name,),
+    ).fetchone() is not None
 
 
 def _attention(conn):
@@ -38,11 +41,11 @@ def _attention(conn):
 
     # 1. Red System Health checks → error.
     for r in conn.execute("SELECT check_name, detail FROM health_checks WHERE status = 'red'").fetchall():
-        name = HEALTH_PLAIN.get(r[0], r[0])
+        name = HEALTH_PLAIN.get(r["check_name"], r["check_name"])
         items.append({
             "severity": "error", "category": "System health", "icon": "🔴",
             "title": name[0].upper() + name[1:],
-            "detail": r[1] or "Not working right now.",
+            "detail": r["detail"] or "Not working right now.",
             "action": {"label": "View health", "section": "health"},
         })
 
@@ -52,12 +55,12 @@ def _attention(conn):
         SELECT DISTINCT p.id, p.full_name FROM parents p JOIN athletes a ON a.parent_id = p.id
         WHERE p.id IN ({active_ids}) AND (a.byga_ics_url IS NOT NULL OR a.playmetrics_ics_url IS NOT NULL)
           AND NOT EXISTS(SELECT 1 FROM events e WHERE e.athlete_id = a.id
-                         AND e.synced_at IS NOT NULL AND e.synced_at > ?)
+                         AND e.synced_at IS NOT NULL AND e.synced_at > %s)
         LIMIT 10""", (cutoff_48h,)).fetchall():
         items.append({
             "severity": "error", "category": "Calendar sync", "icon": "🔁",
-            "title": r[1], "detail": "Calendar connected but hasn't synced in over 48 hours.",
-            "action": {"label": "View family", "section": "users", "id": r[0]},
+            "title": r["full_name"], "detail": "Calendar connected but hasn't synced in over 48 hours.",
+            "action": {"label": "View family", "section": "users", "id": r["id"]},
         })
 
     # 3. Never-connected families: signed up >3d ago, has athletes, no calendar
@@ -65,7 +68,7 @@ def _attention(conn):
     cutoff_3d = (now - timedelta(days=3)).isoformat()
     for r in conn.execute(f"""
         SELECT p.id, p.full_name FROM parents p
-        WHERE p.id IN ({active_ids}) AND p.created_at < ?
+        WHERE p.id IN ({active_ids}) AND p.created_at < %s
           AND EXISTS(SELECT 1 FROM athletes a WHERE a.parent_id = p.id)
           AND NOT EXISTS(SELECT 1 FROM athletes a WHERE a.parent_id = p.id
              AND (a.byga_ics_url IS NOT NULL OR a.playmetrics_ics_url IS NOT NULL
@@ -73,14 +76,14 @@ def _attention(conn):
         ORDER BY p.created_at LIMIT 10""", (cutoff_3d,)).fetchall():
         items.append({
             "severity": "warning", "category": "Onboarding", "icon": "📅",
-            "title": r[1], "detail": "Signed up but hasn't connected a calendar yet.",
-            "action": {"label": "View family", "section": "users", "id": r[0]},
+            "title": r["full_name"], "detail": "Signed up but hasn't connected a calendar yet.",
+            "action": {"label": "View family", "section": "users", "id": r["id"]},
         })
 
     # 4. Problem reports this week → warning (one summary item).
     since_7 = (now - timedelta(days=7)).isoformat()
     if _table_exists(conn, "problem_reports"):
-        n = conn.execute("SELECT COUNT(*) FROM problem_reports WHERE created_at >= ?", (since_7,)).fetchone()[0]
+        n = conn.execute("SELECT COUNT(*) AS count FROM problem_reports WHERE created_at >= %s", (since_7,)).fetchone()["count"]
         if n:
             items.append({
                 "severity": "warning", "category": "Problem reports", "icon": "🐛",
@@ -101,12 +104,12 @@ def _heatmap(conn, weeks=8):
     since = (datetime.utcnow() - timedelta(days=weeks * 7)).isoformat()
     rows = conn.execute(f"""
         SELECT day, COUNT(DISTINCT athlete_id) AS c FROM (
-            SELECT substr(logged_at,1,10) AS day, athlete_id FROM meal_logs   WHERE logged_at  >= ?
-            UNION SELECT substr(created_at,1,10), athlete_id FROM window_logs WHERE created_at >= ?
-            UNION SELECT substr(updated_at,1,10), athlete_id FROM water_logs  WHERE updated_at >= ?
+            SELECT substr(logged_at,1,10) AS day, athlete_id FROM meal_logs   WHERE logged_at  >= %s
+            UNION SELECT substr(created_at,1,10), athlete_id FROM window_logs WHERE created_at >= %s
+            UNION SELECT substr(updated_at,1,10), athlete_id FROM water_logs  WHERE updated_at >= %s
         ) WHERE athlete_id IN ({active_athletes})
         GROUP BY day""", (since, since, since)).fetchall()
-    points = [{"date": r[0], "count": r[1]} for r in rows]
+    points = [{"date": r["day"], "count": r["c"]} for r in rows]
     return {"weeks": weeks, "points": points, "max": max([p["count"] for p in points], default=0)}
 
 

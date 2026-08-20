@@ -18,15 +18,19 @@ PASSWORD = "s3cret-admin"
 
 
 def _wipe(conn):
-    # The shared in-memory DB persists across tests; clear every table for a clean
-    # slate. Disable FK enforcement so delete order across referencing tables is moot.
+    # The shared DB persists across tests; clear every table for a clean
+    # slate. TRUNCATE ... CASCADE plays the same role FK-enforcement-off did
+    # for SQLite: it clears every table regardless of FK reference order.
     conn.commit()
-    conn.execute("PRAGMA foreign_keys=OFF")
-    for (name,) in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall():
-        conn.execute(f"DELETE FROM {name}")
+    rows = conn.execute(
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_type = 'BASE TABLE' "
+        "AND table_name != 'schema_migrations'"
+    ).fetchall()
+    names = [r["table_name"] for r in rows]
+    if names:
+        conn.execute("TRUNCATE TABLE " + ", ".join(names) + " RESTART IDENTITY CASCADE")
     conn.commit()
-    conn.execute("PRAGMA foreign_keys=ON")
 
 
 def _iso(days_ago=0):
@@ -36,20 +40,20 @@ def _iso(days_ago=0):
 def _add_parent(conn, name, email, days_ago=10):
     cur = conn.execute(
         "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed, created_at) "
-        "VALUES (?, ?, ?, 1, ?)",
+        "VALUES (%s, %s, %s, TRUE, %s) RETURNING id",
         (name, email, _iso(days_ago), _iso(days_ago)),
     )
-    return cur.lastrowid
+    return cur.fetchone()["id"]
 
 
 def _add_athlete(conn, parent_id, first_name, byga=None, playmetrics=None):
     cur = conn.execute(
         "INSERT INTO athletes (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in, "
         "position, competition_level, byga_ics_url, playmetrics_ics_url) "
-        "VALUES (?, ?, 12, 'M', 90.0, 5, 2.0, 'Midfield', 'Competitive', ?, ?)",
+        "VALUES (%s, %s, 12, 'M', 90.0, 5, 2.0, 'Midfield', 'Competitive', %s, %s) RETURNING id",
         (parent_id, first_name, byga, playmetrics),
     )
-    return cur.lastrowid
+    return cur.fetchone()["id"]
 
 
 def _add_event(conn, athlete_id, source="manual", synced_days_ago=None, upcoming=True):
@@ -57,7 +61,7 @@ def _add_event(conn, athlete_id, source="manual", synced_days_ago=None, upcoming
     date = (datetime.utcnow() + timedelta(days=3 if upcoming else -3)).date().isoformat()
     conn.execute(
         "INSERT INTO events (athlete_id, event_name, event_type, event_date, source, synced_at) "
-        "VALUES (?, 'Match', 'game', ?, ?, ?)",
+        "VALUES (%s, 'Match', 'game', %s, %s, %s)",
         (athlete_id, date, source, synced_at),
     )
 
@@ -80,12 +84,12 @@ def ctx(monkeypatch):
     _add_event(keepalive, ids["ava"], source="byga", synced_days_ago=0)
     _add_event(keepalive, ids["ava"], source="manual")
     keepalive.execute("INSERT INTO meal_plans (athlete_id, plan_date, slot_name, recipe_name) "
-                      "VALUES (?, date('now'), 'lunch', 'Pasta')", (ids["ava"],))
-    keepalive.execute("INSERT INTO meal_logs (athlete_id, log_method, description) VALUES (?, 'text', 'eggs')",
+                      "VALUES (%s, sqlite_today(), 'lunch', 'Pasta')", (ids["ava"],))
+    keepalive.execute("INSERT INTO meal_logs (athlete_id, log_method, description) VALUES (%s, 'text', 'eggs')",
                       (ids["ava"],))
-    keepalive.execute("INSERT INTO water_logs (athlete_id, log_date, cups) VALUES (?, date('now'), 4)",
+    keepalive.execute("INSERT INTO water_logs (athlete_id, log_date, cups) VALUES (%s, sqlite_today(), 4)",
                       (ids["ava"],))
-    keepalive.execute("INSERT INTO feature_requests (athlete_id, email, suggestion) VALUES (?, 'sarah@x.com', 'Dark mode')",
+    keepalive.execute("INSERT INTO feature_requests (athlete_id, email, suggestion) VALUES (%s, 'sarah@x.com', 'Dark mode')",
                       (ids["ava"],))
 
     # Mike: 1 athlete, no calendar, signed up long ago → never_connected chip.
@@ -174,9 +178,9 @@ def test_update_parent_validates_email_and_audits(ctx):
     assert bad.status_code == 400
     ok = c.put(f"/api/admin/parents/{ids['mike']}", json={"full_name": "Michael Jones"})
     assert ok.status_code == 200 and ok.json()["full_name"] == "Michael Jones"
-    row = ka.execute("SELECT COUNT(*) FROM admin_audit_log WHERE action='update_parent' AND target_id=?",
+    row = ka.execute("SELECT COUNT(*) AS count FROM admin_audit_log WHERE action='update_parent' AND target_id=%s",
                      (ids["mike"],)).fetchone()
-    assert row[0] == 1
+    assert row["count"] == 1
 
 
 def test_update_parent_duplicate_email_409(ctx):
@@ -205,22 +209,22 @@ def test_delete_athlete_preview_and_cascade(ctx):
     assert r.status_code == 200 and r.json()["deleted"] is True
     # Every child row is gone.
     for table in ("events", "meal_plans", "meal_logs", "water_logs", "feature_requests"):
-        n = ka.execute(f"SELECT COUNT(*) FROM {table} WHERE athlete_id=?", (ids["ava"],)).fetchone()[0]
+        n = ka.execute(f"SELECT COUNT(*) AS count FROM {table} WHERE athlete_id=%s", (ids["ava"],)).fetchone()["count"]
         assert n == 0, f"{table} not cascaded"
-    assert ka.execute("SELECT COUNT(*) FROM athletes WHERE id=?", (ids["ava"],)).fetchone()[0] == 0
+    assert ka.execute("SELECT COUNT(*) AS count FROM athletes WHERE id=%s", (ids["ava"],)).fetchone()["count"] == 0
     # Audit row written.
-    assert ka.execute("SELECT COUNT(*) FROM admin_audit_log WHERE action='delete_athlete' AND target_id=?",
-                      (ids["ava"],)).fetchone()[0] == 1
+    assert ka.execute("SELECT COUNT(*) AS count FROM admin_audit_log WHERE action='delete_athlete' AND target_id=%s",
+                      (ids["ava"],)).fetchone()["count"] == 1
 
 
 def test_calendar_badge_distinguishes_import_manual_empty(ctx):
     c, ids, ka = ctx
     # Ben (no sync URL): hand-entered event (uid NULL) -> "manual"
     ka.execute("INSERT INTO events (athlete_id, event_name, event_type, event_date) "
-               "VALUES (?, 'M', 'game', date('now'))", (ids["ben"],))
+               "VALUES (%s, 'M', 'game', sqlite_today())", (ids["ben"],))
     # Leo (no sync URL): imported .ics event (uid set) -> "imported"
     ka.execute("INSERT INTO events (athlete_id, event_name, event_type, event_date, uid) "
-               "VALUES (?, 'M', 'game', date('now'), 'ics-uid-1')", (ids["leo"],))
+               "VALUES (%s, 'M', 'game', sqlite_today(), 'ics-uid-1')", (ids["leo"],))
     ka.commit()
     items = {f["id"]: f for f in c.get("/api/admin/users").json()["items"]}
 
@@ -248,9 +252,14 @@ def test_hard_deleted_parents_excluded_from_list(ctx):
     # Simulate the prod schema: the old AthFuelPath-Admin soft-delete adds
     # parents.account_status and anonymizes rows to 'hard_deleted'.
     c, ids, ka = ctx
-    if "account_status" not in [r[1] for r in ka.execute("PRAGMA table_info(parents)").fetchall()]:
+    existing_cols = {
+        r["column_name"] for r in ka.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'parents'"
+        ).fetchall()
+    }
+    if "account_status" not in existing_cols:
         ka.execute("ALTER TABLE parents ADD COLUMN account_status TEXT")  # idempotent across shared-DB tests
-    ka.execute("UPDATE parents SET account_status = 'hard_deleted' WHERE id = ?", (ids["mike"],))
+    ka.execute("UPDATE parents SET account_status = 'hard_deleted' WHERE id = %s", (ids["mike"],))
     ka.commit()
     body = c.get("/api/admin/users").json()
     returned = {f["id"] for f in body["items"]}
@@ -273,9 +282,9 @@ def test_delete_parent_cascades_all_athletes(ctx):
 
     r = c.request("DELETE", f"/api/admin/parents/{ids['sarah']}", json={"confirm": "DELETE"})
     assert r.status_code == 200
-    assert ka.execute("SELECT COUNT(*) FROM parents WHERE id=?", (ids["sarah"],)).fetchone()[0] == 0
-    assert ka.execute("SELECT COUNT(*) FROM athletes WHERE parent_id=?", (ids["sarah"],)).fetchone()[0] == 0
-    assert ka.execute("SELECT COUNT(*) FROM events WHERE athlete_id IN (?, ?)",
-                      (ids["ava"], ids["ben"])).fetchone()[0] == 0
-    assert ka.execute("SELECT COUNT(*) FROM admin_audit_log WHERE action='delete_parent' AND target_id=?",
-                      (ids["sarah"],)).fetchone()[0] == 1
+    assert ka.execute("SELECT COUNT(*) AS count FROM parents WHERE id=%s", (ids["sarah"],)).fetchone()["count"] == 0
+    assert ka.execute("SELECT COUNT(*) AS count FROM athletes WHERE parent_id=%s", (ids["sarah"],)).fetchone()["count"] == 0
+    assert ka.execute("SELECT COUNT(*) AS count FROM events WHERE athlete_id IN (%s, %s)",
+                      (ids["ava"], ids["ben"])).fetchone()["count"] == 0
+    assert ka.execute("SELECT COUNT(*) AS count FROM admin_audit_log WHERE action='delete_parent' AND target_id=%s",
+                      (ids["sarah"],)).fetchone()["count"] == 1

@@ -15,7 +15,7 @@ _ADMIN_EMAIL = "mkhera@zedventures.com"
 def _require_admin(identity, conn):
     if identity.role != "parent":
         raise HTTPException(403, "Admin access required.")
-    row = conn.execute("SELECT email FROM parents WHERE id = ?", (identity.parent_id,)).fetchone()
+    row = conn.execute("SELECT email FROM parents WHERE id = %s", (identity.parent_id,)).fetchone()
     if not row or dict(row)["email"].strip().lower() != _ADMIN_EMAIL:
         raise HTTPException(403, "Admin access required.")
 
@@ -60,7 +60,7 @@ def update_report_config(body: dict, identity=Depends(require_session)):
             except (TypeError, ValueError):
                 raise HTTPException(400, f"Value for '{key}' must be numeric")
             conn.execute(
-                "UPDATE report_config SET value = ?, updated_at = datetime('now') WHERE key = ?",
+                "UPDATE report_config SET value = %s, updated_at = sqlite_now() WHERE key = %s",
                 (float_val, key),
             )
             updated.append(key)

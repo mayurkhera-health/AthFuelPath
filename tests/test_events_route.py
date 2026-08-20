@@ -100,11 +100,11 @@ def _insert_synced_event(aid, source, uid):
     conn = get_conn()
     conn.execute(
         "INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, "
-        "duration_hours, uid, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "duration_hours, uid, source) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
         (aid, "Synced Game", "game", "2026-07-15", "18:30", 1.5, uid, source),
     )
     conn.commit()
-    return conn.execute("SELECT id FROM events WHERE uid = ?", (uid,)).fetchone()["id"]
+    return conn.execute("SELECT id FROM events WHERE uid = %s", (uid,)).fetchone()["id"]
 
 
 def test_cannot_edit_synced_event(client):

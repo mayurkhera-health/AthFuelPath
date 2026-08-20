@@ -66,7 +66,7 @@ def test_upsert_updates_an_existing_row_in_place(client):
 
     conn = get_conn()
     row = conn.execute(
-        "SELECT COUNT(*) c, MAX(training_days) t FROM notification_prefs WHERE profile_type='athlete' AND profile_id=?",
+        "SELECT COUNT(*) c, MAX(training_days) t FROM notification_prefs WHERE profile_type='athlete' AND profile_id=%s",
         (athlete_id,),
     ).fetchone()
     conn.close()

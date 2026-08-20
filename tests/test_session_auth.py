@@ -86,12 +86,12 @@ def test_require_session_accepts_valid_bearer():
 
 def test_assert_owns_athlete_allows_matching_athlete_token(db):
     parent_id = db.execute(
-        "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES ('P', 'p@x.com', datetime('now'), 1)"
-    ).lastrowid
+        "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES ('P', 'p@x.com', sqlite_now(), TRUE) RETURNING id"
+    ).fetchone()["id"]
     athlete_id = db.execute(
         "INSERT INTO athletes (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in) "
-        "VALUES (?, 'A', 15, 'girl', 110, 5, 6)", (parent_id,)
-    ).lastrowid
+        "VALUES (%s, 'A', 15, 'girl', 110, 5, 6) RETURNING id", (parent_id,)
+    ).fetchone()["id"]
     db.commit()
     identity = sa.SessionIdentity("athlete", parent_id=None, athlete_id=athlete_id)
     sa.assert_owns_athlete(identity, athlete_id, db)  # does not raise
@@ -106,12 +106,12 @@ def test_assert_owns_athlete_rejects_other_athlete_token(db):
 
 def test_assert_owns_athlete_allows_owning_parent_token(db):
     parent_id = db.execute(
-        "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES ('P', 'p2@x.com', datetime('now'), 1)"
-    ).lastrowid
+        "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES ('P', 'p2@x.com', sqlite_now(), TRUE) RETURNING id"
+    ).fetchone()["id"]
     athlete_id = db.execute(
         "INSERT INTO athletes (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in) "
-        "VALUES (?, 'A', 15, 'girl', 110, 5, 6)", (parent_id,)
-    ).lastrowid
+        "VALUES (%s, 'A', 15, 'girl', 110, 5, 6) RETURNING id", (parent_id,)
+    ).fetchone()["id"]
     db.commit()
     identity = sa.SessionIdentity("parent", parent_id=parent_id, athlete_id=None)
     sa.assert_owns_athlete(identity, athlete_id, db)  # does not raise
@@ -119,15 +119,15 @@ def test_assert_owns_athlete_allows_owning_parent_token(db):
 
 def test_assert_owns_athlete_rejects_non_owning_parent_token(db):
     other_parent_id = db.execute(
-        "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES ('P', 'p3@x.com', datetime('now'), 1)"
-    ).lastrowid
+        "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES ('P', 'p3@x.com', sqlite_now(), TRUE) RETURNING id"
+    ).fetchone()["id"]
     real_parent_id = db.execute(
-        "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES ('P', 'p4@x.com', datetime('now'), 1)"
-    ).lastrowid
+        "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES ('P', 'p4@x.com', sqlite_now(), TRUE) RETURNING id"
+    ).fetchone()["id"]
     athlete_id = db.execute(
         "INSERT INTO athletes (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in) "
-        "VALUES (?, 'A', 15, 'girl', 110, 5, 6)", (real_parent_id,)
-    ).lastrowid
+        "VALUES (%s, 'A', 15, 'girl', 110, 5, 6) RETURNING id", (real_parent_id,)
+    ).fetchone()["id"]
     db.commit()
     identity = sa.SessionIdentity("parent", parent_id=other_parent_id, athlete_id=None)
     with pytest.raises(HTTPException) as exc:
