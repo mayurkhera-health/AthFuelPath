@@ -22,7 +22,7 @@ Implemented on this branch, not yet committed. Full backend suite: **1063 passed
 | 11 | `GET /api/knowledge/health` | ✅ FIXED — gated behind `require_knowledge_admin_key` |
 | 12 | `hmac.compare_digest` for key/email comparisons | ✅ FIXED — `knowledge_admin.py`, `report_config.py` |
 | — | `POST /api/parents/login`, `POST /api/auth/login` (email-only login) | **OUT OF SCOPE for Pass 1 per explicit instruction — unchanged, still open** |
-| — | Legacy web-push endpoints in `notifications.py` (`/subscribe`, `/{athlete_id}/prefs` GET+PUT, `/{athlete_id}/unsubscribe`) | **Not touched — deferred pending confirmation of live client usage, per instruction** |
+| — | Legacy web-push endpoints in `notifications.py` (`/subscribe`, `/{athlete_id}/prefs` GET+PUT, `/{athlete_id}/unsubscribe`) | **Investigated (2026-08-20), left unauthenticated — accepted, documented risk.** See finding + decision below. |
 | — | `POST /api/auth/athlete-create-login/{athlete_id}` rate limiting | Not in Pass 1 scope — still outstanding |
 | — | `POST /api/support/report`, `POST /api/feedback/feature-request` loose parent/athlete_id trust | Not in Pass 1 scope (low severity, intentionally public forms) — still outstanding |
 
@@ -120,10 +120,10 @@ Legend for column 8 (Security classification): 🟢 SAFE PUBLIC · 🔵 AUTHENTI
 | PATCH | `/fueliq-prefs` | Update Fuel IQ notif prefs for `data.athlete_id` | `require_session` ✅ Pass 1 | Yes | Yes (`assert_owns_athlete`) | No | 🔵 | None — fixed |
 | PATCH | `/prefs` | Update Training/Game/Quiet-hours prefs | `require_session` | Yes | Yes | No | 🔵 | None |
 | GET | `/vapid-public-key` | Return the public VAPID key | None | No | N/A | **Yes** — public keys are meant to be public | 🟢 | None |
-| POST | `/subscribe` | Web-push subscribe for `data.athlete_id` | **None** | No | **No** | No — appears to be legacy, superseded by `/expo-token` | 🔴 | **Deferred, per explicit Pass 1 instruction** — confirm still used by mobile/web before touching |
-| GET | `/{athlete_id}/prefs` | Read legacy push prefs | **None** | No | **No** | No | 🔴 | Same as above — deferred |
-| PUT | `/{athlete_id}/prefs` | Write legacy push prefs | **None** | No | **No** | No | 🔴 | Same as above — deferred |
-| DELETE | `/{athlete_id}/unsubscribe` | Delete legacy push subscription | **None** | No | **No** | No | 🔴 | Same as above — deferred |
+| POST | `/subscribe` | Web-push subscribe for `data.athlete_id` | **None** | No | **No** | No | 🔴 | **Investigated 2026-08-20 — live consumer confirmed (legacy web frontend, not mobile), which has no auth mechanism of any kind. Decision: leave as-is, accepted risk.** See Section B item 2. |
+| GET | `/{athlete_id}/prefs` | Read legacy push prefs | **None** | No | **No** | No | 🔴 | Same as above |
+| PUT | `/{athlete_id}/prefs` | Write legacy push prefs | **None** | No | **No** | No | 🔴 | Same as above |
+| DELETE | `/{athlete_id}/unsubscribe` | Delete legacy push subscription | **None** | No | **No** | No | 🔴 | Same as above |
 
 ### `api/routes/nutrition.py` (prefix `/api/nutrition`)
 
@@ -280,7 +280,11 @@ All 4 endpoints use `require_coach` + `assert_coach_owns_team`. 🔵 None need a
 ## B. Medium-priority issues
 
 1. **`POST /api/auth/athlete-create-login/{athlete_id}`** is legitimately public (an athlete has no credential yet), and does correctly verify the target athlete belongs to the parent identified by `parent_email` — but has no rate limiting, unlike the OTP flow. Recommend adding the same rate-limit pattern used elsewhere in the codebase. — **⚠️ OUTSTANDING.** Not in Pass 1 scope.
-2. **Legacy web-push endpoints in `notifications.py`** (`POST /subscribe`, `GET`/`PUT /{athlete_id}/prefs`, `DELETE /{athlete_id}/unsubscribe`) have zero auth and appear superseded by the properly-protected `/expo-token` flow. Confirm with the mobile/web clients whether these are still called; if not, delete them — if so, add `require_session` + `assert_owns_athlete`. — **⚠️ OUTSTANDING — deliberately deferred.** Explicit Pass 1 instruction: do not touch until live usage is confirmed separately.
+2. **Legacy web-push endpoints in `notifications.py`** (`POST /subscribe`, `GET`/`PUT /{athlete_id}/prefs`, `DELETE /{athlete_id}/unsubscribe`) have zero auth. — **Investigated 2026-08-20 — decision: leave as-is, accepted risk, documented.** Checked both real clients:
+   - **Mobile app:** does not call any of these 4 — clean, `/expo-token` + `PATCH /prefs` fully cover mobile's push flow.
+   - **Legacy web frontend** (`frontend/src/NotificationsScreen.jsx` + `notificationService.js`, bundled in this backend repo and still actively served at `/` in production): calls all 4, routed and reachable from `SettingsScreen.jsx` — a real, live feature, not dead code. It also calls a 5th URL, `POST /{athlete_id}/send-daily`, which **doesn't exist as a route at all anymore** — that specific client call 404s today; not a security gap (no endpoint = no exposure), just stale/broken client code, noting for completeness.
+   - **Why this isn't a simple "add `require_session`" fix:** the legacy web frontend has **no authentication mechanism anywhere** in its codebase — zero `Authorization` headers, zero session tokens, zero localStorage-based auth, across every file. It's the pre-hardening design (same shape mobile had before session tokens existed), never retrofitted. Gating these endpoints the way everything else in Pass 1 got fixed would break the feature outright for every legacy web user — there's no token for that client to send. Real fixes would be either (a) retrofit the entire legacy web frontend with session-token auth (auth work for a whole second client, not a small patch), or (b) retire this web notification screen and delete the endpoints.
+   - **Decision (2026-08-20):** leave unauthenticated for now. Blast radius is narrower than what Pass 1 already fixed — push subscription management and notification prefs, not profile/meal/nutrition data — but it is still a real unauthenticated BOLA surface on a now-public, now-real-data-bearing service. Revisit when there's appetite for either retrofitting the legacy web frontend's auth or retiring it.
 3. **`PATCH /api/notifications/fueliq-prefs`** — no auth, low-sensitivity data but still a BOLA write. — **✅ FIXED in Pass 1.**
 4. **`GET /api/nutrition/timing/{athlete_id}`** — no auth, read-only, moderate sensitivity (meal-timing tied to schedule). — **✅ FIXED in Pass 1.**
 5. **`POST /api/recipes/generate`, `POST /api/recipes/swap`** — no auth; unauthenticated AI-cost-abuse vector plus minor allergy-derived inference. Both should require `require_session` + `assert_owns_athlete`. — **✅ FIXED in Pass 1.** Ownership verified before the AI call in both.
@@ -312,7 +316,7 @@ Ordered by severity, smallest correct change per item — no redesign, no new au
 3. ~~Add `require_session` + `assert_owns_athlete` to: `POST /api/events/`, all 5 endpoints in `meals.py`, all 5 endpoints in `meal_plans.py`, nutrition targets/timing, recipes generate/swap, fueliq-prefs.~~ — **✅ DONE (Pass 1).**
 4. ~~Remove or hard-gate `DELETE /api/parents/test-reset`.~~ — **✅ DONE (Pass 1).** Removed entirely.
 5. ~~Fix the SSRF in `GET /api/events/fetch-ics`.~~ — **✅ DONE (Pass 1).**
-6. **Decide the fate of the 4 legacy push-notification endpoints in `notifications.py`** — confirm whether mobile/web still call them; delete if dead, add ownership checks if live. — **⚠️ STILL OUTSTANDING**, deliberately deferred per Pass 1 instructions. (`POST /api/parents/{parent_id}/confirm` was resolved — kept and gated, not removed.)
+6. ~~Decide the fate of the 4 legacy push-notification endpoints in `notifications.py`.~~ — **✅ RESOLVED 2026-08-20 (investigated, not code-fixed).** Confirmed live usage (legacy web frontend, not mobile) and confirmed why a simple auth-gate isn't viable (see Section B item 2 above). Decision: leave unauthenticated, accepted + documented risk. (`POST /api/parents/{parent_id}/confirm` was separately resolved in Pass 1 itself — kept and gated, not removed.)
 7. ~~Low priority: switch the two `!=` admin-key/email comparisons to `hmac.compare_digest`; gate `GET /api/knowledge/health`.~~ — **✅ DONE (Pass 1).**
 
 Only item 1 (email-only login) and item 6 (legacy push endpoints) remain before this branch is ready for a public Cloud Run traffic cutover.
@@ -327,4 +331,4 @@ Only item 1 (email-only login) and item 6 (legacy push endpoints) remain before 
 
 **Test results:** full backend suite, 1063 passed / 4 failed. The 4 failures are pre-existing and unrelated to authentication (static `recipes.json` content drift in `test_recipe_generator.py`, one pure-Python logic bug in `test_window_templates.py` — both reproduce identically on `main`, confirmed during the earlier PostgreSQL migration work on this same branch).
 
-**Not touched, per explicit Pass 1 scope:** `POST /api/parents/login`, `POST /api/auth/login` (both unchanged, still open); the 4 legacy web-push endpoints in `notifications.py`; database schema; Fly.io configuration; the mobile repository; `main`.
+**Not touched, per explicit Pass 1 scope:** `POST /api/parents/login`, `POST /api/auth/login` (both unchanged, still open); database schema; Fly.io configuration; the mobile repository; `main`. The 4 legacy web-push endpoints in `notifications.py` were separately investigated on 2026-08-20 (see Section B item 2) — left unauthenticated as an accepted, documented risk rather than fixed, since the only real live consumer (the legacy web frontend) has no auth mechanism to gate against.
