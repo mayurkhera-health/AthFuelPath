@@ -39,11 +39,12 @@ def _athlete_with_game(client):
     a = client.post("/api/athletes/", json={
         "parent_id": pid, "first_name": "A", "age": 14, "gender": "girl",
         "weight_lbs": 110, "height_ft": 5, "height_in": 4,
-        "competition_level": "competitive_club"})
+        "competition_level": "competitive_club"}, headers=auth_headers("parent", parent_id=pid))
     aid = a.json()["id"]
     client.post("/api/events/", json={
         "athlete_id": aid, "event_name": "Game", "event_type": "game",
-        "event_date": TODAY, "start_time": "10:00", "duration_hours": 1.5})
+        "event_date": TODAY, "start_time": "10:00", "duration_hours": 1.5},
+        headers=auth_headers("athlete", athlete_id=aid))
     return aid
 
 

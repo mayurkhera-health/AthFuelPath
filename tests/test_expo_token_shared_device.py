@@ -63,7 +63,7 @@ def _make_family(client):
     a = client.post("/api/athletes/", json={
         "parent_id": parent_id, "first_name": "A", "age": 15, "gender": "girl",
         "weight_lbs": 110, "height_ft": 5, "height_in": 6,
-    })
+    }, headers=auth_headers("parent", parent_id=parent_id))
     assert a.status_code == 201, a.text
     return parent_id, a.json()["id"]
 

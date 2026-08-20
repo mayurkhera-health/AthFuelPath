@@ -64,8 +64,11 @@ def get_approved_sources():
 
 
 @router.get("/health")
-def coach_health():
-    """Diagnostics for the Nutrition Coach pipeline (no admin key required)."""
+def coach_health(x_admin_key: Optional[str] = Header(None)):
+    """Diagnostics for the Nutrition Coach pipeline. Reveals Bedrock config
+    status and content counts, so it's gated behind the same knowledge-admin
+    key as this file's other management endpoints."""
+    _require_admin(x_admin_key)
     from api.services.bedrock_client import is_configured, model_id
     from api.database import get_conn
 

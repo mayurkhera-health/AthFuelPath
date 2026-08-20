@@ -1,9 +1,9 @@
 import psycopg
-import urllib.request
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List
 from api.models import EventCreate, EventUpdate, EventResponse, ActivityTypePatch
 from api.database import get_conn
+from api.services import ics_sync
 from api.services.window_templates import on_event_added_or_changed
 from api.services.nutrition_calc import derive_intensity
 from api.services.session_auth import require_session, assert_owns_athlete
@@ -12,30 +12,28 @@ router = APIRouter()
 
 
 @router.get("/fetch-ics")
-def fetch_ics(url: str):
-    # BYGA (and many calendar apps) hand out webcal:// subscription links. That's
-    # just http(s) over the calendar scheme — normalize to https:// so urllib can
-    # fetch it. Defense-in-depth: the client normalizes too, but a webcal:// link
-    # pasted straight through must still work.
-    if url.startswith("webcal://"):
-        url = "https://" + url[len("webcal://"):]
-    elif url.startswith("webcals://"):
-        url = "https://" + url[len("webcals://"):]
-    if not url.startswith("http"):
-        raise HTTPException(400, "Invalid URL.")
+def fetch_ics(url: str, identity=Depends(require_session)):
+    # Reuses ics_sync.fetch_ics_text — same webcal:// normalization + SSRF guard
+    # (host re-validated on every redirect hop, rejects loopback/private/
+    # link-local/reserved/multicast/unspecified addresses, incl. the cloud
+    # metadata IP) already relied on by the authenticated calendar-sync route.
+    # No athlete_id is involved here (this is a standalone URL preview/validate
+    # fetch), so require_session alone — not assert_owns_athlete — is the
+    # correct gate: it just needs a real caller, not a specific ownership check.
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "AthFuelPath/1.0"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            content = resp.read().decode("utf-8", errors="replace")
+        content = ics_sync.fetch_ics_text(url)
         return {"content": content}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(502, f"Could not fetch calendar: {str(e)}")
 
 
 @router.post("/", response_model=EventResponse, status_code=201)
-def create_event(data: EventCreate):
+def create_event(data: EventCreate, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, data.athlete_id, conn)
         athlete = conn.execute(
             "SELECT id, competition_level FROM athletes WHERE id = %s", (data.athlete_id,)
         ).fetchone()

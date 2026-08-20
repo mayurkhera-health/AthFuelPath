@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from datetime import date, timedelta
 from api.models import MealPlanSlotUpdate, MealPlanLogSlot, MealPlanGenerateRequest
 from api.database import get_conn
 from api.services import recipe_db, claude_ai
 from api.services.meal_timing import compute_meal_slots
+from api.services.session_auth import require_session, assert_owns_athlete
 from api.utils.week import get_week_start
 
 router = APIRouter()
@@ -99,9 +100,10 @@ def _build_week(athlete_id: int, week_start: date, conn) -> list:
 
 
 @router.get("/{athlete_id}")
-def get_meal_plan(athlete_id: int, week_start: str = Query(None)):
+def get_meal_plan(athlete_id: int, week_start: str = Query(None), identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         if not conn.execute("SELECT id FROM athletes WHERE id = %s", (athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
 
@@ -117,9 +119,10 @@ def get_meal_plan(athlete_id: int, week_start: str = Query(None)):
 
 
 @router.put("/{athlete_id}/slot")
-def set_slot(athlete_id: int, data: MealPlanSlotUpdate):
+def set_slot(athlete_id: int, data: MealPlanSlotUpdate, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         if not conn.execute("SELECT id FROM athletes WHERE id = %s", (athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
 
@@ -153,9 +156,10 @@ def set_slot(athlete_id: int, data: MealPlanSlotUpdate):
 
 
 @router.delete("/{athlete_id}/slot")
-def clear_slot(athlete_id: int, plan_date: str = Query(...), slot_name: str = Query(...)):
+def clear_slot(athlete_id: int, plan_date: str = Query(...), slot_name: str = Query(...), identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         conn.execute(
             "DELETE FROM meal_plans WHERE athlete_id = %s AND plan_date = %s AND slot_name = %s",
             (athlete_id, plan_date, slot_name),
@@ -167,9 +171,10 @@ def clear_slot(athlete_id: int, plan_date: str = Query(...), slot_name: str = Qu
 
 
 @router.post("/{athlete_id}/log-slot")
-def log_slot(athlete_id: int, data: MealPlanLogSlot):
+def log_slot(athlete_id: int, data: MealPlanLogSlot, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         row = conn.execute(
             "SELECT * FROM meal_plans WHERE athlete_id = %s AND plan_date = %s AND slot_name = %s",
             (athlete_id, data.plan_date, data.slot_name),
@@ -202,9 +207,10 @@ def log_slot(athlete_id: int, data: MealPlanLogSlot):
 
 
 @router.post("/generate")
-def generate_plan(data: MealPlanGenerateRequest):
+def generate_plan(data: MealPlanGenerateRequest, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, data.athlete_id, conn)
         athlete_row = conn.execute("SELECT * FROM athletes WHERE id = %s", (data.athlete_id,)).fetchone()
         if not athlete_row:
             raise HTTPException(404, "Athlete not found.")

@@ -87,7 +87,8 @@ def _athlete_payload(parent_id, **overrides):
 
 def test_food_preferences_round_trips_create_and_get(client):
     pref = "prefers crunchy textures, dislikes mushy foods"
-    r = client.post("/api/athletes/", json=_athlete_payload(client.parent_id))
+    r = client.post("/api/athletes/", json=_athlete_payload(client.parent_id),
+                    headers=auth_headers("parent", parent_id=client.parent_id))
     assert r.status_code == 201, r.text
     created = r.json()
     assert created["food_preferences"] == pref
@@ -101,6 +102,7 @@ def test_food_preferences_round_trips_create_and_get(client):
 
 
 def test_food_preferences_nullable_on_create(client):
-    r = client.post("/api/athletes/", json=_athlete_payload(client.parent_id, food_preferences=None))
+    r = client.post("/api/athletes/", json=_athlete_payload(client.parent_id, food_preferences=None),
+                    headers=auth_headers("parent", parent_id=client.parent_id))
     assert r.status_code == 201, r.text
     assert r.json()["food_preferences"] is None

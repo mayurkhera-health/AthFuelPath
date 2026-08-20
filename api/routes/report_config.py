@@ -1,3 +1,5 @@
+import hmac
+
 from fastapi import APIRouter, Depends, HTTPException
 from api.database import get_conn
 from api.services.session_auth import require_session
@@ -16,7 +18,7 @@ def _require_admin(identity, conn):
     if identity.role != "parent":
         raise HTTPException(403, "Admin access required.")
     row = conn.execute("SELECT email FROM parents WHERE id = %s", (identity.parent_id,)).fetchone()
-    if not row or dict(row)["email"].strip().lower() != _ADMIN_EMAIL:
+    if not row or not hmac.compare_digest(dict(row)["email"].strip().lower(), _ADMIN_EMAIL):
         raise HTTPException(403, "Admin access required.")
 
 

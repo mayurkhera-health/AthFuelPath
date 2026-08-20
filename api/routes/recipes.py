@@ -152,9 +152,10 @@ def list_categories():
 
 
 @router.post("/generate")
-def generate_recipe(req: RecipeGenerateRequest):
+def generate_recipe(req: RecipeGenerateRequest, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, req.athlete_id, conn)
         row = conn.execute("SELECT * FROM athletes WHERE id = %s", (req.athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
@@ -504,9 +505,10 @@ def get_recipe(recipe_id: str):
 
 
 @router.post("/swap")
-def picky_eater_swap(req: RecipeSwapRequest):
+def picky_eater_swap(req: RecipeSwapRequest, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, req.athlete_id, conn)
         row = conn.execute("SELECT * FROM athletes WHERE id = %s", (req.athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")

@@ -129,14 +129,14 @@ def _make_athlete_and_event(client, *, city=None, latitude=None, longitude=None,
     a = client.post("/api/athletes/", json={
         "parent_id": parent_id, "first_name": "Alex", "age": 14, "gender": "girl",
         "weight_lbs": 110, "height_ft": 5, "height_in": 6, "competition_level": "competitive_club",
-    })
+    }, headers=auth_headers("parent", parent_id=parent_id))
     assert a.status_code == 201, a.text
     athlete_id = a.json()["id"]
     ev = client.post("/api/events/", json={
         "athlete_id": athlete_id, "event_name": "Big Game", "event_type": event_type,
         "event_date": "2026-08-01", "duration_hours": 1.5,
         "city": city, "latitude": latitude, "longitude": longitude,
-    })
+    }, headers=auth_headers("athlete", athlete_id=athlete_id))
     assert ev.status_code == 201, ev.text
     return athlete_id, ev.json()["id"]
 
@@ -204,7 +204,7 @@ def test_sweat_route_404_for_missing_event(client):
     a = client.post("/api/athletes/", json={
         "parent_id": parent_id, "first_name": "Alex", "age": 14, "gender": "girl",
         "weight_lbs": 110, "height_ft": 5, "height_in": 6,
-    })
+    }, headers=auth_headers("parent", parent_id=parent_id))
     athlete_id = a.json()["id"]
     r = client.post("/api/nutrition/sweat", json={"athlete_id": athlete_id, "event_id": 999999},
                      headers=auth_headers("athlete", athlete_id=athlete_id))

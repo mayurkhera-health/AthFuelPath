@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from api.models import AthleteCreate, AthleteResponse
 from api.database import get_conn
-from api.services.session_auth import require_session, assert_owns_athlete
+from api.services.session_auth import require_session, assert_owns_athlete, assert_owns_parent
 from api.services.nutrition_calc import (
     calc_daily_targets, calc_age, calc_rmr,
     lbs_to_kg, ft_in_to_cm, _normalize_sex,
@@ -97,7 +97,8 @@ def _persist_blueprint(conn, athlete_id: int, blueprint: dict) -> None:
 
 
 @router.post("/", response_model=AthleteResponse, status_code=201)
-def create_athlete(data: AthleteCreate, background_tasks: BackgroundTasks):
+def create_athlete(data: AthleteCreate, background_tasks: BackgroundTasks, identity=Depends(require_session)):
+    assert_owns_parent(identity, data.parent_id)
     if not (13 <= data.age <= 17):
         raise HTTPException(400, "AthFuelPath is designed for athletes ages 13-17.")
     conn = get_conn()

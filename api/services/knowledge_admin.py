@@ -6,6 +6,7 @@ into this public source tree, effectively no real protection at all. This
 fails closed instead: a missing key rejects every request rather than
 silently accepting a guessable default.
 """
+import hmac
 import os
 from typing import Optional
 
@@ -16,5 +17,5 @@ def require_knowledge_admin_key(x_admin_key: Optional[str] = Header(None)) -> No
     real_key = os.getenv("KNOWLEDGE_ADMIN_KEY")
     if not real_key:
         raise HTTPException(500, "Admin key is not configured on this server.")
-    if x_admin_key != real_key:
+    if not x_admin_key or not hmac.compare_digest(x_admin_key, real_key):
         raise HTTPException(403, "Admin key required. Pass X-Admin-Key header.")

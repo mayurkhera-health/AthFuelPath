@@ -32,7 +32,7 @@ def _make_parent_and_athlete(client):
     a = client.post("/api/athletes/", json={
         "parent_id": pid, "first_name": "A", "age": 14, "gender": "boy",
         "weight_lbs": 120, "height_ft": 5, "height_in": 4,
-    })
+    }, headers=auth_headers("parent", parent_id=pid))
     return a.json()["id"]
 
 
@@ -42,7 +42,7 @@ def test_create_event_stores_activity_type(client):
         "athlete_id": aid, "event_name": "Speed work", "event_type": "practice",
         "event_date": "2026-06-27", "start_time": "15:00", "duration_hours": 1.0,
         "activity_type": "speed_sprint",
-    })
+    }, headers=auth_headers("athlete", athlete_id=aid))
     assert r.status_code == 201, r.text
     assert r.json()["activity_type"] == "speed_sprint"
 
@@ -52,7 +52,7 @@ def test_create_event_activity_type_defaults_null(client):
     r = client.post("/api/events/", json={
         "athlete_id": aid, "event_name": "Mystery", "event_type": "practice",
         "event_date": "2026-06-27", "start_time": "15:00", "duration_hours": 1.0,
-    })
+    }, headers=auth_headers("athlete", athlete_id=aid))
     assert r.status_code == 201
     assert r.json()["activity_type"] is None
 
@@ -62,7 +62,7 @@ def test_patch_tags_activity_type(client):
     ev = client.post("/api/events/", json={
         "athlete_id": aid, "event_name": "Mystery", "event_type": "practice",
         "event_date": "2026-06-27", "start_time": "15:00", "duration_hours": 1.0,
-    }).json()
+    }, headers=auth_headers("athlete", athlete_id=aid)).json()
     r = client.patch(
         f"/api/events/{ev['id']}/activity-type", json={"activity_type": "game"},
         headers=auth_headers("athlete", athlete_id=aid),
@@ -76,7 +76,7 @@ def test_patch_rejects_invalid_activity_type(client):
     ev = client.post("/api/events/", json={
         "athlete_id": aid, "event_name": "X", "event_type": "practice",
         "event_date": "2026-06-27", "start_time": "15:00", "duration_hours": 1.0,
-    }).json()
+    }, headers=auth_headers("athlete", athlete_id=aid)).json()
     r = client.patch(
         f"/api/events/{ev['id']}/activity-type", json={"activity_type": "bogus"},
         headers=auth_headers("athlete", athlete_id=aid),

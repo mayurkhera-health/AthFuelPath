@@ -10,9 +10,10 @@ router = APIRouter()
 
 
 @router.get("/targets/{athlete_id}")
-def get_targets(athlete_id: int, date: str = None, event_type: str = None):
+def get_targets(athlete_id: int, date: str = None, event_type: str = None, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         row = conn.execute("SELECT * FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Athlete not found.")
@@ -96,9 +97,10 @@ def calculate_sweat(req: SweatOutputRequest, identity=Depends(require_session)):
 
 
 @router.get("/timing/{athlete_id}")
-def get_meal_timing(athlete_id: int, date: str = None, event_type: str = None):
+def get_meal_timing(athlete_id: int, date: str = None, event_type: str = None, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         if not conn.execute("SELECT id FROM athletes WHERE id = %s", (athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
         target_date = date or str(dt_date.today())

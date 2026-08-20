@@ -92,7 +92,8 @@ class TestCreateAthletePhone:
         pid = _make_parent(conn)
         conn.close()
 
-        r = client.post("/api/athletes/", json=_athlete_body(pid, phone="(408) 555-1234"))
+        r = client.post("/api/athletes/", json=_athlete_body(pid, phone="(408) 555-1234"),
+                        headers=auth_headers("parent", parent_id=pid))
         assert r.status_code == 201, r.text
         data = r.json()
         assert data["phone"] == "(408) 555-1234"
@@ -107,7 +108,8 @@ class TestCreateAthletePhone:
         pid = _make_parent(conn)
         conn.close()
 
-        r = client.post("/api/athletes/", json=_athlete_body(pid))
+        r = client.post("/api/athletes/", json=_athlete_body(pid),
+                        headers=auth_headers("parent", parent_id=pid))
         assert r.status_code == 201, r.text
         assert r.json()["phone"] is None
 
@@ -116,7 +118,8 @@ class TestCreateAthletePhone:
         pid = _make_parent(conn)
         conn.close()
 
-        r = client.post("/api/athletes/", json=_athlete_body(pid, phone="123"))
+        r = client.post("/api/athletes/", json=_athlete_body(pid, phone="123"),
+                        headers=auth_headers("parent", parent_id=pid))
         assert r.status_code == 422, r.text
 
     def test_phone_digits_only_accepted(self, client):
@@ -125,7 +128,8 @@ class TestCreateAthletePhone:
         pid = _make_parent(conn)
         conn.close()
 
-        r = client.post("/api/athletes/", json=_athlete_body(pid, phone="4085551234"))
+        r = client.post("/api/athletes/", json=_athlete_body(pid, phone="4085551234"),
+                        headers=auth_headers("parent", parent_id=pid))
         assert r.status_code == 201, r.text
 
 
@@ -136,7 +140,8 @@ class TestUpdateAthletePhone:
         conn = get_conn()
         pid = _make_parent(conn)
         conn.close()
-        r = client.post("/api/athletes/", json=_athlete_body(pid))
+        r = client.post("/api/athletes/", json=_athlete_body(pid),
+                        headers=auth_headers("parent", parent_id=pid))
         assert r.status_code == 201, r.text
         return r.json()
 
@@ -160,7 +165,8 @@ class TestUpdateAthletePhone:
         conn = get_conn()
         pid = _make_parent(conn)
         conn.close()
-        r = client.post("/api/athletes/", json=_athlete_body(pid, phone="(408) 555-1234"))
+        r = client.post("/api/athletes/", json=_athlete_body(pid, phone="(408) 555-1234"),
+                        headers=auth_headers("parent", parent_id=pid))
         athlete = r.json()
 
         payload = {k: v for k, v in athlete.items() if k != "phone"}

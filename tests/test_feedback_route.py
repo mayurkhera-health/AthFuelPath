@@ -10,6 +10,7 @@ from db.setup import init_db
 from api.services.db_migrations import run_all
 from api.database import get_conn
 from api.main import app
+from tests.conftest import auth_headers
 import api.routes.feedback as feedback
 
 
@@ -44,7 +45,7 @@ def _make_parent_athlete(client):
     a = client.post("/api/athletes/", json={
         "parent_id": parent_id, "first_name": "A", "age": 14, "gender": "girl",
         "weight_lbs": 110, "height_ft": 5, "height_in": 6, "competition_level": "Recreational",
-    })
+    }, headers=auth_headers("parent", parent_id=parent_id))
     assert a.status_code == 201, a.text
     return email, a.json()["id"]
 

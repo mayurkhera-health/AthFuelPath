@@ -42,7 +42,7 @@ def _make_athlete(client, **extra):
         "parent_id": pid, "first_name": "A", "age": 15, "gender": "girl",
         "weight_lbs": 110, "height_ft": 5, "height_in": 6, **extra,
     }
-    a = client.post("/api/athletes/", json=body)
+    a = client.post("/api/athletes/", json=body, headers=auth_headers("parent", parent_id=pid))
     return a.json()["id"]
 
 

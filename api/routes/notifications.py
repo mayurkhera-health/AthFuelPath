@@ -98,11 +98,12 @@ class FuelIQNotifPrefs(BaseModel):
 
 
 @router.patch("/fueliq-prefs")
-def update_fueliq_notif_prefs(data: FuelIQNotifPrefs):
+def update_fueliq_notif_prefs(data: FuelIQNotifPrefs, identity=Depends(require_session)):
     """Upsert per-athlete Fuel IQ notification prefs. Called by the mobile
     settings screen whenever either toggle changes."""
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, data.athlete_id, conn)
         conn.execute(
             """INSERT INTO fueliq_notification_prefs (athlete_id, morning_enabled, pregame_enabled)
                VALUES (%s, %s, %s)

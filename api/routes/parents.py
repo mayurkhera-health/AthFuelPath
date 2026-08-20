@@ -40,7 +40,8 @@ def create_parent(data: ParentCreate):
 
 
 @router.post("/{parent_id}/confirm")
-def confirm_consent(parent_id: int):
+def confirm_consent(parent_id: int, identity=Depends(require_session)):
+    assert_owns_parent(identity, parent_id)
     conn = get_conn()
     try:
         row = conn.execute("SELECT * FROM parents WHERE id = %s", (parent_id,)).fetchone()
@@ -143,29 +144,6 @@ def verify_otp(data: OTPVerify):
     finally:
         conn.close()
 
-
-@router.delete("/test-reset")
-def test_reset(email: str):
-    """Delete all data for a test email — only permitted for test@gmail.com."""
-    if email.strip().lower() != "test@gmail.com":
-        raise HTTPException(403, "Test reset is only permitted for test@gmail.com.")
-    conn = get_conn()
-    try:
-        parent = conn.execute("SELECT id FROM parents WHERE email = %s", (email.strip().lower(),)).fetchone()
-        if parent:
-            parent_id = dict(parent)["id"]
-            athletes = conn.execute("SELECT id FROM athletes WHERE parent_id = %s", (parent_id,)).fetchall()
-            for a in athletes:
-                athlete_id = dict(a)["id"]
-                conn.execute("DELETE FROM meal_logs WHERE athlete_id = %s", (athlete_id,))
-                conn.execute("DELETE FROM events WHERE athlete_id = %s", (athlete_id,))
-                conn.execute("DELETE FROM daily_targets WHERE athlete_id = %s", (athlete_id,))
-            conn.execute("DELETE FROM athletes WHERE parent_id = %s", (parent_id,))
-            conn.execute("DELETE FROM parents WHERE id = %s", (parent_id,))
-            conn.commit()
-        return {"message": "Test data cleared."}
-    finally:
-        conn.close()
 
 
 @router.delete("/{parent_id}")

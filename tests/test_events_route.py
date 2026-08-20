@@ -34,7 +34,7 @@ def _make_athlete(client, level):
     a = client.post("/api/athletes/", json={
         "parent_id": parent_id, "first_name": "A", "age": 14, "gender": "girl",
         "weight_lbs": 110, "height_ft": 5, "height_in": 6, "competition_level": level,
-    })
+    }, headers=auth_headers("parent", parent_id=parent_id))
     assert a.status_code == 201, a.text
     return a.json()["id"]
 
@@ -44,7 +44,7 @@ def test_explicit_intensity_is_stored(client):
     r = client.post("/api/events/", json={
         "athlete_id": aid, "event_name": "Game", "event_type": "game",
         "event_date": "2026-06-21", "intensity": "High",
-    })
+    }, headers=auth_headers("athlete", athlete_id=aid))
     assert r.status_code == 201, r.text
     assert r.json()["intensity"] == "high"
 
@@ -54,7 +54,7 @@ def test_omitted_intensity_is_derived(client):
     r = client.post("/api/events/", json={
         "athlete_id": aid, "event_name": "Game", "event_type": "game",
         "event_date": "2026-06-21",
-    })
+    }, headers=auth_headers("athlete", athlete_id=aid))
     assert r.status_code == 201, r.text
     assert r.json()["intensity"] == "high"  # Elite Club game
 
@@ -67,7 +67,7 @@ def test_venue_location_round_trips(client):
         "venue_name": "Mustang Soccer Complex",
         "address": "1 Camino Ramon, San Ramon, CA",
         "latitude": 37.78, "longitude": -121.98,
-    })
+    }, headers=auth_headers("athlete", athlete_id=aid))
     assert r.status_code == 201, r.text
     body = r.json()
     assert body["venue_name"] == "Mustang Soccer Complex"
@@ -89,7 +89,7 @@ def test_rest_event_derives_low_for_elite(client):
     r = client.post("/api/events/", json={
         "athlete_id": aid, "event_name": "Yoga", "event_type": "rest",
         "event_date": "2026-06-22",
-    })
+    }, headers=auth_headers("athlete", athlete_id=aid))
     assert r.status_code == 201, r.text
     assert r.json()["intensity"] == "low"
 
@@ -133,7 +133,7 @@ def test_can_edit_manual_event(client):
     created = client.post("/api/events/", json={
         "athlete_id": aid, "event_name": "Private Coaching", "event_type": "training",
         "event_date": "2026-07-15", "start_time": "19:00",
-    })
+    }, headers=auth_headers("athlete", athlete_id=aid))
     assert created.status_code == 201, created.text
     eid = created.json()["id"]
     r = client.put(
@@ -149,7 +149,7 @@ def test_can_delete_manual_event(client):
     created = client.post("/api/events/", json={
         "athlete_id": aid, "event_name": "One-time Training", "event_type": "training",
         "event_date": "2026-07-14", "start_time": "17:00",
-    })
+    }, headers=auth_headers("athlete", athlete_id=aid))
     assert created.status_code == 201, created.text
     eid = created.json()["id"]
     assert client.delete(
@@ -159,16 +159,17 @@ def test_can_delete_manual_event(client):
 
 def test_targets_reflect_event_intensity(client):
     aid = _make_athlete(client, "Recreational")
+    headers = auth_headers("athlete", athlete_id=aid)
     # Recreational would derive "low" for a game; send explicit "high" to prove threading
     client.post("/api/events/", json={
         "athlete_id": aid, "event_name": "Game", "event_type": "game",
         "event_date": "2026-07-01", "intensity": "high",
-    })
-    r = client.get(f"/api/nutrition/targets/{aid}?date=2026-07-01")
+    }, headers=headers)
+    r = client.get(f"/api/nutrition/targets/{aid}?date=2026-07-01", headers=headers)
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["intensity"] == "high"
     # A date with no event -> rest, no intensity -> full band (intensity None)
-    r2 = client.get(f"/api/nutrition/targets/{aid}?date=2026-07-02")
+    r2 = client.get(f"/api/nutrition/targets/{aid}?date=2026-07-02", headers=headers)
     assert r2.status_code == 200, r2.text
     assert r2.json().get("intensity") is None

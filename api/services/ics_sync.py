@@ -59,18 +59,36 @@ def normalize_calendar_url(url: str) -> str:
 _MAX_REDIRECTS = 5
 
 
+def _is_disallowed_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    return (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+            or ip.is_multicast or ip.is_unspecified)
+
+
 def _is_public_host(host: str) -> bool:
-    """SSRF guard — reject any host that resolves to a private/loopback/link-local/
-    reserved IP (RFC 1918, 169.254.0.0/16 cloud-metadata range, ::1, etc). Real BYGA/
-    PlayMetrics feeds resolve to public hosting and pass through untouched; this only
-    blocks a submitted URL from reaching internal infrastructure."""
+    """SSRF guard — reject any host that is (or resolves to) a private/loopback/
+    link-local/reserved IP (RFC 1918, 169.254.0.0/16 cloud-metadata range, ::1,
+    etc). Real BYGA/PlayMetrics feeds resolve to public hosting and pass through
+    untouched; this only blocks a submitted URL from reaching internal
+    infrastructure.
+
+    A URL host that's already a literal IP address (e.g. "10.0.0.5") is checked
+    directly via ipaddress — deterministic, no network I/O. This matters
+    because routing a literal IP through socket.getaddrinfo() instead depends
+    on the host machine's resolver/VPN/proxy stack, which can behave
+    inconsistently for private ranges (observed: getaddrinfo misclassifying
+    RFC1918 literals as resolvable/"public" after other outbound network
+    activity on some machines) — a real bypass risk this avoids entirely for
+    the literal-IP case, not just a test artifact."""
+    try:
+        return not _is_disallowed_ip(ipaddress.ip_address(host))
+    except ValueError:
+        pass  # not a literal IP — a real hostname needing DNS resolution
     try:
         infos = socket.getaddrinfo(host, None)
     except socket.gaierror:
         return False
     for _, _, _, _, sockaddr in infos:
-        ip = ipaddress.ip_address(sockaddr[0])
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+        if _is_disallowed_ip(ipaddress.ip_address(sockaddr[0])):
             return False
     return True
 
