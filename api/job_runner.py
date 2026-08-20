@@ -74,7 +74,8 @@ def _run_quarter_hour() -> None:
 
 def _run_calendar_sync() -> None:
     from api.services.ics_sync import run_calendar_sync_tick
-    run_calendar_sync_tick()
+    from api.services.health_service import instrument_job
+    instrument_job("calendar_sync", run_calendar_sync_tick)()
 
 
 def _run_health_daily() -> None:
