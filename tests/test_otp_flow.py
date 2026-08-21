@@ -13,6 +13,7 @@ import os
 os.environ["DB_PATH"] = ":memory:"
 
 from datetime import datetime, timedelta
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -100,6 +101,32 @@ def test_request_otp_resend_within_60s_is_rate_limited(client):
     assert r1.status_code == 200, r1.text
     r2 = client.post("/api/parents/request-otp", json={"email": "parent1@example.com"})
     assert r2.status_code == 429, r2.text
+
+
+def test_request_otp_gmail_failure_returns_controlled_error_not_false_success(client):
+    make_parent("parent1@example.com")
+    with patch("api.routes.parents.send_otp_email", return_value=False):
+        r = client.post("/api/parents/request-otp", json={"email": "parent1@example.com"})
+    assert r.status_code == 502, r.text
+    assert r.status_code != 200
+    assert "sent" not in r.json().get("detail", "").lower()
+
+
+def test_request_otp_gmail_failure_cleans_up_otp_and_allows_immediate_retry(client):
+    make_parent("parent1@example.com")
+
+    with patch("api.routes.parents.send_otp_email", return_value=False):
+        r1 = client.post("/api/parents/request-otp", json={"email": "parent1@example.com"})
+    assert r1.status_code == 502, r1.text
+
+    # The failed-send OTP must not remain usable — no row left behind at all.
+    assert latest_otp_row("parent1@example.com") is None
+
+    # An immediate follow-up request must NOT be blocked by the 60s cooldown
+    # (the failed-send row must not count toward it) and should succeed.
+    r2 = client.post("/api/parents/request-otp", json={"email": "parent1@example.com"})
+    assert r2.status_code == 200, r2.text
+    assert latest_otp_row("parent1@example.com") is not None
 
 
 # --- verify-otp: success path, consumed_at, attempts --------------------

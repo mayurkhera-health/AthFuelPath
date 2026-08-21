@@ -106,13 +106,20 @@ def request_otp(data: OTPRequest):
         code_hash = hashlib.sha256(code.encode()).hexdigest()
         expires_at = (datetime.utcnow() + timedelta(minutes=10)).isoformat()
 
-        conn.execute(
-            "INSERT INTO otp_codes (parent_id, email, code_hash, expires_at) VALUES (%s, %s, %s, %s)",
+        inserted = conn.execute(
+            "INSERT INTO otp_codes (parent_id, email, code_hash, expires_at) VALUES (%s, %s, %s, %s) RETURNING id",
             (parent_id, email, code_hash, expires_at),
-        )
+        ).fetchone()
         conn.commit()
 
-        send_otp_email(email, code)
+        if not send_otp_email(email, code):
+            # Delivery failed — this OTP was never seen by anyone, so it must
+            # not remain valid, count toward the 60s resend cooldown, or sit
+            # around as an extra "outstanding" row for a later verify-otp
+            # call. Remove it and let the caller retry cleanly.
+            conn.execute("DELETE FROM otp_codes WHERE id = %s", (dict(inserted)["id"],))
+            conn.commit()
+            raise HTTPException(502, "Could not send the code right now. Please try again shortly.")
         return {"message": "A 6-digit code has been sent to your email."}
     finally:
         conn.close()

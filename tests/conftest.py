@@ -35,6 +35,7 @@ os.environ.setdefault("DATABASE_URL", "postgresql:///athfuelpath_test")
 
 from api import database as _dbmod
 from api.services import email_service
+from api.services import email as _otp_email_module
 from api.services import weather as _weathermod
 from db.postgres_migrate import run_migrations
 from db.postgres_seeds import seed_report_config, seed_health_checks, seed_fueling_foods
@@ -78,8 +79,15 @@ def _no_real_email(monkeypatch):
     reads real GMAIL_USER/GMAIL_APP_PASSWORD from the environment — with no guard
     here, any test exercising a route that sends a transactional email would send a
     REAL message via smtplib.
+
+    api.services.email (send_otp_email) imports send_email via `from
+    api.services.email_service import send_email` — a separate bound name in
+    its own module namespace, which patching email_service.send_email alone
+    does NOT affect. Patch it there too, or any test hitting /request-otp
+    without its own explicit mock would attempt a real Gmail send.
     """
     monkeypatch.setattr(email_service, "send_email", lambda *a, **k: True)
+    monkeypatch.setattr(_otp_email_module, "send_email", lambda *a, **k: True)
 
 
 @pytest.fixture(autouse=True, scope="session")

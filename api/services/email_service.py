@@ -28,6 +28,7 @@ def send_email(
     attachment_path: str | None = None,
     html: str | None = None,
     bcc: list[str] | None = None,
+    from_name: str | None = None,
 ) -> bool:
     """
     Send an email to `to`. `body` is the plaintext part; when `html` is provided
@@ -37,6 +38,11 @@ def send_email(
     `bcc` — blind-copy recipients. They receive the message but are not shown in
     the visible headers (smtplib.send_message delivers to Bcc, then strips the
     header before transmission).
+
+    `from_name` — overrides the display name shown in the From header for this
+    send only (the address itself is always GMAIL_USER). Defaults to the
+    existing `_FROM_NAME` ("Purvi Shah") when omitted, so existing callers are
+    unaffected.
 
     `attachment_path` — when provided and readable, the file is attached as an
     image (the body stays plain text). A missing/unreadable attachment is logged
@@ -54,7 +60,7 @@ def send_email(
     try:
         msg = EmailMessage()
         msg["Subject"] = subject
-        msg["From"] = formataddr((_FROM_NAME, user))
+        msg["From"] = formataddr((from_name or _FROM_NAME, user))
         msg["To"] = ", ".join(to)
         if bcc:
             msg["Bcc"] = ", ".join(bcc)
