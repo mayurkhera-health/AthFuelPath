@@ -155,7 +155,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS otp_codes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             parent_id INTEGER REFERENCES parents(id) ON DELETE CASCADE,
-            email TEXT NOT NULL,
+            email TEXT,
             code_hash TEXT NOT NULL,
             expires_at TEXT NOT NULL,
             used INTEGER DEFAULT 0,

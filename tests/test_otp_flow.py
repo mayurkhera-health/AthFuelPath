@@ -156,3 +156,76 @@ def test_verify_otp_matches_either_of_two_outstanding_valid_codes(client):
     # The OLDER code must still work even though a newer one was issued later.
     r = client.post("/api/parents/verify-otp", json={"email": "parent1@example.com", "code": "111111"})
     assert r.status_code == 200, r.text
+
+
+# --- deployment safety: email is nullable, not NOT NULL ------------------
+#
+# The migration adds `email` as nullable (not NOT NULL) specifically so the
+# currently-deployed Phase 0 Cloud Run revision — which still inserts
+# otp_codes rows with no email value at all — keeps working during a
+# rolling deploy where the old revision and the new schema are briefly
+# live together. These tests prove that property directly against the
+# real schema, independent of any application code path.
+
+def _insert_legacy_phase0_row(parent_id, code, *, expires_in_minutes=10):
+    """Simulate exactly what the currently-deployed Phase 0 revision's
+    INSERT statement does: parent_id + code_hash + expires_at only, no
+    email column at all."""
+    code_hash = hashlib.sha256(code.encode()).hexdigest()
+    expires_at = (datetime.utcnow() + timedelta(minutes=expires_in_minutes)).isoformat()
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO otp_codes (parent_id, code_hash, expires_at) VALUES (%s, %s, %s)",
+            (parent_id, code_hash, expires_at),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_legacy_phase0_row_with_no_email_remains_valid_after_migration(client):
+    parent_id = make_parent("parent1@example.com")
+    # Must not raise (would violate a NOT NULL constraint on email if one
+    # existed) — this is the core deployment-safety property.
+    _insert_legacy_phase0_row(parent_id, "999999")
+
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT * FROM otp_codes WHERE parent_id = %s ORDER BY created_at DESC LIMIT 1",
+            (parent_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    row = dict(row)
+    assert row["email"] is None
+    assert row["parent_id"] == parent_id
+    assert row["attempts"] == 0  # DEFAULT 0 still applies to legacy inserts
+
+
+def test_legacy_row_is_backfilled_to_normalized_email_by_migration_sql(client):
+    parent_id = make_parent("Parent1@Example.com")
+    _insert_legacy_phase0_row(parent_id, "999999")
+
+    # Re-run the exact backfill statement from
+    # db/postgres/002_otp_codes_email.sql to prove it correctly normalizes
+    # (lowercases) and populates email for a pre-existing, email-less row.
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            UPDATE otp_codes o
+            SET email = lower(p.email)
+            FROM parents p
+            WHERE o.parent_id = p.id AND o.email IS NULL
+            """
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM otp_codes WHERE parent_id = %s ORDER BY created_at DESC LIMIT 1",
+            (parent_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    assert dict(row)["email"] == "parent1@example.com"
