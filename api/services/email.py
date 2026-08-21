@@ -4,10 +4,11 @@ import os
 def send_otp_email(to_email: str, code: str) -> None:
     """Send OTP code via Resend. Falls back to console log in dev."""
     api_key = os.getenv("RESEND_API_KEY")
+    from_address = os.getenv("RESEND_FROM_ADDRESS", "AthFuelPath <onboarding@resend.dev>")
 
     if not api_key:
         print(f"\n{'='*40}")
-        print(f"  Fueling2Win OTP Code for {to_email}: {code}")
+        print(f"  AthFuelPath OTP Code for {to_email}: {code}")
         print(f"{'='*40}\n")
         return
 
@@ -15,12 +16,12 @@ def send_otp_email(to_email: str, code: str) -> None:
     resend.api_key = api_key
 
     resend.Emails.send({
-        "from": "Fueling2Win <onboarding@resend.dev>",
+        "from": from_address,
         "to": [to_email],
-        "subject": f"Your Fueling2Win sign-in code: {code}",
+        "subject": "Your AthFuelPath sign-in code",
         "html": f"""
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;">
-          <h2 style="color:#2d6a4f;margin:0 0 8px;">Your Fueling2Win sign-in code</h2>
+          <h2 style="color:#2d6a4f;margin:0 0 8px;">Your AthFuelPath sign-in code</h2>
           <p style="color:#4a6358;margin:0 0 24px;">
             Use this code to sign in. It expires in <strong>10 minutes</strong>.
           </p>
@@ -32,7 +33,7 @@ def send_otp_email(to_email: str, code: str) -> None:
           </div>
           <p style="color:#8aa898;font-size:12px;margin:0;">
             If you didn't request this, you can safely ignore this email.
-            Fueling2Win provides educational food guidance — not medical nutrition therapy.
+            AthFuelPath provides educational food guidance — not medical nutrition therapy.
           </p>
         </div>
         """,
