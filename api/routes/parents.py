@@ -1,6 +1,6 @@
 import hashlib
 import logging
-import random
+import secrets
 import psycopg
 from datetime import datetime, timedelta
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
@@ -76,6 +76,9 @@ def login(data: OTPRequest, request: Request):
         conn.close()
 
 
+_MAX_OTP_ATTEMPTS = 5
+
+
 @router.post("/request-otp")
 def request_otp(data: OTPRequest):
     email = data.email.strip().lower()
@@ -86,22 +89,26 @@ def request_otp(data: OTPRequest):
             raise HTTPException(404, "No account found with that email address.")
         parent_id = dict(parent)["id"]
 
-        # Rate limit: block if a code was issued in the last 60 seconds
-        cutoff = (datetime.utcnow() - timedelta(seconds=60)).isoformat()
+        # Rate limit: block if a code was issued in the last 60 seconds.
+        # created_at is DB-generated via sqlite_now() ('YYYY-MM-DD HH:MI:SS',
+        # no "T", no fractional seconds) — cutoff must match that exact
+        # format, not .isoformat(), or the lexicographic comparison silently
+        # never matches (see db/postgres/001_baseline.sql's sqlite_now()).
+        cutoff = (datetime.utcnow() - timedelta(seconds=60)).strftime("%Y-%m-%d %H:%M:%S")
         recent = conn.execute(
-            "SELECT id FROM otp_codes WHERE parent_id = %s AND created_at > %s AND used = 0",
-            (parent_id, cutoff),
+            "SELECT id FROM otp_codes WHERE email = %s AND created_at > %s AND used = 0",
+            (email, cutoff),
         ).fetchone()
         if recent:
             raise HTTPException(429, "A code was already sent. Please wait 60 seconds before requesting another.")
 
-        code = f"{random.randint(0, 999999):06d}"
+        code = f"{secrets.randbelow(1_000_000):06d}"
         code_hash = hashlib.sha256(code.encode()).hexdigest()
         expires_at = (datetime.utcnow() + timedelta(minutes=10)).isoformat()
 
         conn.execute(
-            "INSERT INTO otp_codes (parent_id, code_hash, expires_at) VALUES (%s, %s, %s)",
-            (parent_id, code_hash, expires_at),
+            "INSERT INTO otp_codes (parent_id, email, code_hash, expires_at) VALUES (%s, %s, %s, %s)",
+            (parent_id, email, code_hash, expires_at),
         )
         conn.commit()
 
@@ -126,15 +133,29 @@ def verify_otp(data: OTPVerify):
 
         row = conn.execute(
             """SELECT id FROM otp_codes
-               WHERE parent_id = %s AND code_hash = %s AND used = 0 AND expires_at > %s
+               WHERE email = %s AND used = 0 AND expires_at > %s AND attempts < %s
                ORDER BY created_at DESC LIMIT 1""",
-            (parent_id, code_hash, now),
+            (email, now, _MAX_OTP_ATTEMPTS),
         ).fetchone()
 
         if not row:
             raise HTTPException(401, "Invalid or expired code. Please request a new one.")
+        row_id = dict(row)["id"]
 
-        conn.execute("UPDATE otp_codes SET used = 1 WHERE id = %s", (dict(row)["id"],))
+        matched = conn.execute(
+            "SELECT id FROM otp_codes WHERE id = %s AND code_hash = %s",
+            (row_id, code_hash),
+        ).fetchone()
+
+        if not matched:
+            conn.execute("UPDATE otp_codes SET attempts = attempts + 1 WHERE id = %s", (row_id,))
+            conn.commit()
+            raise HTTPException(401, "Invalid or expired code. Please request a new one.")
+
+        conn.execute(
+            "UPDATE otp_codes SET used = 1, consumed_at = %s WHERE id = %s",
+            (now, row_id),
+        )
         conn.commit()
 
         athletes = conn.execute(

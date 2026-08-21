@@ -154,15 +154,18 @@ def init_db():
 
         CREATE TABLE IF NOT EXISTS otp_codes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            parent_id INTEGER NOT NULL REFERENCES parents(id) ON DELETE CASCADE,
+            parent_id INTEGER REFERENCES parents(id) ON DELETE CASCADE,
+            email TEXT NOT NULL,
             code_hash TEXT NOT NULL,
             expires_at TEXT NOT NULL,
             used INTEGER DEFAULT 0,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            consumed_at TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
-        CREATE INDEX IF NOT EXISTS idx_otp_parent
-            ON otp_codes(parent_id, used, expires_at);
+        CREATE INDEX IF NOT EXISTS idx_otp_email
+            ON otp_codes(email, used, expires_at);
 
         CREATE TABLE IF NOT EXISTS water_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
