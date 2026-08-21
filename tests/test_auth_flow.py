@@ -218,8 +218,12 @@ def test_parent_takes_precedence_over_athlete_login(client):
 
 
 # --- athlete-claim-lookup: token-free parent/athlete lookup (auth v2.1 Phase 0) ---
+# Tightened per 2026-08-20 security review: response is {athletes:[{id,first_name}]}
+# ONLY — no parent_name, no age, no full parent/athlete row, no session_token, and
+# no distinct error for an unknown email (same 200 {athletes: []} shape either way,
+# so the endpoint never discloses whether a given email has an account).
 
-def test_claim_lookup_returns_parent_name_and_athletes_no_token(client):
+def test_claim_lookup_returns_only_id_and_first_name_no_pii_no_token(client):
     pid = make_parent("parent1@example.com", full_name="Casey Parent")
     make_athlete(pid, "Alex")
     make_athlete(pid, "Sam")
@@ -227,36 +231,51 @@ def test_claim_lookup_returns_parent_name_and_athletes_no_token(client):
     r = client.post("/api/auth/athlete-claim-lookup", json={"parent_email": "parent1@example.com"})
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["parent_name"] == "Casey Parent"
+    assert set(body.keys()) == {"athletes"}
+    for athlete in body["athletes"]:
+        assert set(athlete.keys()) == {"id", "first_name"}
     names = sorted(a["first_name"] for a in body["athletes"])
     assert names == ["Alex", "Sam"]
-    assert "session_token" not in body
-    assert "parent" not in body  # no full parent row, no email, nothing beyond the name
 
 
 def test_claim_lookup_is_case_insensitive(client):
-    make_parent("parent1@example.com", full_name="Casey Parent")
+    pid = make_parent("parent1@example.com", full_name="Casey Parent")
+    make_athlete(pid, "Alex")
     r = client.post("/api/auth/athlete-claim-lookup", json={"parent_email": "Parent1@Example.COM"})
     assert r.status_code == 200, r.text
-    assert r.json()["parent_name"] == "Casey Parent"
+    assert r.json()["athletes"][0]["first_name"] == "Alex"
 
 
 def test_claim_lookup_parent_with_no_athletes_returns_empty_list(client):
     make_parent("lonely@example.com")
     r = client.post("/api/auth/athlete-claim-lookup", json={"parent_email": "lonely@example.com"})
     assert r.status_code == 200, r.text
-    assert r.json()["athletes"] == []
+    assert r.json() == {"athletes": []}
 
 
-def test_claim_lookup_unknown_email_404(client):
+def test_claim_lookup_unknown_email_returns_200_empty_list_not_404(client):
     r = client.post("/api/auth/athlete-claim-lookup", json={"parent_email": "nobody@example.com"})
-    assert r.status_code == 404, r.text
-    assert r.json()["detail"] == "No parent account was found for that email."
+    assert r.status_code == 200, r.text
+    assert r.json() == {"athletes": []}
+
+
+def test_claim_lookup_unknown_email_is_indistinguishable_from_zero_athletes(client):
+    # Same exact response shape for "no such parent" and "real parent, no kids yet" —
+    # the API contract must not let a caller tell these two cases apart.
+    make_parent("lonely@example.com")
+    zero_athletes_body = client.post(
+        "/api/auth/athlete-claim-lookup", json={"parent_email": "lonely@example.com"}
+    ).json()
+    unknown_email_body = client.post(
+        "/api/auth/athlete-claim-lookup", json={"parent_email": "nobody@example.com"}
+    ).json()
+    assert zero_athletes_body == unknown_email_body == {"athletes": []}
 
 
 def test_claim_lookup_athlete_email_is_not_a_parent_match(client):
     # An athlete's own login email must not resolve here — this endpoint only
-    # ever looks at the parents table.
+    # ever looks at the parents table. Same 200 {athletes: []} shape as any
+    # other non-match — no distinct error.
     pid = make_parent("parent1@example.com")
     aid = make_athlete(pid, "Alex")
     client.post(
@@ -264,4 +283,5 @@ def test_claim_lookup_athlete_email_is_not_a_parent_match(client):
         json={"email": "alex@example.com", "parent_email": "parent1@example.com"},
     )
     r = client.post("/api/auth/athlete-claim-lookup", json={"parent_email": "alex@example.com"})
-    assert r.status_code == 404, r.text
+    assert r.status_code == 200, r.text
+    assert r.json() == {"athletes": []}
