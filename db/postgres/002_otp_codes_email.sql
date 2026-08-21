@@ -13,9 +13,11 @@ SET email = lower(p.email)
 FROM parents p
 WHERE o.parent_id = p.id AND o.email IS NULL;
 
--- Orphaned rows (parent_id pointing at a deleted parent) can't be
--- backfilled — they're already-unusable expired/used codes with no
--- product value, so drop them rather than block the NOT NULL below.
+-- Safety net only: every existing row's parent_id has a matching parent (ON
+-- DELETE CASCADE prevents orphans), so the backfill above should populate
+-- every row's email and this DELETE should affect zero rows. Kept as a
+-- guard in case that invariant is ever violated, so a future NULL email
+-- can't silently violate the NOT NULL constraint below.
 DELETE FROM otp_codes WHERE email IS NULL;
 
 ALTER TABLE otp_codes ALTER COLUMN email SET NOT NULL;

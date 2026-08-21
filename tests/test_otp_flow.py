@@ -147,3 +147,12 @@ def test_verify_otp_expired_code_401s(client):
 def test_verify_otp_unknown_email_404(client):
     r = client.post("/api/parents/verify-otp", json={"email": "nobody@example.com", "code": "123456"})
     assert r.status_code == 404, r.text
+
+
+def test_verify_otp_matches_either_of_two_outstanding_valid_codes(client):
+    make_parent("parent1@example.com")
+    insert_otp_row("parent1@example.com", "111111")  # older
+    insert_otp_row("parent1@example.com", "222222")  # newer
+    # The OLDER code must still work even though a newer one was issued later.
+    r = client.post("/api/parents/verify-otp", json={"email": "parent1@example.com", "code": "111111"})
+    assert r.status_code == 200, r.text

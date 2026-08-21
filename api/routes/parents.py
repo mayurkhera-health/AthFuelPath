@@ -131,32 +131,29 @@ def verify_otp(data: OTPVerify):
             raise HTTPException(404, "No account found with that email address.")
         parent_id = dict(parent)["id"]
 
-        row = conn.execute(
-            """SELECT id FROM otp_codes
-               WHERE email = %s AND used = 0 AND expires_at > %s AND attempts < %s
-               ORDER BY created_at DESC LIMIT 1""",
-            (email, now, _MAX_OTP_ATTEMPTS),
+        success_row = conn.execute(
+            """UPDATE otp_codes SET used = 1, consumed_at = %s
+               WHERE email = %s AND used = 0 AND expires_at > %s AND code_hash = %s AND attempts < %s
+               RETURNING id""",
+            (now, email, now, code_hash, _MAX_OTP_ATTEMPTS),
         ).fetchone()
+        conn.commit()
 
-        if not row:
-            raise HTTPException(401, "Invalid or expired code. Please request a new one.")
-        row_id = dict(row)["id"]
-
-        matched = conn.execute(
-            "SELECT id FROM otp_codes WHERE id = %s AND code_hash = %s",
-            (row_id, code_hash),
-        ).fetchone()
-
-        if not matched:
-            conn.execute("UPDATE otp_codes SET attempts = attempts + 1 WHERE id = %s", (row_id,))
+        if not success_row:
+            # Wrong guess (or every outstanding code is expired/locked): atomically
+            # increment attempts on every still-valid row for this email, so the
+            # lockout counts total wrong guesses regardless of which of possibly
+            # several outstanding codes the user was trying. Each row's own
+            # WHERE attempts < %s is re-checked under Postgres's row lock at
+            # UPDATE time, not read-then-written separately, so concurrent
+            # requests can't race past the limit (Issue 1 fix).
+            conn.execute(
+                """UPDATE otp_codes SET attempts = attempts + 1
+                   WHERE email = %s AND used = 0 AND expires_at > %s AND attempts < %s""",
+                (email, now, _MAX_OTP_ATTEMPTS),
+            )
             conn.commit()
             raise HTTPException(401, "Invalid or expired code. Please request a new one.")
-
-        conn.execute(
-            "UPDATE otp_codes SET used = 1, consumed_at = %s WHERE id = %s",
-            (now, row_id),
-        )
-        conn.commit()
 
         athletes = conn.execute(
             "SELECT * FROM athletes WHERE parent_id = %s", (parent_id,)
