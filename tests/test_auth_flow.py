@@ -215,3 +215,53 @@ def test_parent_takes_precedence_over_athlete_login(client):
     r = client.post("/api/auth/login", json={"email": "dual@example.com"})
     assert r.status_code == 200, r.text
     assert r.json()["role"] == "parent"
+
+
+# --- athlete-claim-lookup: token-free parent/athlete lookup (auth v2.1 Phase 0) ---
+
+def test_claim_lookup_returns_parent_name_and_athletes_no_token(client):
+    pid = make_parent("parent1@example.com", full_name="Casey Parent")
+    make_athlete(pid, "Alex")
+    make_athlete(pid, "Sam")
+
+    r = client.post("/api/auth/athlete-claim-lookup", json={"parent_email": "parent1@example.com"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["parent_name"] == "Casey Parent"
+    names = sorted(a["first_name"] for a in body["athletes"])
+    assert names == ["Alex", "Sam"]
+    assert "session_token" not in body
+    assert "parent" not in body  # no full parent row, no email, nothing beyond the name
+
+
+def test_claim_lookup_is_case_insensitive(client):
+    make_parent("parent1@example.com", full_name="Casey Parent")
+    r = client.post("/api/auth/athlete-claim-lookup", json={"parent_email": "Parent1@Example.COM"})
+    assert r.status_code == 200, r.text
+    assert r.json()["parent_name"] == "Casey Parent"
+
+
+def test_claim_lookup_parent_with_no_athletes_returns_empty_list(client):
+    make_parent("lonely@example.com")
+    r = client.post("/api/auth/athlete-claim-lookup", json={"parent_email": "lonely@example.com"})
+    assert r.status_code == 200, r.text
+    assert r.json()["athletes"] == []
+
+
+def test_claim_lookup_unknown_email_404(client):
+    r = client.post("/api/auth/athlete-claim-lookup", json={"parent_email": "nobody@example.com"})
+    assert r.status_code == 404, r.text
+    assert r.json()["detail"] == "No parent account was found for that email."
+
+
+def test_claim_lookup_athlete_email_is_not_a_parent_match(client):
+    # An athlete's own login email must not resolve here — this endpoint only
+    # ever looks at the parents table.
+    pid = make_parent("parent1@example.com")
+    aid = make_athlete(pid, "Alex")
+    client.post(
+        f"/api/auth/athlete-create-login/{aid}",
+        json={"email": "alex@example.com", "parent_email": "parent1@example.com"},
+    )
+    r = client.post("/api/auth/athlete-claim-lookup", json={"parent_email": "alex@example.com"})
+    assert r.status_code == 404, r.text

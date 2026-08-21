@@ -26,6 +26,10 @@ class AthleteCreateLoginRequest(BaseModel):
     parent_email: str   # parent's email — the gate
 
 
+class AthleteClaimLookupRequest(BaseModel):
+    parent_email: str
+
+
 @router.post("/login")
 def unified_login(data: LoginRequest, background_tasks: BackgroundTasks, request: Request):
     """
@@ -91,6 +95,41 @@ def unified_login(data: LoginRequest, background_tasks: BackgroundTasks, request
             return {"role": "athlete", "athlete": athlete_d, "session_token": token}
 
         raise HTTPException(404, "No account found with that email address.")
+    finally:
+        conn.close()
+
+
+@router.post("/athlete-claim-lookup")
+def athlete_claim_lookup(data: AthleteClaimLookupRequest):
+    """
+    Phase 0 mitigation — auth v2.1 spec Part 2.1 (SEVERE).
+    The athlete-claim screen used to call /api/auth/login with the parent's
+    email, which mints and returns a full 30-day parent session token to an
+    unverified caller. This endpoint returns only what the claim screen's
+    profile-picker actually needs — the parent's name and their athletes'
+    id/first_name/age — and never returns a session_token. It only ever
+    looks at the parents table, so an athlete's own login email will not
+    resolve here.
+    """
+    email = data.parent_email.strip().lower()
+    conn = get_conn()
+    try:
+        parent = conn.execute(
+            "SELECT * FROM parents WHERE lower(email) = %s", (email,)
+        ).fetchone()
+        if not parent:
+            raise HTTPException(404, "No parent account was found for that email.")
+        parent_d = dict(parent)
+        athletes = [dict(a) for a in conn.execute(
+            "SELECT * FROM athletes WHERE parent_id = %s", (parent_d["id"],)
+        ).fetchall()]
+        return {
+            "parent_name": parent_d.get("full_name"),
+            "athletes": [
+                {"id": a["id"], "first_name": a["first_name"], "age": a.get("age")}
+                for a in athletes
+            ],
+        }
     finally:
         conn.close()
 
