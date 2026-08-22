@@ -1,11 +1,10 @@
-import hashlib
 import logging
-import secrets
 import psycopg
-from datetime import datetime, timedelta
+from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from api.models import ParentCreate, ParentResponse, ParentProfileUpdate, OTPRequest, OTPVerify
 from api.database import get_conn
+from api.services.otp_auth import issue_otp, verify_otp as verify_otp_code, OtpRateLimited, OtpDeliveryFailed
 from api.services.email import send_otp_email
 from api.services.email_service import send_email
 from api.services.session_auth import mint_session_token, require_session, assert_owns_parent, assert_owns_athlete
@@ -76,96 +75,48 @@ def login(data: OTPRequest, request: Request):
         conn.close()
 
 
-_MAX_OTP_ATTEMPTS = 5
-
-
 @router.post("/request-otp")
 def request_otp(data: OTPRequest):
     email = data.email.strip().lower()
     conn = get_conn()
     try:
-        parent = conn.execute("SELECT * FROM parents WHERE lower(email) = lower(%s)", (email,)).fetchone()
+        parent = conn.execute("SELECT id FROM parents WHERE lower(email) = lower(%s)", (email,)).fetchone()
         if not parent:
             raise HTTPException(404, "No account found with that email address.")
         parent_id = dict(parent)["id"]
-
-        # Rate limit: block if a code was issued in the last 60 seconds.
-        # created_at is DB-generated via sqlite_now() ('YYYY-MM-DD HH:MI:SS',
-        # no "T", no fractional seconds) — cutoff must match that exact
-        # format, not .isoformat(), or the lexicographic comparison silently
-        # never matches (see db/postgres/001_baseline.sql's sqlite_now()).
-        cutoff = (datetime.utcnow() - timedelta(seconds=60)).strftime("%Y-%m-%d %H:%M:%S")
-        recent = conn.execute(
-            "SELECT id FROM otp_codes WHERE email = %s AND created_at > %s AND used = 0",
-            (email, cutoff),
-        ).fetchone()
-        if recent:
-            raise HTTPException(429, "A code was already sent. Please wait 60 seconds before requesting another.")
-
-        code = f"{secrets.randbelow(1_000_000):06d}"
-        code_hash = hashlib.sha256(code.encode()).hexdigest()
-        expires_at = (datetime.utcnow() + timedelta(minutes=10)).isoformat()
-
-        inserted = conn.execute(
-            "INSERT INTO otp_codes (parent_id, email, code_hash, expires_at) VALUES (%s, %s, %s, %s) RETURNING id",
-            (parent_id, email, code_hash, expires_at),
-        ).fetchone()
-        conn.commit()
-
-        if not send_otp_email(email, code):
-            # Delivery failed — this OTP was never seen by anyone, so it must
-            # not remain valid, count toward the 60s resend cooldown, or sit
-            # around as an extra "outstanding" row for a later verify-otp
-            # call. Remove it and let the caller retry cleanly.
-            conn.execute("DELETE FROM otp_codes WHERE id = %s", (dict(inserted)["id"],))
-            conn.commit()
-            raise HTTPException(502, "Could not send the code right now. Please try again shortly.")
-        return {"message": "A 6-digit code has been sent to your email."}
     finally:
         conn.close()
 
+    try:
+        # send_fn=send_otp_email threads this module's own (patchable) import
+        # through to the shared core — tests patch
+        # api.routes.parents.send_otp_email, which only takes effect if this
+        # route actually calls through its own name rather than otp_auth's.
+        issue_otp(email, parent_id=parent_id, send_fn=send_otp_email)
+    except OtpRateLimited:
+        raise HTTPException(429, "A code was already sent. Please wait 60 seconds before requesting another.")
+    except OtpDeliveryFailed:
+        raise HTTPException(502, "Could not send the code right now. Please try again shortly.")
+    return {"message": "A 6-digit code has been sent to your email."}
+
 
 @router.post("/verify-otp")
-def verify_otp(data: OTPVerify):
+def verify_otp_route(data: OTPVerify):
     email = data.email.strip().lower()
-    code_hash = hashlib.sha256(data.code.strip().encode()).hexdigest()
-    now = datetime.utcnow().isoformat()
-
     conn = get_conn()
     try:
         parent = conn.execute("SELECT * FROM parents WHERE lower(email) = lower(%s)", (email,)).fetchone()
         if not parent:
             raise HTTPException(404, "No account found with that email address.")
-        parent_id = dict(parent)["id"]
+        parent_d = dict(parent)
 
-        success_row = conn.execute(
-            """UPDATE otp_codes SET used = 1, consumed_at = %s
-               WHERE email = %s AND used = 0 AND expires_at > %s AND code_hash = %s AND attempts < %s
-               RETURNING id""",
-            (now, email, now, code_hash, _MAX_OTP_ATTEMPTS),
-        ).fetchone()
-        conn.commit()
-
-        if not success_row:
-            # Wrong guess (or every outstanding code is expired/locked): atomically
-            # increment attempts on every still-valid row for this email, so the
-            # lockout counts total wrong guesses regardless of which of possibly
-            # several outstanding codes the user was trying. Each row's own
-            # WHERE attempts < %s is re-checked under Postgres's row lock at
-            # UPDATE time, not read-then-written separately, so concurrent
-            # requests can't race past the limit (Issue 1 fix).
-            conn.execute(
-                """UPDATE otp_codes SET attempts = attempts + 1
-                   WHERE email = %s AND used = 0 AND expires_at > %s AND attempts < %s""",
-                (email, now, _MAX_OTP_ATTEMPTS),
-            )
-            conn.commit()
+        if not verify_otp_code(email, data.code.strip()):
             raise HTTPException(401, "Invalid or expired code. Please request a new one.")
 
         athletes = conn.execute(
-            "SELECT * FROM athletes WHERE parent_id = %s", (parent_id,)
+            "SELECT * FROM athletes WHERE parent_id = %s", (parent_d["id"],)
         ).fetchall()
-        return {"parent": dict(parent), "athletes": [dict(a) for a in athletes]}
+        return {"parent": parent_d, "athletes": [dict(a) for a in athletes]}
     finally:
         conn.close()
 
