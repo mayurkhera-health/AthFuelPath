@@ -129,6 +129,64 @@ def email_auth_request(data: EmailAuthRequest):
     return {"message": "If that email is associated with an AthFuelPath account, a 6-digit code has been sent."}
 
 
+@router.post("/email/verify")
+def email_auth_verify(data: EmailAuthVerify):
+    """
+    Phase 2 — verify proof of email ownership, then resolve to an existing
+    account and issue a real session. A session is issued ONLY after
+    verify_otp_code succeeds — email knowledge alone (an unverified POST to
+    this endpoint) never issues one; see the 401 paths below, none of which
+    include a session_token.
+
+    If the verified email has no existing account, this reports that
+    plainly instead of guessing/creating one — creating an account here
+    would be Phase 7 (verified signup), out of scope for Phase 2. Reporting
+    it is safe: the caller just proved ownership of exactly this email, so
+    telling them whether THEIR OWN email has an account is not an
+    enumeration leak (unlike /email/request, which must stay neutral to an
+    unverified caller).
+    """
+    email = data.email.strip().lower()
+
+    if not verify_otp_code(email, data.code.strip()):
+        raise HTTPException(401, "Invalid or expired code. Please request a new one.")
+
+    conn = get_conn()
+    try:
+        # 1. Parent? (same precedence as unified_login — parents checked first)
+        parent = conn.execute(
+            "SELECT * FROM parents WHERE lower(email) = %s", (email,)
+        ).fetchone()
+        if parent:
+            parent_d = dict(parent)
+            athletes = [dict(a) for a in conn.execute(
+                "SELECT * FROM athletes WHERE parent_id = %s", (parent_d["id"],)
+            ).fetchall()]
+            token = mint_session_token(role="parent", parent_id=parent_d["id"])
+            return {"role": "parent", "parent": parent_d, "athletes": athletes, "session_token": token}
+
+        # 2. Athlete?
+        al = conn.execute(
+            "SELECT * FROM athlete_logins WHERE lower(email) = %s", (email,)
+        ).fetchone()
+        if al:
+            athlete = conn.execute(
+                "SELECT * FROM athletes WHERE id = %s", (dict(al)["athlete_id"],)
+            ).fetchone()
+            if not athlete:
+                raise HTTPException(500, "Athlete profile not found.")
+            athlete_d = dict(athlete)
+            token = mint_session_token(
+                role="athlete", athlete_id=athlete_d["id"], parent_id=athlete_d["parent_id"],
+            )
+            return {"role": "athlete", "athlete": athlete_d, "session_token": token}
+
+        # 3. Verified, but no account exists — safe to say so (see docstring).
+        return {"verified": True, "has_account": False}
+    finally:
+        conn.close()
+
+
 @router.post("/athlete-claim-lookup")
 def athlete_claim_lookup(data: AthleteClaimLookupRequest):
     """
