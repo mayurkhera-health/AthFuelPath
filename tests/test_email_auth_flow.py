@@ -150,7 +150,14 @@ def test_email_request_inherits_60s_resend_rate_limit(client):
     assert r2.status_code == 429, r2.text
 
 
-def test_email_request_gmail_failure_returns_502_and_cleans_up(client):
+def test_email_request_gmail_failure_returns_502(client):
     with patch("api.routes.auth.issue_otp", side_effect=__import__("api.services.otp_auth", fromlist=["OtpDeliveryFailed"]).OtpDeliveryFailed()):
         r = client.post("/api/auth/email/request", json={"email": "nobody@example.com"})
     assert r.status_code == 502, r.text
+
+
+def test_email_request_gmail_failure_cleans_up_otp_row(client):
+    with patch("api.services.otp_auth.send_otp_email", return_value=False):
+        r = client.post("/api/auth/email/request", json={"email": "nobody@example.com"})
+    assert r.status_code == 502, r.text
+    assert latest_otp_row("nobody@example.com") is None
