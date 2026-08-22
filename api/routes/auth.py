@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from api.database import get_conn
 from api.services import login_alerts
 from api.services.session_auth import mint_session_token
+from api.services.otp_auth import issue_otp, verify_otp as verify_otp_code, OtpRateLimited, OtpDeliveryFailed
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,15 @@ class AthleteCreateLoginRequest(BaseModel):
 
 class AthleteClaimLookupRequest(BaseModel):
     parent_email: str
+
+
+class EmailAuthRequest(BaseModel):
+    email: str
+
+
+class EmailAuthVerify(BaseModel):
+    email: str
+    code: str
 
 
 @router.post("/login")
@@ -97,6 +107,26 @@ def unified_login(data: LoginRequest, background_tasks: BackgroundTasks, request
         raise HTTPException(404, "No account found with that email address.")
     finally:
         conn.close()
+
+
+@router.post("/email/request")
+def email_auth_request(data: EmailAuthRequest):
+    """
+    Phase 2 — neutral, non-enumerating OTP request. There is exactly one
+    code path here regardless of whether an AthFuelPath account exists for
+    this email: no parent/account lookup happens before issuing the code.
+    That is what makes this non-enumerating, not just a same-looking JSON
+    body — a caller cannot distinguish "account exists" from "no account"
+    by status code, response shape, or which code path ran.
+    """
+    email = data.email.strip().lower()
+    try:
+        issue_otp(email, parent_id=None)
+    except OtpRateLimited:
+        raise HTTPException(429, "A code was already sent. Please wait 60 seconds before requesting another.")
+    except OtpDeliveryFailed:
+        raise HTTPException(502, "Could not send the code right now. Please try again shortly.")
+    return {"message": "If that email is associated with an AthFuelPath account, a 6-digit code has been sent."}
 
 
 @router.post("/athlete-claim-lookup")
