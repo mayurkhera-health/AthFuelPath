@@ -12,6 +12,12 @@ Rolling TTL: verify_session_token() alone never extends anything; routes that
 want a sliding session call mint_session_token() again with the same identity
 and return the refreshed token, which is what the /login and revalidation
 endpoints do.
+
+`GET /api/auth/session` (auth v2.1 Phase 3) is a deliberate exception to this
+pattern — it verifies the token is still good and returns fresh account
+context, but does NOT call mint_session_token() again. The client already
+holds a valid token; Phase 3 explicitly does not change TTL/refresh
+behavior. See api/routes/auth.py's get_session docstring.
 """
 import base64
 import hashlib

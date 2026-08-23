@@ -198,6 +198,9 @@ def get_session(identity=Depends(require_session)):
     (401 on missing/malformed/expired) is the only gate. Mints no new token
     — the client already has one and keeps using it; this endpoint only
     re-confirms it's still good and returns fresh account context.
+
+    See api/services/session_auth.py's "Rolling TTL" module docstring — this
+    endpoint is the one documented exception to that pattern, by design.
     """
     conn = get_conn()
     try:

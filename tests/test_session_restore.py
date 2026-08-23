@@ -141,3 +141,18 @@ def test_deleted_parent_account_401s_not_500(client):
         conn.close()
     r = client.get("/api/auth/session", headers=auth_header(token))
     assert r.status_code == 401, r.text
+
+
+def test_deleted_athlete_account_401s_not_500(client):
+    parent_id = make_parent("parent1@example.com")
+    athlete_id = make_athlete(parent_id, "Alex")
+    make_athlete_login(athlete_id, "alex@example.com")
+    token = mint_session_token(role="athlete", athlete_id=athlete_id, parent_id=parent_id)
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM athletes WHERE id = %s", (athlete_id,))
+        conn.commit()
+    finally:
+        conn.close()
+    r = client.get("/api/auth/session", headers=auth_header(token))
+    assert r.status_code == 401, r.text
