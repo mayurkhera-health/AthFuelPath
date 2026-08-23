@@ -6,11 +6,11 @@ Keeps /api/parents/login and /api/athletes/* intact for backward compat.
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
 from api.database import get_conn
 from api.services import login_alerts
-from api.services.session_auth import mint_session_token
+from api.services.session_auth import mint_session_token, require_session
 from api.services.otp_auth import issue_otp, verify_otp as verify_otp_code, OtpRateLimited, OtpDeliveryFailed
 
 logger = logging.getLogger(__name__)
@@ -186,6 +186,51 @@ def email_auth_verify(data: EmailAuthVerify):
 
         # 3. Verified, but no account exists — safe to say so (see docstring).
         return {"verified": True, "has_account": False}
+    finally:
+        conn.close()
+
+
+@router.get("/session")
+def get_session(identity=Depends(require_session)):
+    """
+    Phase 3 — restore an existing session from the bearer token alone. No
+    email is accepted or consulted anywhere in this handler; require_session
+    (401 on missing/malformed/expired) is the only gate. Mints no new token
+    — the client already has one and keeps using it; this endpoint only
+    re-confirms it's still good and returns fresh account context.
+    """
+    conn = get_conn()
+    try:
+        if identity.role == "parent":
+            parent = conn.execute(
+                "SELECT * FROM parents WHERE id = %s", (identity.parent_id,)
+            ).fetchone()
+            if not parent:
+                # Token is well-formed and unexpired, but the account behind
+                # it is gone (e.g. deleted) — treat as an invalid session,
+                # not a permissions problem, so the client's existing
+                # 401-clears-session handling applies.
+                raise HTTPException(401, "Session no longer valid.")
+            parent_d = dict(parent)
+            athletes = [dict(a) for a in conn.execute(
+                "SELECT * FROM athletes WHERE parent_id = %s", (parent_d["id"],)
+            ).fetchall()]
+            return {"role": "parent", "parent": parent_d, "athletes": athletes}
+
+        athlete = conn.execute(
+            "SELECT * FROM athletes WHERE id = %s", (identity.athlete_id,)
+        ).fetchone()
+        if not athlete:
+            raise HTTPException(401, "Session no longer valid.")
+        athlete_d = dict(athlete)
+        al = conn.execute(
+            "SELECT email FROM athlete_logins WHERE athlete_id = %s", (athlete_d["id"],)
+        ).fetchone()
+        return {
+            "role": "athlete",
+            "athlete": athlete_d,
+            "email": dict(al)["email"] if al else None,
+        }
     finally:
         conn.close()
 
