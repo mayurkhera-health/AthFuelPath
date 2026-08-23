@@ -162,6 +162,9 @@ def email_auth_verify(data: EmailAuthVerify):
             athletes = [dict(a) for a in conn.execute(
                 "SELECT * FROM athletes WHERE parent_id = %s", (parent_d["id"],)
             ).fetchall()]
+            # Deliberately not wired to login_alerts/last_login_at (unlike unified_login)
+            # — this is Phase 2 of a staged rollout; beta alerting for the email/OTP
+            # login path is a separate, not-yet-scoped follow-up, not an oversight.
             token = mint_session_token(role="parent", parent_id=parent_d["id"])
             return {"role": "parent", "parent": parent_d, "athletes": athletes, "session_token": token}
 
