@@ -301,6 +301,52 @@ def test_set_local_lock_timeout_is_transaction_scoped(db):
     )
 
 
+def _drop_database_with_retry(maint_conn, db_name: str, *, attempts: int = 3, backoff_seconds: float = 2.0) -> None:
+    """Best-effort cleanup for the throwaway database, hardened (external
+    review, 2026-08-24, round 4) against a specific race: in the exact
+    regression scenario test_migration_rolls_back_and_does_not_record_
+    version_3_when_lock_times_out exists to catch (the migration's own SET
+    LOCAL lock_timeout removed/broken), the abandoned background thread is
+    still parked inside a blocking LOCK TABLE call when this cleanup runs.
+    Releasing the blocker's lock (in the caller's finally block, just before
+    this runs) lets that abandoned thread resume asynchronously in the
+    background -- so DROP DATABASE can race a connection that hasn't
+    detached yet and fail with "database is being accessed by other users"
+    (psycopg.errors.ObjectInUse, SQLSTATE 55006). A single unretried
+    DROP DATABASE attempt wrapped in a bare `except: pass` would then leak a
+    real orphaned throwaway database with no error at all -- exactly the
+    failure mode this retry exists to close.
+
+    Retries a small bounded number of times with a short backoff on
+    ObjectInUse specifically. Any other exception, or exhausting all
+    retries, is NOT silently swallowed -- it's printed clearly so a
+    maintainer can find and manually clean up the named orphaned database
+    rather than it vanishing invisibly."""
+    last_exc: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            maint_conn.execute(f'DROP DATABASE IF EXISTS "{db_name}"')
+            return
+        except psycopg.errors.ObjectInUse as exc:
+            last_exc = exc
+            if attempt < attempts:
+                time.sleep(backoff_seconds)
+        except Exception as exc:  # noqa: BLE001 -- must surface, not swallow
+            print(
+                f"WARNING: failed to drop throwaway test database {db_name!r} "
+                f"during cleanup (unexpected error, not retried): {exc!r}. "
+                f"This database may be orphaned -- manual cleanup may be required."
+            )
+            return
+
+    print(
+        f"WARNING: could not drop throwaway test database {db_name!r} after "
+        f"{attempts} attempts -- still in use by another session (last error: "
+        f"{last_exc!r}). This database is likely ORPHANED -- manual cleanup "
+        f"(DROP DATABASE {db_name!r}) may be required."
+    )
+
+
 def test_migration_rolls_back_and_does_not_record_version_3_when_lock_times_out():
     """Correction (external review, 2026-08-24), part 2: a real lock timeout
     must cause the ENTIRE migration 003 file to roll back -- no
@@ -475,11 +521,27 @@ def test_migration_rolls_back_and_does_not_record_version_3_when_lock_times_out(
                 os.environ["DATABASE_URL"] = original_database_url
     finally:
         if db_created:
-            try:
-                maint.execute(f'DROP DATABASE IF EXISTS "{db_name}"')
-            except Exception:
-                pass
+            _drop_database_with_retry(maint, db_name)
         maint.close()
+
+
+# The migration's actual backfill SQL (the two INSERT ... SELECT statements)
+# is read directly out of the real migration file, exactly like
+# _read_preflight_sql() above does for the preflight block -- a hand-copied
+# duplicate here previously drifted out of sync with the real file's switch
+# to normalize_email() (external review, 2026-08-24, round 4) and stayed
+# invisible because every test routing through it only used ASCII-space
+# padding, where lower(trim(email)) and normalize_email(email) happen to
+# agree. Slicing genuine file content instead of retyping it means this can
+# never silently drift again.
+_BACKFILL_MARKER = (
+    "INSERT INTO auth_identities (provider, provider_subject, parent_id, email, email_verified)"
+)
+
+
+def _read_backfill_sql() -> str:
+    text = _MIGRATION_SQL_PATH.read_text()
+    return text[text.index(_BACKFILL_MARKER):]
 
 
 def _run_backfill(conn):
@@ -488,12 +550,5 @@ def _run_backfill(conn):
     # guarantee collision-free source data, so a conflict here should be
     # structurally impossible. If one occurs anyway, it must fail loudly
     # (raise a real UNIQUE-violation error) rather than silently no-op.
-    conn.execute("""
-        INSERT INTO auth_identities (provider, provider_subject, parent_id, email, email_verified)
-        SELECT 'email', lower(trim(email)), id, lower(trim(email)), TRUE FROM parents
-    """)
-    conn.execute("""
-        INSERT INTO auth_identities (provider, provider_subject, athlete_id, email, email_verified)
-        SELECT 'email', lower(trim(email)), athlete_id, lower(trim(email)), TRUE FROM athlete_logins
-    """)
+    conn.execute(_read_backfill_sql())
     conn.commit()
