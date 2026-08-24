@@ -5,8 +5,12 @@ These tests pin down WHO can log in and HOW:
   - Parents always have a login (their email IS their account).
   - Athletes have NO email by default; they get one only via
     POST /api/auth/athlete-create-login/{athlete_id}, gated on the parent.
-  - POST /api/auth/login resolves either persona from a single email and
-    reports role = "parent" | "athlete".
+  - Email-only login (POST /api/auth/login, POST /api/parents/login) was
+    retired in auth v2.1 Phase 4; both now 404/405 (see the "legacy ...
+    endpoint is gone" tests below). Real login goes through the
+    OTP-verified POST /api/auth/email/request + /email/verify flow, which
+    resolves either persona from a verified email and reports
+    role = "parent" | "athlete".
 
 Athletes are inserted directly into the DB rather than through
 POST /api/athletes/, which fires a background AI-blueprint (Bedrock) task we

@@ -1,7 +1,9 @@
 """
 Phase 1 — Unified auth endpoint.
-Resolves parent OR athlete from a single email.
-Keeps /api/parents/login and /api/athletes/* intact for backward compat.
+Originally resolved parent OR athlete from a single email via
+POST /login; that route was retired in auth v2.1 Phase 4 (email-only
+session issuance removed) in favor of the OTP-verified /email/request +
+/email/verify flow below. Keeps /api/athletes/* intact for backward compat.
 """
 import logging
 from datetime import datetime
@@ -76,6 +78,11 @@ def email_auth_verify(data: EmailAuthVerify, background_tasks: BackgroundTasks):
     telling them whether THEIR OWN email has an account is not an
     enumeration leak (unlike /email/request, which must stay neutral to an
     unverified caller).
+
+    On a successful parent login, this also stamps last_login_at and
+    schedules a best-effort founder login-alert (login_alerts.notify_login)
+    as a background task — ported from the now-deleted unified_login
+    (auth v2.1 Phase 4).
     """
     email = data.email.strip().lower()
 
