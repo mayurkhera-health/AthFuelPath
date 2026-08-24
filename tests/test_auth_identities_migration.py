@@ -5,8 +5,12 @@ and its backfill from existing parents/athlete_logins rows.
 import os
 os.environ["DB_PATH"] = ":memory:"
 
+import os
+import time
+import uuid
 from pathlib import Path
 
+import psycopg
 import pytest
 from db.setup import init_db
 from api.services.db_migrations import run_all
@@ -124,13 +128,43 @@ def test_backfill_creates_one_identity_row_per_existing_athlete_login(db):
     assert row["provider_subject"] == "alex@example.com"
 
 
-def test_backfill_is_idempotent(db):
+def test_backfill_fails_closed_on_unexpected_conflict_instead_of_silently_no_oping(db):
+    """Correction (external review, 2026-08-24): the backfill INSERTs no
+    longer carry ON CONFLICT (provider, provider_subject) DO NOTHING -- the
+    preflight + LOCK TABLE upstream already guarantee collision-free source
+    data by the time these run, so a real production run never re-executes
+    the backfill for an already-applied migration (schema_migrations skips
+    it). But if a conflict occurs anyway (e.g. a bug in that guarantee),
+    this must now fail LOUDLY with a real unique-violation rather than
+    silently omitting the identity row the way ON CONFLICT DO NOTHING used
+    to.
+
+    This test simulates that unexpected-conflict scenario directly: running
+    the backfill INSERTs twice in a row is not something a correct migration
+    run ever actually does (each migration file only runs once, tracked via
+    schema_migrations), but it is the simplest, deterministic way to force
+    exactly the conflict shape ON CONFLICT DO NOTHING used to paper over --
+    proving the fail-closed property without needing to fabricate a real
+    preflight-logic bug.
+
+    Replaces the old test_backfill_is_idempotent, whose core assertion (two
+    backfill runs silently produce the same row count) is no longer true and
+    would now be actively wrong: with ON CONFLICT DO NOTHING removed, a
+    second run raises instead of silently no-op'ing."""
     _make_parent(db, "parent1@example.com")
     _run_backfill(db)
     count_after_first = db.execute("SELECT COUNT(*) c FROM auth_identities").fetchone()["c"]
-    _run_backfill(db)
-    count_after_second = db.execute("SELECT COUNT(*) c FROM auth_identities").fetchone()["c"]
-    assert count_after_first == count_after_second == 1
+    assert count_after_first == 1
+
+    with pytest.raises(psycopg.errors.UniqueViolation):
+        _run_backfill(db)
+    db.rollback()
+
+    # The failed second attempt must not have partially applied -- no new
+    # rows, no silent duplicate-swallowing, no corruption of the first run's
+    # result.
+    count_after_failed_second = db.execute("SELECT COUNT(*) c FROM auth_identities").fetchone()["c"]
+    assert count_after_failed_second == 1
 
 
 def test_migration_preflight_aborts_on_duplicate_normalized_parent_email(db):
@@ -180,15 +214,163 @@ def _run_migration_preflight(conn):
     conn.execute(_read_preflight_sql())
 
 
+def test_set_local_lock_timeout_is_transaction_scoped(db):
+    """Correction (external review, 2026-08-24): 003_auth_identities.sql now
+    runs `SET LOCAL lock_timeout = '10s'` immediately before its
+    `LOCK TABLE ... IN SHARE MODE`. SET LOCAL must be genuinely scoped to
+    the current transaction only -- reverting automatically when that
+    transaction ends -- never leaking out as a session-wide setting the way
+    plain SET would. This is specifically why SET LOCAL (not SET) is
+    required there. Confirmed directly against real Postgres: set it inside
+    a transaction, observe it takes effect, end the transaction, observe it
+    is gone again on the SAME connection/session."""
+    db.execute("SET LOCAL lock_timeout = '10s'")
+    within_txn = db.execute("SHOW lock_timeout").fetchone()
+    assert within_txn["lock_timeout"] == "10s"
+
+    db.rollback()  # ends the transaction SET LOCAL was scoped to
+
+    after_txn = db.execute("SHOW lock_timeout").fetchone()
+    assert after_txn["lock_timeout"] != "10s", (
+        "lock_timeout leaked past the transaction that SET LOCAL it -- "
+        "SET LOCAL is supposed to be transaction-local, not session-wide"
+    )
+
+
+def test_migration_rolls_back_and_does_not_record_version_3_when_lock_times_out():
+    """Correction (external review, 2026-08-24), part 2: a real lock timeout
+    must cause the ENTIRE migration 003 file to roll back -- no
+    auth_identities table, no schema_migrations row for version 3 -- rather
+    than partially applying, and it must fail within roughly the configured
+    10s rather than hanging indefinitely.
+
+    This is a real, automated test against actual PostgreSQL using two
+    genuinely separate connections (mirrors this suite's only other
+    multi-connection precedent: there is none in tests/conftest.py, so this
+    test manages its own throwaway database and both connections directly,
+    matching how psycopg is used everywhere else in this codebase --
+    api.database.get_conn() -- rather than inventing a new pattern):
+
+      1. Spin up a throwaway database and apply migrations 001 and 002 only
+         (mirrors run_migrations' own per-file loop, stopped short of 003),
+         so `parents`/`athlete_logins` exist but 003 has not run yet.
+      2. Hold a conflicting ACCESS EXCLUSIVE lock on `parents` from a
+         second, separate, uncommitted transaction -- exactly what 003's
+         LOCK TABLE ... IN SHARE MODE has to wait behind.
+      3. Run the real, unmodified db.postgres_migrate.run_migrations() (the
+         actual production migration runner) against that database and
+         confirm it raises within ~10s rather than hanging, then confirm
+         nothing from migration 003 survived.
+    """
+    db_name = f"athfuelpath_test_locktimeout_{uuid.uuid4().hex[:8]}"
+    maint = psycopg.connect("dbname=postgres", autocommit=True)
+    db_created = False
+    try:
+        try:
+            maint.execute(f'CREATE DATABASE "{db_name}"')
+            db_created = True
+        except Exception as exc:
+            pytest.skip(f"cannot CREATE DATABASE in this environment: {exc}")
+
+        original_database_url = os.environ.get("DATABASE_URL")
+        os.environ["DATABASE_URL"] = f"dbname={db_name}"
+        blocker = None
+        try:
+            from db.postgres_migrate import (
+                _discover_migrations,
+                _ensure_schema_migrations_table,
+                run_migrations,
+            )
+
+            # Apply 001 + 002 only, so parents/athlete_logins exist but 003
+            # has not run yet.
+            setup_conn = get_conn()
+            try:
+                _ensure_schema_migrations_table(setup_conn)
+                for version, path in _discover_migrations():
+                    if version >= 3:
+                        continue
+                    setup_conn.execute(path.read_text())
+                    setup_conn.execute(
+                        "INSERT INTO schema_migrations (version, filename) VALUES (%s, %s)",
+                        (version, path.name),
+                    )
+                    setup_conn.commit()
+            finally:
+                setup_conn.close()
+
+            # Hold a conflicting lock on `parents` from a second, separate,
+            # uncommitted connection/transaction.
+            blocker = get_conn()
+            blocker.execute("LOCK TABLE parents IN ACCESS EXCLUSIVE MODE")
+
+            start = time.monotonic()
+            with pytest.raises(Exception) as excinfo:
+                run_migrations(quiet=True)
+            elapsed = time.monotonic() - start
+
+            # Bounded wait, not an indefinite hang: raised at roughly the
+            # 10s lock_timeout (generous window for CI/machine variance),
+            # not immediately and not after minutes.
+            assert 5 <= elapsed <= 60, f"expected a ~10s lock_timeout, took {elapsed:.1f}s"
+            assert "lock" in str(excinfo.value).lower(), (
+                f"expected a lock-not-available-shaped error, got: {excinfo.value!r}"
+            )
+
+            # Whole-file rollback confirmed: neither the CREATE TABLE nor
+            # the schema_migrations bookkeeping for version 3 survived.
+            check_conn = get_conn()
+            try:
+                table_exists = check_conn.execute(
+                    "SELECT 1 FROM information_schema.tables WHERE table_name = 'auth_identities'"
+                ).fetchone()
+                assert table_exists is None, (
+                    "auth_identities must not exist after a rolled-back migration"
+                )
+
+                version_row = check_conn.execute(
+                    "SELECT 1 FROM schema_migrations WHERE version = 3"
+                ).fetchone()
+                assert version_row is None, (
+                    "schema_migrations must not record version 3 after rollback"
+                )
+            finally:
+                check_conn.close()
+        finally:
+            if blocker is not None:
+                try:
+                    blocker.rollback()
+                except Exception:
+                    pass
+                try:
+                    blocker.close()
+                except Exception:
+                    pass
+            if original_database_url is None:
+                os.environ.pop("DATABASE_URL", None)
+            else:
+                os.environ["DATABASE_URL"] = original_database_url
+    finally:
+        if db_created:
+            try:
+                maint.execute(f'DROP DATABASE IF EXISTS "{db_name}"')
+            except Exception:
+                pass
+        maint.close()
+
+
 def _run_backfill(conn):
+    # No ON CONFLICT DO NOTHING -- kept in sync with the real migration file
+    # (external review, 2026-08-24): the preflight + LOCK TABLE already
+    # guarantee collision-free source data, so a conflict here should be
+    # structurally impossible. If one occurs anyway, it must fail loudly
+    # (raise a real UNIQUE-violation error) rather than silently no-op.
     conn.execute("""
         INSERT INTO auth_identities (provider, provider_subject, parent_id, email, email_verified)
         SELECT 'email', lower(trim(email)), id, lower(trim(email)), TRUE FROM parents
-        ON CONFLICT (provider, provider_subject) DO NOTHING
     """)
     conn.execute("""
         INSERT INTO auth_identities (provider, provider_subject, athlete_id, email, email_verified)
         SELECT 'email', lower(trim(email)), athlete_id, lower(trim(email)), TRUE FROM athlete_logins
-        ON CONFLICT (provider, provider_subject) DO NOTHING
     """)
     conn.commit()

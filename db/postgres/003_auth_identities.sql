@@ -49,6 +49,17 @@
 -- (preflight counts + two backfills against production's current
 -- ~60-parent / ~12-athlete_login row counts -- expected to be brief).
 
+-- LOCK TIMEOUT (external review, 2026-08-24): SET LOCAL scopes this to the
+-- current transaction only -- it reverts automatically at transaction end
+-- and never leaks to other sessions/transactions, which is specifically why
+-- SET LOCAL is required here rather than plain SET. If production is
+-- unexpectedly holding a conflicting write lock on parents/athlete_logins
+-- when this migration runs, LOCK TABLE below now fails after 10 seconds
+-- (raising a lock-not-available error) instead of waiting indefinitely --
+-- surfacing the conflict so the migration can be safely retried rather than
+-- potentially queuing production writes behind it forever.
+SET LOCAL lock_timeout = '10s';
+
 LOCK TABLE parents, athlete_logins IN SHARE MODE;
 
 DO $$
@@ -102,12 +113,21 @@ CREATE INDEX idx_auth_identities_athlete_id ON auth_identities(athlete_id);
 -- and between the two -- this backfill is fully deterministic, no owner
 -- was guessed, and it never deletes/merges/rewrites an existing account row.
 
+-- No ON CONFLICT DO NOTHING here (external review, 2026-08-24, corrected same
+-- day): the preflight DO $$ ... RAISE EXCEPTION block above plus the
+-- LOCK TABLE ... IN SHARE MODE already guarantee deterministic,
+-- collision-free source data by the time these backfill inserts run -- so a
+-- conflict at this point should be structurally impossible. ON CONFLICT DO
+-- NOTHING was silently papering over that case; if a conflict nevertheless
+-- occurs (a bug in the preflight logic, or a genuinely unanticipated data
+-- state), this must now fail loudly -- a raw unique-violation error
+-- propagating up and rolling back the whole file -- rather than silently
+-- omitting an identity row.
+
 INSERT INTO auth_identities (provider, provider_subject, parent_id, email, email_verified)
 SELECT 'email', lower(trim(email)), id, lower(trim(email)), TRUE
-FROM parents
-ON CONFLICT (provider, provider_subject) DO NOTHING;
+FROM parents;
 
 INSERT INTO auth_identities (provider, provider_subject, athlete_id, email, email_verified)
 SELECT 'email', lower(trim(email)), athlete_id, lower(trim(email)), TRUE
-FROM athlete_logins
-ON CONFLICT (provider, provider_subject) DO NOTHING;
+FROM athlete_logins;

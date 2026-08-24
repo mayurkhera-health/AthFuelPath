@@ -77,10 +77,10 @@ def resolve_identity(
             raise NoExistingAccount()
 
         parent = conn.execute(
-            "SELECT id FROM parents WHERE lower(email) = %s", (email,)
+            "SELECT id FROM parents WHERE lower(trim(email)) = %s", (email,)
         ).fetchone()
         athlete_login = conn.execute(
-            "SELECT athlete_id FROM athlete_logins WHERE lower(email) = %s", (email,)
+            "SELECT athlete_id FROM athlete_logins WHERE lower(trim(email)) = %s", (email,)
         ).fetchone()
 
         matches = []

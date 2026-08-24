@@ -217,6 +217,37 @@ def test_provider_subject_is_case_sensitive(db):
     assert count == 2
 
 
+def test_verified_email_auto_links_to_parent_with_whitespace_and_case_in_stored_email(db):
+    """Correction (external review, 2026-08-24): the verified-email lookup
+    must match the STORED parents.email using the same lower(trim(...))
+    normalization rule the Task 1 migration/backfill uses -- not just
+    lower(...). Real production rows have surrounding whitespace that
+    lower() alone doesn't strip. Simulates a future Google/Apple auto-link
+    (provider="google") whose normalized `email` argument must still match a
+    parent row stored with extra capitalization AND surrounding whitespace."""
+    pid = _make_parent(db, "  Parent1@Example.com  ")
+    result = resolve_identity(
+        provider="google", provider_subject="google-sub-789",
+        email="parent1@example.com", email_verified=True,
+    )
+    assert result.role == "parent"
+    assert result.parent_id == pid
+    assert result.athlete_id is None
+
+
+def test_verified_email_auto_links_to_athlete_login_with_whitespace_and_case_in_stored_email(db):
+    """Equivalent to the parent case above, but for athlete_logins.email."""
+    pid = _make_parent(db, "parent1@example.com")
+    aid = _make_athlete_with_login(db, pid, "  Alex@Example.com  ")
+    result = resolve_identity(
+        provider="google", provider_subject="google-sub-790",
+        email="alex@example.com", email_verified=True,
+    )
+    assert result.role == "athlete"
+    assert result.athlete_id == aid
+    assert result.parent_id is None
+
+
 def test_percent_character_in_email_is_handled_safely(db):
     pid = _make_parent(db, "50%off+weird@example.com")
     result = resolve_identity(
