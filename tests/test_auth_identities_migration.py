@@ -129,6 +129,30 @@ def test_backfill_creates_one_identity_row_per_existing_athlete_login(db):
     assert row["provider_subject"] == "alex@example.com"
 
 
+def test_backfill_normalizes_nbsp_or_tab_padded_email(db):
+    """Correction (external review, 2026-08-24, round 5): the other backfill
+    tests above only exercise ASCII-space padding, where lower(trim(email))
+    and normalize_email(email) happen to agree -- so they never actually
+    proved the REAL backfill INSERT ... SELECT statements (as opposed to
+    normalize_email() called in isolation via a bare SELECT) correctly
+    handle non-ASCII-whitespace padding end-to-end. This inserts a parents
+    row whose stored email is padded with a non-breaking space (U+00A0) on
+    one side and a tab on the other, runs the real _run_backfill() (which
+    now executes genuine production SQL sliced out of the migration file --
+    see _read_backfill_sql()), and asserts the resulting auth_identities row
+    is fully normalized -- proving the backfill path itself, not just
+    normalize_email() standalone."""
+    padded_email = "\N{NO-BREAK SPACE}Parent1@Example.com\t"
+    pid = _make_parent(db, padded_email)
+    _run_backfill(db)
+    row = db.execute(
+        "SELECT provider_subject, email FROM auth_identities WHERE provider = 'email' AND parent_id = %s",
+        (pid,),
+    ).fetchone()
+    assert row["provider_subject"] == "parent1@example.com"
+    assert row["email"] == "parent1@example.com"
+
+
 def test_backfill_fails_closed_on_unexpected_conflict_instead_of_silently_no_oping(db):
     """Correction (external review, 2026-08-24): the backfill INSERTs no
     longer carry ON CONFLICT (provider, provider_subject) DO NOTHING -- the
