@@ -21,18 +21,35 @@
 -- migration runner rolls back and stops -- rerun only after resolving the
 -- reported collision by hand.
 --
--- TOCTOU CLOSE (code review, 2026-08-24): under the default READ COMMITTED
--- isolation, a concurrent write landing between the preflight SELECT and
--- the later backfill INSERT...SELECT would not be caught by the preflight,
--- and ON CONFLICT DO NOTHING would silently drop the colliding row --
--- permanently, since schema_migrations marks this file applied afterward.
--- REPEATABLE READ makes the preflight and both backfill inserts see one
--- consistent snapshot: any such race is either caught by the preflight's
--- RAISE EXCEPTION, or aborts the whole transaction with a Postgres
--- serialization failure (also rolled back by the migration runner) --
--- never a silent partial write.
+-- TOCTOU CLOSE (code review, 2026-08-24; corrected same day after an
+-- empirical repro showed the first attempt -- SET TRANSACTION ISOLATION
+-- LEVEL REPEATABLE READ -- does NOT close this race): under the default
+-- READ COMMITTED isolation, a concurrent write landing between the
+-- preflight SELECT and the later backfill INSERT...SELECT would not be
+-- caught by the preflight, and ON CONFLICT DO NOTHING would silently drop
+-- the colliding row -- permanently, since schema_migrations marks this
+-- file applied afterward. REPEATABLE READ does not fix this: it only
+-- raises a serialization failure on a write-write conflict to the SAME
+-- row, and this migration never writes to parents/athlete_logins -- it
+-- only reads them and writes to auth_identities -- so a concurrent INSERT
+-- into parents/athlete_logins is simply invisible to this transaction's
+-- frozen snapshot, not a conflict Postgres can detect.
+--
+-- The actual fix is an explicit lock, not a snapshot-isolation change:
+-- LOCK TABLE ... IN SHARE MODE. SHARE conflicts with ROW EXCLUSIVE (the
+-- lock level every INSERT/UPDATE/DELETE takes on the target table -- see
+-- the PostgreSQL lock-conflict compatibility table in the documentation
+-- for explicit locking), so any concurrent write attempting to insert a
+-- new parents or athlete_logins row blocks until this migration's
+-- transaction commits or rolls back -- preventing the interleaving
+-- entirely rather than trying to detect it after the fact. SHARE does not
+-- conflict with itself or with AccessShareLock, so ordinary SELECTs
+-- against parents/athlete_logins are unaffected; only concurrent writes to
+-- those two tables briefly queue for the duration of this migration
+-- (preflight counts + two backfills against production's current
+-- ~60-parent / ~12-athlete_login row counts -- expected to be brief).
 
-SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+LOCK TABLE parents, athlete_logins IN SHARE MODE;
 
 DO $$
 DECLARE

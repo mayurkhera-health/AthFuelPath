@@ -158,8 +158,8 @@ def test_migration_preflight_passes_with_no_collisions(db):
     db.rollback()
 
 
-# The migration's actual preflight SQL (SET TRANSACTION ISOLATION LEVEL +
-# the DO $$ ... RAISE EXCEPTION block) is read directly out of the real
+# The migration's actual preflight SQL (LOCK TABLE + the DO $$ ...
+# RAISE EXCEPTION block) is read directly out of the real
 # migration file rather than hand-retyped here, so these tests always
 # exercise the literal production SQL -- editing the block in the .sql file
 # can never silently drift out of sync with what the tests check.
