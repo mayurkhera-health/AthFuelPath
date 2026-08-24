@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Optional
 
+import psycopg
+
 from api.database import get_conn
 
 
@@ -20,6 +22,13 @@ class AmbiguousIdentity(Exception):
     """The verified email matches more than one possible owner (e.g. the
     same normalized email exists as both a parent and an athlete login).
     Fail closed — never guess which owner is correct."""
+
+
+def _row_to_resolved_identity(row: dict) -> ResolvedIdentity:
+    return ResolvedIdentity(
+        role="parent" if row["parent_id"] is not None else "athlete",
+        parent_id=row["parent_id"], athlete_id=row["athlete_id"],
+    )
 
 
 def resolve_identity(
@@ -51,6 +60,9 @@ def resolve_identity(
     not re-normalize, to keep the "what got compared" behavior fully
     visible/testable at the call site.
     """
+    if not provider or not provider_subject:
+        raise ValueError("provider and provider_subject are required")
+
     conn = get_conn()
     try:
         existing = conn.execute(
@@ -59,11 +71,7 @@ def resolve_identity(
             (provider, provider_subject),
         ).fetchone()
         if existing:
-            row = dict(existing)
-            return ResolvedIdentity(
-                role="parent" if row["parent_id"] is not None else "athlete",
-                parent_id=row["parent_id"], athlete_id=row["athlete_id"],
-            )
+            return _row_to_resolved_identity(dict(existing))
 
         if not (email and email_verified):
             raise NoExistingAccount()
@@ -95,23 +103,18 @@ def resolve_identity(
                 (provider, provider_subject, parent_id, athlete_id, email, True),
             )
             conn.commit()
-        except Exception as e:
+        except psycopg.errors.UniqueViolation:
             conn.rollback()
-            if "unique" in str(e).lower():
-                # Lost a race against a concurrent identical resolve — the
-                # other request's insert already won; re-fetch its result
-                # rather than erroring the caller for a benign race.
-                existing = conn.execute(
-                    "SELECT parent_id, athlete_id FROM auth_identities "
-                    "WHERE provider = %s AND provider_subject = %s",
-                    (provider, provider_subject),
-                ).fetchone()
-                if existing:
-                    row = dict(existing)
-                    return ResolvedIdentity(
-                        role="parent" if row["parent_id"] is not None else "athlete",
-                        parent_id=row["parent_id"], athlete_id=row["athlete_id"],
-                    )
+            # Lost a race against a concurrent identical resolve — the
+            # other request's insert already won; re-fetch its result
+            # rather than erroring the caller for a benign race.
+            existing = conn.execute(
+                "SELECT parent_id, athlete_id FROM auth_identities "
+                "WHERE provider = %s AND provider_subject = %s",
+                (provider, provider_subject),
+            ).fetchone()
+            if existing:
+                return _row_to_resolved_identity(dict(existing))
             raise
 
         return ResolvedIdentity(role=role, parent_id=parent_id, athlete_id=athlete_id)

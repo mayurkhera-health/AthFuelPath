@@ -193,3 +193,34 @@ def test_duplicate_provider_and_provider_subject_is_prevented(db):
         "SELECT COUNT(*) c FROM auth_identities WHERE provider = 'email' AND provider_subject = 'parent1@example.com'"
     ).fetchone()["c"]
     assert count == 1
+
+
+def test_provider_subject_is_case_sensitive(db):
+    """Two differently-cased provider_subject values for the same provider
+    are DISTINCT identities -- this function deliberately does not
+    re-normalize (see docstring), and the DB constraint is plain
+    case-sensitive TEXT."""
+    pid = _make_parent(db, "parent1@example.com")
+    result1 = resolve_identity(
+        provider="google", provider_subject="Google-Sub-123",
+        email="parent1@example.com", email_verified=True,
+    )
+    result2 = resolve_identity(
+        provider="google", provider_subject="google-sub-123",
+        email="parent1@example.com", email_verified=True,
+    )
+    assert result1.parent_id == pid
+    assert result2.parent_id == pid
+    count = db.execute(
+        "SELECT COUNT(*) c FROM auth_identities WHERE provider = 'google'"
+    ).fetchone()["c"]
+    assert count == 2
+
+
+def test_percent_character_in_email_is_handled_safely(db):
+    pid = _make_parent(db, "50%off+weird@example.com")
+    result = resolve_identity(
+        provider="email", provider_subject="50%off+weird@example.com",
+        email="50%off+weird@example.com", email_verified=True,
+    )
+    assert result.parent_id == pid
