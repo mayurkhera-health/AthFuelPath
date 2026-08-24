@@ -6,6 +6,9 @@ synchronously before the response returns, so we can assert right after)."""
 import os
 os.environ["DB_PATH"] = ":memory:"
 
+import hashlib
+from datetime import timedelta
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -62,7 +65,26 @@ def ctx(monkeypatch):
 
 
 def _login(c, email):
-    return c.post("/api/auth/login", json={"email": email})
+    """Drives a real parent login through the secure OTP path (auth v2.1
+    Phase 4) instead of the now-deleted /api/auth/login. Inserts a
+    known-plaintext OTP row directly (bypassing Gmail) so the test can
+    submit it, mirroring the pattern used in tests/test_email_auth_flow.py.
+    """
+    from datetime import datetime
+    from api.database import get_conn
+    code = "123456"
+    code_hash = hashlib.sha256(code.encode()).hexdigest()
+    expires_at = (datetime.utcnow() + timedelta(minutes=10)).isoformat()
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO otp_codes (email, code_hash, expires_at) VALUES (%s, %s, %s)",
+            (email.lower(), code_hash, expires_at),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return c.post("/api/auth/email/verify", json={"email": email, "code": code})
 
 
 # ── new vs. returning wording ────────────────────────────────────────────────

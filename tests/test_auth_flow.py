@@ -74,71 +74,6 @@ def make_athlete(parent_id, first_name="Alex"):
         conn.close()
 
 
-# --- unified login: parent ----------------------------------------------
-
-def test_login_resolves_parent_with_athletes(client):
-    pid = make_parent("parent1@example.com")
-    make_athlete(pid, "Alex")
-    make_athlete(pid, "Sam")
-
-    r = client.post("/api/auth/login", json={"email": "parent1@example.com"})
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["role"] == "parent"
-    assert body["parent"]["email"] == "parent1@example.com"
-    names = sorted(a["first_name"] for a in body["athletes"])
-    assert names == ["Alex", "Sam"]
-
-
-def test_login_parent_is_case_insensitive(client):
-    make_parent("parent1@example.com")
-    r = client.post("/api/auth/login", json={"email": "Parent1@Example.COM"})
-    assert r.status_code == 200, r.text
-    assert r.json()["role"] == "parent"
-
-
-def test_login_parent_with_no_athletes_returns_empty_list(client):
-    make_parent("lonely@example.com")
-    r = client.post("/api/auth/login", json={"email": "lonely@example.com"})
-    assert r.status_code == 200, r.text
-    assert r.json()["athletes"] == []
-
-
-# --- unified login: athlete ---------------------------------------------
-
-def test_login_resolves_athlete_after_login_created(client):
-    pid = make_parent("parent1@example.com")
-    aid = make_athlete(pid, "Alex")
-
-    # athlete gets their own login through the gated endpoint
-    r = client.post(
-        f"/api/auth/athlete-create-login/{aid}",
-        json={"email": "alex@example.com", "parent_email": "parent1@example.com"},
-    )
-    assert r.status_code == 200, r.text
-
-    # now the athlete can log in by their own email and is resolved as an athlete
-    r = client.post("/api/auth/login", json={"email": "alex@example.com"})
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["role"] == "athlete"
-    assert body["athlete"]["first_name"] == "Alex"
-    assert "athletes" not in body  # athletes see only themselves
-
-
-def test_login_unknown_email_404(client):
-    r = client.post("/api/auth/login", json={"email": "nobody@example.com"})
-    assert r.status_code == 404, r.text
-
-
-def test_athlete_with_no_login_cannot_log_in(client):
-    pid = make_parent("parent1@example.com")
-    make_athlete(pid, "Sam")  # exists, but never given a login
-    # Sam has no email anywhere, so there is nothing to log in with.
-    r = client.post("/api/auth/login", json={"email": "sam@example.com"})
-    assert r.status_code == 404, r.text
-
-
 # --- athlete-create-login: the gates ------------------------------------
 
 def test_create_login_requires_existing_parent(client):
@@ -193,28 +128,6 @@ def test_create_login_rejects_email_already_taken(client):
         json={"email": "shared@example.com", "parent_email": "parent1@example.com"},
     )
     assert r2.status_code == 409, r2.text
-
-
-# --- precedence: parent wins when an email is both ----------------------
-
-def test_parent_takes_precedence_over_athlete_login(client):
-    # An email registered as a parent resolves as parent even if the same string
-    # somehow exists as an athlete login (parents are checked first).
-    pid = make_parent("dual@example.com")
-    aid = make_athlete(pid, "Alex")
-    conn = get_conn()
-    try:
-        conn.execute(
-            "INSERT INTO athlete_logins (email, athlete_id) VALUES (%s, %s)",
-            ("dual@example.com", aid),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-    r = client.post("/api/auth/login", json={"email": "dual@example.com"})
-    assert r.status_code == 200, r.text
-    assert r.json()["role"] == "parent"
 
 
 # --- athlete-claim-lookup: token-free parent/athlete lookup (auth v2.1 Phase 0) ---
@@ -285,3 +198,21 @@ def test_claim_lookup_athlete_email_is_not_a_parent_match(client):
     r = client.post("/api/auth/athlete-claim-lookup", json={"parent_email": "alex@example.com"})
     assert r.status_code == 200, r.text
     assert r.json() == {"athletes": []}
+
+
+# --- legacy email-only login routes are gone (auth v2.1 Phase 4) --------
+
+def test_legacy_unified_login_endpoint_is_gone(client):
+    r = client.post("/api/auth/login", json={"email": "anyone@example.com"})
+    assert r.status_code == 404, r.text
+
+
+def test_legacy_parents_login_endpoint_is_gone(client):
+    # Not a clean 404: parents.py's GET/DELETE /{parent_id} use an untyped
+    # (string) path param, so they partially match the path "/login" too —
+    # pre-existing, unrelated to this deletion. Starlette reports 405
+    # (method not allowed on the matched path) rather than 404 in that case.
+    # Either way, no route accepts POST here anymore, so no session is
+    # ever minted from this path — the property this test exists to prove.
+    r = client.post("/api/parents/login", json={"email": "anyone@example.com"})
+    assert r.status_code == 405, r.text

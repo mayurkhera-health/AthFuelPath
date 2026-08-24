@@ -40,75 +40,6 @@ class EmailAuthVerify(BaseModel):
     code: str
 
 
-@router.post("/login")
-def unified_login(data: LoginRequest, background_tasks: BackgroundTasks, request: Request):
-    """
-    Single login for both personas.
-    Checks parents first (most common), then athlete_logins.
-    Returns { role, ...session_data }.
-
-    This is the explicit parent sign-in path (the Login screen). Silent
-    session-restore on app relaunch uses /api/parents/login, so alerting here
-    fires only on a real, active sign-in — not a background rehydrate.
-    """
-    # Temporary — 2026-08-19, remove after ~7 days. Same client-split logging
-    # as parents.py's /login — see docs/age-audit.md Part 14/16.
-    logger.info("unified_login_client origin=%r user_agent=%r",
-                request.headers.get("origin"), request.headers.get("user-agent"))
-    email = data.email.strip().lower()
-    conn = get_conn()
-    try:
-        # 1. Parent?
-        parent = conn.execute(
-            "SELECT * FROM parents WHERE lower(email) = %s", (email,)
-        ).fetchone()
-        if parent:
-            parent_d = dict(parent)
-            athletes = [dict(a) for a in conn.execute(
-                "SELECT * FROM athletes WHERE parent_id = %s", (parent_d["id"],)
-            ).fetchall()]
-
-            # Beta login alert (best-effort; backgrounded so it never slows the
-            # response, never blocks the login if it fails). A NULL last_login_at
-            # means first-ever login → treated as a new signup.
-            try:
-                is_new = not parent_d.get("last_login_at")
-                conn.execute(
-                    "UPDATE parents SET last_login_at = %s WHERE id = %s",
-                    (datetime.utcnow().isoformat(), parent_d["id"]),
-                )
-                conn.commit()
-                background_tasks.add_task(
-                    login_alerts.notify_login, parent_d,
-                    is_new=is_new, athlete_hint=login_alerts.athlete_hint(athletes),
-                )
-            except Exception:
-                logger.warning("login alert scheduling failed (non-blocking)", exc_info=True)
-
-            token = mint_session_token(role="parent", parent_id=parent_d["id"])
-            return {"role": "parent", "parent": parent_d, "athletes": athletes, "session_token": token}
-
-        # 2. Athlete?
-        al = conn.execute(
-            "SELECT * FROM athlete_logins WHERE lower(email) = %s", (email,)
-        ).fetchone()
-        if al:
-            athlete = conn.execute(
-                "SELECT * FROM athletes WHERE id = %s", (dict(al)["athlete_id"],)
-            ).fetchone()
-            if not athlete:
-                raise HTTPException(500, "Athlete profile not found.")
-            athlete_d = dict(athlete)
-            token = mint_session_token(
-                role="athlete", athlete_id=athlete_d["id"], parent_id=athlete_d["parent_id"],
-            )
-            return {"role": "athlete", "athlete": athlete_d, "session_token": token}
-
-        raise HTTPException(404, "No account found with that email address.")
-    finally:
-        conn.close()
-
-
 @router.post("/email/request")
 def email_auth_request(data: EmailAuthRequest):
     """
@@ -130,7 +61,7 @@ def email_auth_request(data: EmailAuthRequest):
 
 
 @router.post("/email/verify")
-def email_auth_verify(data: EmailAuthVerify):
+def email_auth_verify(data: EmailAuthVerify, background_tasks: BackgroundTasks):
     """
     Phase 2 — verify proof of email ownership, then resolve to an existing
     account and issue a real session. A session is issued ONLY after
@@ -162,9 +93,26 @@ def email_auth_verify(data: EmailAuthVerify):
             athletes = [dict(a) for a in conn.execute(
                 "SELECT * FROM athletes WHERE parent_id = %s", (parent_d["id"],)
             ).fetchall()]
-            # Deliberately not wired to login_alerts/last_login_at (unlike unified_login)
-            # — this is Phase 2 of a staged rollout; beta alerting for the email/OTP
-            # login path is a separate, not-yet-scoped follow-up, not an oversight.
+
+            # Beta login alert (best-effort; backgrounded so it never slows the
+            # response, never blocks login if it fails). Ported from the now-
+            # deleted unified_login (auth v2.1 Phase 4) — this is the only
+            # place a parent login fires this alert now that email-only
+            # /api/auth/login no longer exists.
+            try:
+                is_new = not parent_d.get("last_login_at")
+                conn.execute(
+                    "UPDATE parents SET last_login_at = %s WHERE id = %s",
+                    (datetime.utcnow().isoformat(), parent_d["id"]),
+                )
+                conn.commit()
+                background_tasks.add_task(
+                    login_alerts.notify_login, parent_d,
+                    is_new=is_new, athlete_hint=login_alerts.athlete_hint(athletes),
+                )
+            except Exception:
+                logger.warning("login alert scheduling failed (non-blocking)", exc_info=True)
+
             token = mint_session_token(role="parent", parent_id=parent_d["id"])
             return {"role": "parent", "parent": parent_d, "athletes": athletes, "session_token": token}
 

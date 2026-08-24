@@ -16,7 +16,7 @@ from api.main import app
 def test_cors_does_not_allow_credentials_with_wildcard_origin():
     with TestClient(app) as client:
         r = client.options(
-            "/api/auth/login",
+            "/api/auth/session",
             headers={
                 "Origin": "https://evil.example.com",
                 "Access-Control-Request-Method": "POST",

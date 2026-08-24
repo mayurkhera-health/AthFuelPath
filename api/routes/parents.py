@@ -53,28 +53,6 @@ def confirm_consent(parent_id: int, identity=Depends(require_session)):
         conn.close()
 
 
-@router.post("/login")
-def login(data: OTPRequest, request: Request):
-    # Temporary — 2026-08-19, remove after ~7 days once we have real client-split
-    # data. See docs/age-audit.md Part 14/16: legacy web sends a browser Origin +
-    # UA, mobile sends none/an Expo-RN UA — this is a cleaner signal than any
-    # existing DB column for "does legacy web still have real login traffic."
-    log.info("parents_login_client origin=%r user_agent=%r",
-              request.headers.get("origin"), request.headers.get("user-agent"))
-    email = data.email.strip().lower()
-    conn = get_conn()
-    try:
-        parent = conn.execute("SELECT * FROM parents WHERE lower(email) = lower(%s)", (email,)).fetchone()
-        if not parent:
-            raise HTTPException(404, "No account found with that email address.")
-        parent_id = dict(parent)["id"]
-        athletes = conn.execute("SELECT * FROM athletes WHERE parent_id = %s", (parent_id,)).fetchall()
-        token = mint_session_token(role="parent", parent_id=parent_id)
-        return {"parent": dict(parent), "athletes": [dict(a) for a in athletes], "session_token": token}
-    finally:
-        conn.close()
-
-
 @router.post("/request-otp")
 def request_otp(data: OTPRequest):
     email = data.email.strip().lower()
