@@ -5,6 +5,8 @@ and its backfill from existing parents/athlete_logins rows.
 import os
 os.environ["DB_PATH"] = ":memory:"
 
+from pathlib import Path
+
 import pytest
 from db.setup import init_db
 from api.services.db_migrations import run_all
@@ -156,30 +158,26 @@ def test_migration_preflight_passes_with_no_collisions(db):
     db.rollback()
 
 
-def _run_migration_preflight(conn):
-    conn.execute("""
-        DO $$
-        DECLARE
-            dup_parent_count INTEGER;
-            dup_athlete_login_count INTEGER;
-            overlap_count INTEGER;
-        BEGIN
-            SELECT COUNT(*) INTO dup_parent_count FROM (
-                SELECT lower(trim(email)) FROM parents GROUP BY 1 HAVING COUNT(*) > 1
-            ) t;
-            SELECT COUNT(*) INTO dup_athlete_login_count FROM (
-                SELECT lower(trim(email)) FROM athlete_logins GROUP BY 1 HAVING COUNT(*) > 1
-            ) t;
-            SELECT COUNT(*) INTO overlap_count FROM parents p
-                JOIN athlete_logins a ON lower(trim(p.email)) = lower(trim(a.email));
+# The migration's actual preflight SQL (SET TRANSACTION ISOLATION LEVEL +
+# the DO $$ ... RAISE EXCEPTION block) is read directly out of the real
+# migration file rather than hand-retyped here, so these tests always
+# exercise the literal production SQL -- editing the block in the .sql file
+# can never silently drift out of sync with what the tests check.
+_MIGRATION_SQL_PATH = Path(__file__).resolve().parent.parent / "db" / "postgres" / "003_auth_identities.sql"
 
-            IF dup_parent_count > 0 OR dup_athlete_login_count > 0 OR overlap_count > 0 THEN
-                RAISE EXCEPTION
-                    'auth_identities backfill aborted: % duplicate parent email group(s), % duplicate athlete_login email group(s), % parent/athlete email overlap(s) found at migration time. Resolve manually before rerunning -- do not guess an owner.',
-                    dup_parent_count, dup_athlete_login_count, overlap_count;
-            END IF;
-        END $$;
-    """)
+
+def _read_preflight_sql() -> str:
+    text = _MIGRATION_SQL_PATH.read_text()
+    # Split on the actual CREATE TABLE statement, not just the substring
+    # "CREATE TABLE" -- the file's own comments mention "CREATE TABLE" in
+    # prose (e.g. "aborts the entire file (CREATE TABLE included...)"),
+    # which would otherwise truncate the extraction before it ever reaches
+    # the SET TRANSACTION / DO $$ block.
+    return text[: text.index("CREATE TABLE auth_identities")]
+
+
+def _run_migration_preflight(conn):
+    conn.execute(_read_preflight_sql())
 
 
 def _run_backfill(conn):

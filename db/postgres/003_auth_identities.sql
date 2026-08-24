@@ -20,6 +20,19 @@
 -- than guessing an owner or partially backfilling. If this RAISEs, the
 -- migration runner rolls back and stops -- rerun only after resolving the
 -- reported collision by hand.
+--
+-- TOCTOU CLOSE (code review, 2026-08-24): under the default READ COMMITTED
+-- isolation, a concurrent write landing between the preflight SELECT and
+-- the later backfill INSERT...SELECT would not be caught by the preflight,
+-- and ON CONFLICT DO NOTHING would silently drop the colliding row --
+-- permanently, since schema_migrations marks this file applied afterward.
+-- REPEATABLE READ makes the preflight and both backfill inserts see one
+-- consistent snapshot: any such race is either caught by the preflight's
+-- RAISE EXCEPTION, or aborts the whole transaction with a Postgres
+-- serialization failure (also rolled back by the migration runner) --
+-- never a silent partial write.
+
+SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 
 DO $$
 DECLARE
@@ -51,8 +64,8 @@ CREATE TABLE auth_identities (
     athlete_id       INTEGER REFERENCES athletes(id) ON DELETE CASCADE,
     email            TEXT,
     email_verified   BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at       TEXT DEFAULT sqlite_now(),
-    updated_at       TEXT DEFAULT sqlite_now(),
+    created_at       TEXT NOT NULL DEFAULT sqlite_now(),
+    updated_at       TEXT NOT NULL DEFAULT sqlite_now(),
 
     CONSTRAINT auth_identities_provider_subject_uniq UNIQUE (provider, provider_subject),
     CONSTRAINT auth_identities_exactly_one_owner CHECK (
