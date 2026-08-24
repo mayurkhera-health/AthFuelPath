@@ -58,6 +58,35 @@
 -- (raising a lock-not-available error) instead of waiting indefinitely --
 -- surfacing the conflict so the migration can be safely retried rather than
 -- potentially queuing production writes behind it forever.
+
+-- CANONICAL EMAIL NORMALIZATION (external review, 2026-08-24, round 3): the
+-- application layer normalizes with Python's `.strip().lower()`, which
+-- strips the full Unicode whitespace class (space, tab, newline, CR,
+-- vertical tab, form feed, non-breaking space U+00A0, etc.). Postgres's
+-- plain trim() strips only ASCII space (0x20) by default -- so a legacy
+-- stored email padded with a tab/newline/NBSP would NOT match under a bare
+-- lower(trim(email)) DB-side comparison even though Python's .strip() would
+-- have normalized it identically upstream. normalize_email() is the ONE
+-- place this normalization logic lives for auth identity resolution --
+-- every preflight check, backfill insert, and the resolver's own
+-- legacy-table lookups all call this, so there is no way for two call
+-- sites to silently drift apart again. Never rewrites parents.email/
+-- athlete_logins.email -- this is a comparison-side/derived-value function
+-- only. Does NOT touch Gmail dot/+alias/domain conventions -- those remain
+-- unrewritten by design (see the Phase 5 plan's Email Normalization
+-- section). Uses a distinct dollar-quote tag ($NORMALIZE$) since this file
+-- also uses plain $$ for the preflight DO block below -- nested/adjacent
+-- dollar-quoting with the same tag can be ambiguous; a distinct tag avoids
+-- any parsing risk. The character class below includes \xA0 (non-breaking
+-- space, U+00A0) alongside the ASCII whitespace escapes -- verified
+-- empirically against real Postgres that plain \s / the bare ASCII class
+-- do NOT strip U+00A0, so it must be listed explicitly or NBSP-padded
+-- legacy rows would still fail to normalize-match.
+CREATE OR REPLACE FUNCTION normalize_email(input TEXT) RETURNS TEXT
+LANGUAGE sql IMMUTABLE AS $NORMALIZE$
+    SELECT lower(regexp_replace(input, '^[ \t\n\r\v\f\xA0]+|[ \t\n\r\v\f\xA0]+$', '', 'g'));
+$NORMALIZE$;
+
 SET LOCAL lock_timeout = '10s';
 
 LOCK TABLE parents, athlete_logins IN SHARE MODE;
@@ -69,13 +98,13 @@ DECLARE
     overlap_count INTEGER;
 BEGIN
     SELECT COUNT(*) INTO dup_parent_count FROM (
-        SELECT lower(trim(email)) FROM parents GROUP BY 1 HAVING COUNT(*) > 1
+        SELECT normalize_email(email) FROM parents GROUP BY 1 HAVING COUNT(*) > 1
     ) t;
     SELECT COUNT(*) INTO dup_athlete_login_count FROM (
-        SELECT lower(trim(email)) FROM athlete_logins GROUP BY 1 HAVING COUNT(*) > 1
+        SELECT normalize_email(email) FROM athlete_logins GROUP BY 1 HAVING COUNT(*) > 1
     ) t;
     SELECT COUNT(*) INTO overlap_count FROM parents p
-        JOIN athlete_logins a ON lower(trim(p.email)) = lower(trim(a.email));
+        JOIN athlete_logins a ON normalize_email(p.email) = normalize_email(a.email);
 
     IF dup_parent_count > 0 OR dup_athlete_login_count > 0 OR overlap_count > 0 THEN
         RAISE EXCEPTION
@@ -125,9 +154,9 @@ CREATE INDEX idx_auth_identities_athlete_id ON auth_identities(athlete_id);
 -- omitting an identity row.
 
 INSERT INTO auth_identities (provider, provider_subject, parent_id, email, email_verified)
-SELECT 'email', lower(trim(email)), id, lower(trim(email)), TRUE
+SELECT 'email', normalize_email(email), id, normalize_email(email), TRUE
 FROM parents;
 
 INSERT INTO auth_identities (provider, provider_subject, athlete_id, email, email_verified)
-SELECT 'email', lower(trim(email)), athlete_id, lower(trim(email)), TRUE
+SELECT 'email', normalize_email(email), athlete_id, normalize_email(email), TRUE
 FROM athlete_logins;

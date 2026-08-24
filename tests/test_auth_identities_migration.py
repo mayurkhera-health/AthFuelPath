@@ -6,6 +6,7 @@ import os
 os.environ["DB_PATH"] = ":memory:"
 
 import os
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -214,6 +215,69 @@ def _run_migration_preflight(conn):
     conn.execute(_read_preflight_sql())
 
 
+def test_normalize_email_strips_ascii_spaces_and_lowercases(db):
+    """Correction (external review, 2026-08-24, round 3): normalize_email()
+    is the ONE canonical DB-side normalization function, matching Python's
+    .strip().lower() more closely than plain trim()/lower() alone. Ordinary
+    leading/trailing ASCII space (0x20), combined with mixed capitalization."""
+    row = db.execute("SELECT normalize_email('  Foo@Example.com  ') AS n").fetchone()
+    assert row["n"] == "foo@example.com"
+
+
+def test_normalize_email_strips_tabs():
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT normalize_email(chr(9) || 'Foo@Example.com' || chr(9)) AS n"
+        ).fetchone()
+        assert row["n"] == "foo@example.com"
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+def test_normalize_email_strips_newlines_and_carriage_returns():
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT normalize_email(chr(10) || 'Foo@Example.com' || chr(13) || chr(10)) AS n"
+        ).fetchone()
+        assert row["n"] == "foo@example.com"
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+def test_normalize_email_strips_non_breaking_space():
+    """Postgres's plain trim() only strips ASCII space (0x20) by default --
+    it does NOT strip U+00A0 (non-breaking space). normalize_email() must,
+    since Python's str.strip() does."""
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT normalize_email(chr(160) || 'Foo@Example.com' || chr(160)) AS n"
+        ).fetchone()
+        assert row["n"] == "foo@example.com"
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+def test_normalize_email_handles_mixed_whitespace_and_capitalization_together():
+    """All required whitespace classes (ASCII space, tab, CR, LF, NBSP)
+    combined with mixed capitalization in a single value -- proving the
+    character class covers all of them simultaneously, not just in
+    isolation."""
+    conn = get_conn()
+    try:
+        mixed = "  " + chr(9) + "FOO@EXAMPLE.COM" + chr(13) + chr(10) + chr(160) + "  "
+        row = conn.execute("SELECT normalize_email(%s) AS n", (mixed,)).fetchone()
+        assert row["n"] == "foo@example.com"
+    finally:
+        conn.rollback()
+        conn.close()
+
+
 def test_set_local_lock_timeout_is_transaction_scoped(db):
     """Correction (external review, 2026-08-24): 003_auth_identities.sql now
     runs `SET LOCAL lock_timeout = '10s'` immediately before its
@@ -261,7 +325,18 @@ def test_migration_rolls_back_and_does_not_record_version_3_when_lock_times_out(
          actual production migration runner) against that database and
          confirm it raises within ~10s rather than hanging, then confirm
          nothing from migration 003 survived.
-    """
+
+    Correction (external review, 2026-08-24, round 3): run_migrations() is
+    invoked in a background daemon thread, joined with a generous but
+    FINITE timeout (30s -- well above the migration's own 10s lock_timeout,
+    but still bounded). If the migration's own SET LOCAL lock_timeout ever
+    regresses (removed, or reordered after LOCK TABLE), Postgres itself
+    would then impose no timeout and the direct call used previously could
+    hang this test indefinitely, since the lock-holding second connection
+    never releases within the test. With the bounded join, that regression
+    now surfaces as a loud, explicit pytest.fail() instead of a hang -- and
+    the thread being a daemon means even that failure case doesn't hang the
+    pytest process at exit waiting on a stuck thread."""
     db_name = f"athfuelpath_test_locktimeout_{uuid.uuid4().hex[:8]}"
     maint = psycopg.connect("dbname=postgres", autocommit=True)
     db_created = False
@@ -269,8 +344,15 @@ def test_migration_rolls_back_and_does_not_record_version_3_when_lock_times_out(
         try:
             maint.execute(f'CREATE DATABASE "{db_name}"')
             db_created = True
-        except Exception as exc:
-            pytest.skip(f"cannot CREATE DATABASE in this environment: {exc}")
+        except psycopg.errors.InsufficientPrivilege as exc:
+            # Narrowed (external review, 2026-08-24, round 3): skip ONLY for
+            # the specific, expected "role lacks CREATEDB" condition --
+            # Postgres SQLSTATE 42501, which psycopg3 maps to
+            # psycopg.errors.InsufficientPrivilege. Any other failure here
+            # (connectivity, malformed SQL, an unexpected Postgres error, a
+            # programming error) must propagate and FAIL the test loudly --
+            # it must never be silently swallowed as an environment quirk.
+            pytest.skip(f"role lacks CREATEDB privilege in this environment: {exc}")
 
         original_database_url = os.environ.get("DATABASE_URL")
         os.environ["DATABASE_URL"] = f"dbname={db_name}"
@@ -304,17 +386,58 @@ def test_migration_rolls_back_and_does_not_record_version_3_when_lock_times_out(
             blocker = get_conn()
             blocker.execute("LOCK TABLE parents IN ACCESS EXCLUSIVE MODE")
 
+            # Thread targets don't propagate exceptions to the joining
+            # thread automatically -- stash whatever run_migrations() does
+            # (return value or raised exception) in this small mutable
+            # container so the main test thread can inspect it after join().
+            result_box = []
+
+            def _run():
+                try:
+                    run_migrations(quiet=True)
+                    result_box.append(("ok", None))
+                except BaseException as exc:  # noqa: BLE001 -- must capture
+                    # any exception shape run_migrations can raise, not
+                    # just a chosen subset, since the assertions below
+                    # inspect it.
+                    result_box.append(("error", exc))
+
+            thread = threading.Thread(target=_run, daemon=True)
             start = time.monotonic()
-            with pytest.raises(Exception) as excinfo:
-                run_migrations(quiet=True)
+            thread.start()
+            thread.join(timeout=30)
             elapsed = time.monotonic() - start
+
+            if thread.is_alive():
+                # The migration hung past a generous 30s bound (well above
+                # its own 10s lock_timeout) -- this means the migration's
+                # own SET LOCAL lock_timeout has regressed (removed, or
+                # reordered after LOCK TABLE), so Postgres itself is no
+                # longer bounding the wait. Fail loudly rather than let the
+                # test hang further or silently pass; the thread is a
+                # daemon so the pytest process itself won't hang at exit
+                # waiting on it.
+                pytest.fail(
+                    "run_migrations() did not return within 30s -- the "
+                    "migration's own SET LOCAL lock_timeout appears to have "
+                    "regressed (removed, or reordered after LOCK TABLE), so "
+                    "Postgres is no longer bounding the LOCK TABLE wait."
+                )
+
+            assert result_box, "background thread finished without recording a result"
+            outcome, error = result_box[0]
+            assert outcome == "error", (
+                f"expected run_migrations() to raise a lock-timeout error, but it "
+                f"returned normally"
+            )
+            excinfo = error
 
             # Bounded wait, not an indefinite hang: raised at roughly the
             # 10s lock_timeout (generous window for CI/machine variance),
             # not immediately and not after minutes.
             assert 5 <= elapsed <= 60, f"expected a ~10s lock_timeout, took {elapsed:.1f}s"
-            assert "lock" in str(excinfo.value).lower(), (
-                f"expected a lock-not-available-shaped error, got: {excinfo.value!r}"
+            assert "lock" in str(excinfo).lower(), (
+                f"expected a lock-not-available-shaped error, got: {excinfo!r}"
             )
 
             # Whole-file rollback confirmed: neither the CREATE TABLE nor

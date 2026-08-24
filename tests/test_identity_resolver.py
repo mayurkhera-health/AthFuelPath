@@ -219,33 +219,93 @@ def test_provider_subject_is_case_sensitive(db):
 
 def test_verified_email_auto_links_to_parent_with_whitespace_and_case_in_stored_email(db):
     """Correction (external review, 2026-08-24): the verified-email lookup
-    must match the STORED parents.email using the same lower(trim(...))
-    normalization rule the Task 1 migration/backfill uses -- not just
-    lower(...). Real production rows have surrounding whitespace that
-    lower() alone doesn't strip. Simulates a future Google/Apple auto-link
-    (provider="google") whose normalized `email` argument must still match a
-    parent row stored with extra capitalization AND surrounding whitespace."""
-    pid = _make_parent(db, "  Parent1@Example.com  ")
+    must match the STORED parents.email using the same canonical
+    normalize_email() rule the Task 1 migration/backfill uses -- not just
+    lower(trim(...)). Real production rows can have surrounding whitespace
+    from the FULL Unicode whitespace class Python's .strip() strips (plain
+    SQL trim() only strips ASCII space 0x20), so this covers ASCII space,
+    tab, newline/CR, and non-breaking space (U+00A0) padding individually,
+    each combined with mixed capitalization. Simulates a future Google/Apple
+    auto-link (provider="google") whose normalized `email` argument must
+    still match a parent row stored with each of these paddings.
+
+    Round-3 correction (2026-08-24): extended beyond plain ASCII-space
+    padding specifically because a bare lower(trim(email)) DB-side
+    comparison does NOT strip tabs/newlines/NBSP -- these sub-cases would
+    FAIL to auto-link against the old lower(trim(email)) code and only PASS
+    once the resolver's lookup uses normalize_email()."""
+    pid_space = _make_parent(db, "  Parent1@Example.com  ", full_name="Space Parent")
     result = resolve_identity(
         provider="google", provider_subject="google-sub-789",
         email="parent1@example.com", email_verified=True,
     )
     assert result.role == "parent"
-    assert result.parent_id == pid
+    assert result.parent_id == pid_space
     assert result.athlete_id is None
+
+    pid_tab = _make_parent(db, "\tParent2@Example.com\t", full_name="Tab Parent")
+    result = resolve_identity(
+        provider="google", provider_subject="google-sub-791",
+        email="parent2@example.com", email_verified=True,
+    )
+    assert result.role == "parent"
+    assert result.parent_id == pid_tab
+
+    pid_newline = _make_parent(db, "\nParent3@Example.com\r\n", full_name="Newline Parent")
+    result = resolve_identity(
+        provider="google", provider_subject="google-sub-792",
+        email="parent3@example.com", email_verified=True,
+    )
+    assert result.role == "parent"
+    assert result.parent_id == pid_newline
+
+    pid_nbsp = _make_parent(db, " Parent4@Example.com ", full_name="NBSP Parent")
+    result = resolve_identity(
+        provider="google", provider_subject="google-sub-793",
+        email="parent4@example.com", email_verified=True,
+    )
+    assert result.role == "parent"
+    assert result.parent_id == pid_nbsp
 
 
 def test_verified_email_auto_links_to_athlete_login_with_whitespace_and_case_in_stored_email(db):
-    """Equivalent to the parent case above, but for athlete_logins.email."""
+    """Equivalent to the parent case above, but for athlete_logins.email --
+    ASCII space, tab, newline/CR, and non-breaking space (U+00A0) padding,
+    each combined with mixed capitalization."""
     pid = _make_parent(db, "parent1@example.com")
-    aid = _make_athlete_with_login(db, pid, "  Alex@Example.com  ")
+
+    aid_space = _make_athlete_with_login(db, pid, "  Alex@Example.com  ", first_name="SpaceAlex")
     result = resolve_identity(
         provider="google", provider_subject="google-sub-790",
         email="alex@example.com", email_verified=True,
     )
     assert result.role == "athlete"
-    assert result.athlete_id == aid
+    assert result.athlete_id == aid_space
     assert result.parent_id is None
+
+    aid_tab = _make_athlete_with_login(db, pid, "\tAlex2@Example.com\t", first_name="TabAlex")
+    result = resolve_identity(
+        provider="google", provider_subject="google-sub-794",
+        email="alex2@example.com", email_verified=True,
+    )
+    assert result.role == "athlete"
+    assert result.athlete_id == aid_tab
+
+    aid_newline = _make_athlete_with_login(db, pid, "\nAlex3@Example.com\r\n", first_name="NewlineAlex")
+    result = resolve_identity(
+        provider="google", provider_subject="google-sub-795",
+        email="alex3@example.com", email_verified=True,
+    )
+    assert result.role == "athlete"
+    assert result.athlete_id == aid_newline
+
+    aid_nbsp = _make_athlete_with_login(db, pid, " Alex4@Example.com ", first_name="NbspAlex")
+    result = resolve_identity(
+        provider="google", provider_subject="google-sub-796",
+        email="alex4@example.com", email_verified=True,
+    )
+    assert result.role == "athlete"
+    assert result.athlete_id == aid_nbsp
 
 
 def test_percent_character_in_email_is_handled_safely(db):
