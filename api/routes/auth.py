@@ -27,6 +27,7 @@ class LoginRequest(BaseModel):
 class AthleteCreateLoginRequest(BaseModel):
     email: str          # athlete's own email (becomes their login)
     parent_email: str   # parent's email — the gate
+    code: str            # OTP sent to parent_email, proving the parent authorized this claim (auth v2.1 Phase 4)
 
 
 class AthleteClaimLookupRequest(BaseModel):
@@ -228,16 +229,36 @@ def athlete_claim_lookup(data: AthleteClaimLookupRequest):
 @router.post("/athlete-create-login/{athlete_id}")
 def create_athlete_login(athlete_id: int, data: AthleteCreateLoginRequest):
     """
-    Phase 0c gate: no athlete login without a verified parent account.
-    1. Verify parent exists by email.
-    2. Verify athlete belongs to that parent.
-    3. Create athlete_logins row.
+    No athlete login without proof the parent authorized it. Corrected auth
+    v2.1 Phase 4 design (2026-08-23 review): the OTP is sent to and verified
+    against the PARENT's email, not the athlete's new login email, and
+    verification happens here directly via verify_otp_code — never via
+    POST /api/auth/email/verify, which would resolve the parent identity and
+    mint a PARENT session. The athlete must never receive a parent session
+    as a side effect of claiming their own profile.
+
+    Order (each gate checked only after the previous one passes):
+    1. Verify the submitted code against parent_email — no account lookup
+       needed for this, so it happens first.
+    2. Only after OTP success, recheck parent ownership: parent must exist,
+       and this athlete must belong to that parent.
+    3. Athlete must not already have a login.
+    4. Create the login row.
+    5. Mint an athlete session — never a parent one.
     """
     email = data.email.strip().lower()
     parent_email = data.parent_email.strip().lower()
+
+    # Gate 1: a real, server-verified OTP proving control of parent_email.
+    # Single-use (verify_otp_code marks it consumed on success) and checked
+    # BEFORE any parent/athlete lookup — an invalid code learns nothing
+    # about whether parent_email or athlete_id are even real.
+    if not verify_otp_code(parent_email, data.code.strip()):
+        raise HTTPException(401, "Invalid or expired code. Please request a new one.")
+
     conn = get_conn()
     try:
-        # Gate 1: parent must exist
+        # Gate 2 (recheck, only reached after OTP success): parent must exist.
         parent = conn.execute(
             "SELECT id FROM parents WHERE lower(email) = %s", (parent_email,)
         ).fetchone()
@@ -248,7 +269,7 @@ def create_athlete_login(athlete_id: int, data: AthleteCreateLoginRequest):
             )
         parent_id = dict(parent)["id"]
 
-        # Gate 2: athlete must belong to this parent
+        # Gate 3: athlete must belong to this parent.
         athlete = conn.execute(
             "SELECT * FROM athletes WHERE id = %s AND parent_id = %s",
             (athlete_id, parent_id),
@@ -258,11 +279,7 @@ def create_athlete_login(athlete_id: int, data: AthleteCreateLoginRequest):
                 403, "This athlete profile is not linked to that parent account."
             )
 
-        # Gate 3: athlete must not already have a login.
-        # Explicit check so the operation is sound regardless of whether the live
-        # athlete_logins table has the UNIQUE(athlete_id) constraint (prod currently
-        # does not — see db_migrations). Prevents a silent duplicate login for the
-        # same athlete claimed under a second email.
+        # Gate 4: athlete must not already have a login.
         if conn.execute(
             "SELECT 1 FROM athlete_logins WHERE athlete_id = %s", (athlete_id,)
         ).fetchone():

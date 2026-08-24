@@ -28,6 +28,7 @@ from fastapi.testclient import TestClient
 from db.setup import init_db
 from api.services.db_migrations import run_all
 from api.database import get_conn
+from api.services.session_auth import verify_session_token
 from api.main import app
 
 
@@ -40,6 +41,7 @@ def client():
     keepalive.execute("DELETE FROM athlete_logins")
     keepalive.execute("DELETE FROM athletes")
     keepalive.execute("DELETE FROM parents")
+    keepalive.execute("DELETE FROM otp_codes")
     keepalive.commit()
     with TestClient(app) as c:
         yield c
@@ -78,14 +80,37 @@ def make_athlete(parent_id, first_name="Alex"):
         conn.close()
 
 
+def _verified_code_for(email, *, expires_in_minutes=10):
+    """Insert a real, matchable OTP row for `email` directly (bypassing
+    Gmail), mirroring the pattern in tests/test_email_auth_flow.py, so
+    tests can supply genuine proof instead of bypassing the gate."""
+    import hashlib
+    from datetime import datetime, timedelta
+    from api.database import get_conn
+    code = "654321"
+    code_hash = hashlib.sha256(code.encode()).hexdigest()
+    expires_at = (datetime.utcnow() + timedelta(minutes=expires_in_minutes)).isoformat()
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO otp_codes (email, code_hash, expires_at) VALUES (%s, %s, %s)",
+            (email.lower(), code_hash, expires_at),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return code
+
+
 # --- athlete-create-login: the gates ------------------------------------
 
 def test_create_login_requires_existing_parent(client):
     pid = make_parent("parent1@example.com")
     aid = make_athlete(pid, "Alex")
+    code = _verified_code_for("ghost@example.com")
     r = client.post(
         f"/api/auth/athlete-create-login/{aid}",
-        json={"email": "alex@example.com", "parent_email": "ghost@example.com"},
+        json={"email": "alex@example.com", "parent_email": "ghost@example.com", "code": code},
     )
     assert r.status_code == 403, r.text
 
@@ -95,9 +120,10 @@ def test_create_login_requires_athlete_belongs_to_parent(client):
     p2 = make_parent("parent2@example.com")
     other_kid = make_athlete(p2, "Jordan")  # belongs to parent2
     # parent1 tries to claim parent2's athlete
+    code = _verified_code_for("parent1@example.com")
     r = client.post(
         f"/api/auth/athlete-create-login/{other_kid}",
-        json={"email": "jordan@example.com", "parent_email": "parent1@example.com"},
+        json={"email": "jordan@example.com", "parent_email": "parent1@example.com", "code": code},
     )
     assert r.status_code == 403, r.text
 
@@ -105,14 +131,16 @@ def test_create_login_requires_athlete_belongs_to_parent(client):
 def test_create_login_rejects_duplicate_for_same_athlete(client):
     pid = make_parent("parent1@example.com")
     aid = make_athlete(pid, "Alex")
+    code = _verified_code_for("parent1@example.com")
     first = client.post(
         f"/api/auth/athlete-create-login/{aid}",
-        json={"email": "alex@example.com", "parent_email": "parent1@example.com"},
+        json={"email": "alex@example.com", "parent_email": "parent1@example.com", "code": code},
     )
     assert first.status_code == 200, first.text
+    code2 = _verified_code_for("parent1@example.com")
     again = client.post(
         f"/api/auth/athlete-create-login/{aid}",
-        json={"email": "alex2@example.com", "parent_email": "parent1@example.com"},
+        json={"email": "alex2@example.com", "parent_email": "parent1@example.com", "code": code2},
     )
     assert again.status_code == 409, again.text
 
@@ -121,15 +149,17 @@ def test_create_login_rejects_email_already_taken(client):
     pid = make_parent("parent1@example.com")
     a1 = make_athlete(pid, "Alex")
     a2 = make_athlete(pid, "Sam")
+    code = _verified_code_for("parent1@example.com")
     r1 = client.post(
         f"/api/auth/athlete-create-login/{a1}",
-        json={"email": "shared@example.com", "parent_email": "parent1@example.com"},
+        json={"email": "shared@example.com", "parent_email": "parent1@example.com", "code": code},
     )
     assert r1.status_code == 200, r1.text
     # second athlete tries to claim the same email
+    code2 = _verified_code_for("parent1@example.com")
     r2 = client.post(
         f"/api/auth/athlete-create-login/{a2}",
-        json={"email": "shared@example.com", "parent_email": "parent1@example.com"},
+        json={"email": "shared@example.com", "parent_email": "parent1@example.com", "code": code2},
     )
     assert r2.status_code == 409, r2.text
 
@@ -220,3 +250,108 @@ def test_legacy_parents_login_endpoint_is_gone(client):
     # ever minted from this path — the property this test exists to prove.
     r = client.post("/api/parents/login", json={"email": "anyone@example.com"})
     assert r.status_code == 405, r.text
+
+
+# --- athlete-create-login: mandatory verified parent OTP gate (auth v2.1 Phase 4) ---
+
+def test_claim_parent_email_knowledge_alone_cannot_authorize(client):
+    """Knowing the parent's email is not enough without a real OTP."""
+    pid = make_parent("parent1@example.com")
+    aid = make_athlete(pid, "Alex")
+    r = client.post(
+        f"/api/auth/athlete-create-login/{aid}",
+        json={"email": "alex@example.com", "parent_email": "parent1@example.com", "code": "000000"},
+    )
+    assert r.status_code == 401, r.text
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT 1 FROM athlete_logins WHERE athlete_id = %s", (aid,)).fetchone()
+    finally:
+        conn.close()
+    assert row is None
+
+
+def test_claim_correct_athlete_email_alone_cannot_authorize(client):
+    """A code issued to the ATHLETE's own new email (not the parent's) must
+    not authorize the claim — verification is against parent_email only."""
+    pid = make_parent("parent1@example.com")
+    aid = make_athlete(pid, "Alex")
+    code = _verified_code_for("alex@example.com")  # issued to the athlete's email, not the parent's
+    r = client.post(
+        f"/api/auth/athlete-create-login/{aid}",
+        json={"email": "alex@example.com", "parent_email": "parent1@example.com", "code": code},
+    )
+    assert r.status_code == 401, r.text
+
+
+def test_claim_wrong_parent_otp_cannot_authorize(client):
+    pid = make_parent("parent1@example.com")
+    aid = make_athlete(pid, "Alex")
+    _verified_code_for("parent1@example.com")  # issues "654321"; submit a different code
+    r = client.post(
+        f"/api/auth/athlete-create-login/{aid}",
+        json={"email": "alex@example.com", "parent_email": "parent1@example.com", "code": "111111"},
+    )
+    assert r.status_code == 401, r.text
+
+
+def test_claim_expired_parent_otp_cannot_authorize(client):
+    pid = make_parent("parent1@example.com")
+    aid = make_athlete(pid, "Alex")
+    code = _verified_code_for("parent1@example.com", expires_in_minutes=-1)
+    r = client.post(
+        f"/api/auth/athlete-create-login/{aid}",
+        json={"email": "alex@example.com", "parent_email": "parent1@example.com", "code": code},
+    )
+    assert r.status_code == 401, r.text
+
+
+def test_claim_already_used_parent_otp_cannot_authorize_again(client):
+    pid = make_parent("parent1@example.com")
+    aid1 = make_athlete(pid, "Alex")
+    aid2 = make_athlete(pid, "Sam")
+    code = _verified_code_for("parent1@example.com")
+    first = client.post(
+        f"/api/auth/athlete-create-login/{aid1}",
+        json={"email": "alex@example.com", "parent_email": "parent1@example.com", "code": code},
+    )
+    assert first.status_code == 200, first.text
+    second = client.post(
+        f"/api/auth/athlete-create-login/{aid2}",
+        json={"email": "sam@example.com", "parent_email": "parent1@example.com", "code": code},
+    )
+    assert second.status_code == 401, second.text
+
+
+def test_claim_valid_parent_otp_authorizes_the_selected_athlete(client):
+    pid = make_parent("parent1@example.com")
+    aid = make_athlete(pid, "Alex")
+    code = _verified_code_for("parent1@example.com")
+    r = client.post(
+        f"/api/auth/athlete-create-login/{aid}",
+        json={"email": "alex@example.com", "parent_email": "parent1@example.com", "code": code},
+    )
+    assert r.status_code == 200, r.text
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT 1 FROM athlete_logins WHERE athlete_id = %s", (aid,)).fetchone()
+    finally:
+        conn.close()
+    assert row is not None
+
+
+def test_claim_success_issues_only_an_athlete_session_never_a_parent_session(client):
+    pid = make_parent("parent1@example.com")
+    aid = make_athlete(pid, "Alex")
+    code = _verified_code_for("parent1@example.com")
+    r = client.post(
+        f"/api/auth/athlete-create-login/{aid}",
+        json={"email": "alex@example.com", "parent_email": "parent1@example.com", "code": code},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["role"] == "athlete"
+    assert "parent" not in body
+    identity = verify_session_token(body["session_token"])
+    assert identity["role"] == "athlete"
+    assert identity["athlete_id"] == aid
