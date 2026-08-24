@@ -248,15 +248,78 @@ def test_email_verify_issued_session_token_is_valid_against_require_session(clie
     assert identity["parent_id"] == parent_id
 
 
-def test_email_verify_parent_takes_precedence_over_athlete_login_for_same_email(client):
-    # Matches unified_login's existing precedence rule — parents checked first.
-    parent_id = make_parent("dual@example.com")
+def test_email_verify_session_token_valid_for_existing_athlete(client):
+    # Athlete-side counterpart to test_email_verify_issued_session_token_is_valid_against_require_session.
+    from api.services.session_auth import verify_session_token
+    parent_id = make_parent("parent1@example.com")
     athlete_id = make_athlete(parent_id, "Alex")
-    make_athlete_login(athlete_id, "dual@example.com")
-    insert_otp_row("dual@example.com", "123456")
-    r = client.post("/api/auth/email/verify", json={"email": "dual@example.com", "code": "123456"})
+    make_athlete_login(athlete_id, "alex@example.com")
+    insert_otp_row("alex@example.com", "123456")
+    r = client.post("/api/auth/email/verify", json={"email": "alex@example.com", "code": "123456"})
     assert r.status_code == 200, r.text
-    assert r.json()["role"] == "parent"
+    token = r.json()["session_token"]
+    identity = verify_session_token(token)
+    assert identity["role"] == "athlete"
+    assert identity["athlete_id"] == athlete_id
+
+
+def test_email_verify_invalid_otp_never_calls_resolver_or_creates_identity_row(client):
+    # Resolver migration (auth v2.1 Phase 5, Task 3): an invalid OTP must
+    # short-circuit before resolve_identity is ever reached, and must never
+    # cause an auth_identities row to be created.
+    make_parent("parent1@example.com")
+    insert_otp_row("parent1@example.com", "123456")
+    with patch("api.routes.auth.resolve_identity") as mock_resolve:
+        r = client.post("/api/auth/email/verify", json={"email": "parent1@example.com", "code": "000000"})
+    assert r.status_code == 401, r.text
+    assert "session_token" not in r.json()
+    mock_resolve.assert_not_called()
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM auth_identities WHERE provider = 'email' AND provider_subject = %s",
+            ("parent1@example.com",),
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row is None
+
+
+def test_email_verify_ambiguous_parent_and_athlete_same_email_returns_409_with_no_identifying_details(client):
+    """Same normalized email exists as both a parent and an athlete login --
+    structurally possible even though a 2026-08-24 production preflight
+    found zero such cases today (Phase 5 plan A.5). OTP verification already
+    proved ownership of the email (genuine authentication, not a failed
+    attempt), so this is 409, never 401 -- and the response must reveal
+    nothing about which accounts collided: no role, no IDs, no email."""
+    parent_id = make_parent("dual@example.com")
+    other_parent_id = make_parent("someone-else@example.com")
+    other_athlete_id = make_athlete(other_parent_id, "Alex")
+    make_athlete_login(other_athlete_id, "dual@example.com")
+    insert_otp_row("dual@example.com", "123456")
+
+    r = client.post("/api/auth/email/verify", json={"email": "dual@example.com", "code": "123456"})
+
+    assert r.status_code == 409, r.text
+    assert r.json() == {"detail": "Something went wrong. Please contact support."}
+    body_text = r.text.lower()
+    assert "parent" not in body_text
+    assert "athlete" not in body_text
+    assert "dual@example.com" not in body_text
+    assert "session_token" not in body_text
+    assert str(parent_id) not in r.text
+    assert str(other_parent_id) not in r.text
+    assert str(other_athlete_id) not in r.text
+
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM auth_identities WHERE provider = 'email' AND provider_subject = %s",
+            ("dual@example.com",),
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row is None
 
 
 # --- /email/verify: verified email, no existing account ------------------
@@ -279,6 +342,32 @@ def test_email_verify_no_account_case_does_not_create_a_parent_row(client):
     try:
         row = conn.execute(
             "SELECT 1 FROM parents WHERE lower(email) = %s", ("nobody@example.com",)
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row is None
+
+
+def test_email_verify_no_account_case_routes_through_resolver_and_response_is_unchanged(client):
+    # Resolver migration (auth v2.1 Phase 5, Task 3): the NoExistingAccount
+    # path must now be reached BY WAY OF resolve_identity (not bypassed by
+    # some leftover inline lookup), yet still produce the exact same
+    # byte-identical response as before the migration, and still create no
+    # auth_identities row.
+    from api.services.identity_resolver import resolve_identity as real_resolve_identity
+    insert_otp_row("nobody@example.com", "123456")
+    with patch("api.routes.auth.resolve_identity", wraps=real_resolve_identity) as mock_resolve:
+        r = client.post("/api/auth/email/verify", json={"email": "nobody@example.com", "code": "123456"})
+    assert r.status_code == 200, r.text
+    assert r.json() == {"verified": True, "has_account": False}
+    mock_resolve.assert_called_once_with(
+        provider="email", provider_subject="nobody@example.com",
+        email="nobody@example.com", email_verified=True,
+    )
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM auth_identities WHERE provider_subject = %s", ("nobody@example.com",)
         ).fetchone()
     finally:
         conn.close()

@@ -14,6 +14,7 @@ from api.database import get_conn
 from api.services import login_alerts
 from api.services.session_auth import mint_session_token, require_session
 from api.services.otp_auth import issue_otp, verify_otp as verify_otp_code, OtpRateLimited, OtpDeliveryFailed
+from api.services.identity_resolver import resolve_identity, NoExistingAccount, AmbiguousIdentity
 
 logger = logging.getLogger(__name__)
 
@@ -72,31 +73,63 @@ def email_auth_verify(data: EmailAuthVerify, background_tasks: BackgroundTasks):
     this endpoint) never issues one; see the 401 paths below, none of which
     include a session_token.
 
-    If the verified email has no existing account, this reports that
-    plainly instead of guessing/creating one — creating an account here
-    would be Phase 7 (verified signup), out of scope for Phase 2. Reporting
-    it is safe: the caller just proved ownership of exactly this email, so
-    telling them whether THEIR OWN email has an account is not an
-    enumeration leak (unlike /email/request, which must stay neutral to an
-    unverified caller).
+    auth v2.1 Phase 5 (Task 3): identity resolution itself — "which parent
+    or athlete does this verified email belong to" — is delegated to the
+    common resolver (api.services.identity_resolver.resolve_identity)
+    instead of this route's own inline parent-then-athlete lookup. The
+    route still owns everything the resolver deliberately does not: loading
+    the full row for the response, minting the session, and the parent-only
+    side effects below. Response shapes/status codes are unchanged from
+    before this migration for every case that was reachable before it.
+
+    If the verified email has no existing account (resolver raises
+    NoExistingAccount), this reports that plainly instead of guessing/
+    creating one — creating an account here would be Phase 7 (verified
+    signup), out of scope for Phase 2. Reporting it is safe: the caller
+    just proved ownership of exactly this email, so telling them whether
+    THEIR OWN email has an account is not an enumeration leak (unlike
+    /email/request, which must stay neutral to an unverified caller).
+
+    If the verified email resolves to more than one possible owner
+    (resolver raises AmbiguousIdentity — not reachable with current
+    production data, see Phase 5 plan A.5, but handled defensively since a
+    future write could make it possible), this fails closed: 409 (never
+    401 — OTP verification already proved genuine authentication, so 401
+    would be wrong), with a fixed generic message only. No parent/athlete
+    IDs, email, or collision details ever appear in the response or in the
+    server-side log line for this case.
 
     On a successful parent login, this also stamps last_login_at and
     schedules a best-effort founder login-alert (login_alerts.notify_login)
     as a background task — ported from the now-deleted unified_login
-    (auth v2.1 Phase 4).
+    (auth v2.1 Phase 4). These side effects fire only in the parent branch,
+    unconditionally on a successful parent resolution, exactly as before
+    this migration.
     """
     email = data.email.strip().lower()
 
     if not verify_otp_code(email, data.code.strip()):
         raise HTTPException(401, "Invalid or expired code. Please request a new one.")
 
+    try:
+        identity = resolve_identity(
+            provider="email", provider_subject=email, email=email, email_verified=True,
+        )
+    except NoExistingAccount:
+        return {"verified": True, "has_account": False}
+    except AmbiguousIdentity:
+        logger.error(
+            "email_auth_verify: ambiguous identity for a verified email "
+            "(auth_identities data integrity issue — multiple possible owners)"
+        )
+        raise HTTPException(409, "Something went wrong. Please contact support.")
+
     conn = get_conn()
     try:
-        # 1. Parent? (same precedence as unified_login — parents checked first)
-        parent = conn.execute(
-            "SELECT * FROM parents WHERE lower(email) = %s", (email,)
-        ).fetchone()
-        if parent:
+        if identity.role == "parent":
+            parent = conn.execute(
+                "SELECT * FROM parents WHERE id = %s", (identity.parent_id,)
+            ).fetchone()
             parent_d = dict(parent)
             athletes = [dict(a) for a in conn.execute(
                 "SELECT * FROM athletes WHERE parent_id = %s", (parent_d["id"],)
@@ -124,24 +157,21 @@ def email_auth_verify(data: EmailAuthVerify, background_tasks: BackgroundTasks):
             token = mint_session_token(role="parent", parent_id=parent_d["id"])
             return {"role": "parent", "parent": parent_d, "athletes": athletes, "session_token": token}
 
-        # 2. Athlete?
-        al = conn.execute(
-            "SELECT * FROM athlete_logins WHERE lower(email) = %s", (email,)
+        # identity.role == "athlete". No defensive "athlete row missing"
+        # check here (unlike the pre-Phase-5 code's now-removed inline
+        # lookup): athlete_logins.athlete_id is NOT NULL UNIQUE REFERENCES
+        # athletes(id) ON DELETE CASCADE, so a resolved athlete_id can never
+        # point at a since-deleted athlete row — that branch was always
+        # unreachable, even before this migration (see Phase 5 plan, Task 3
+        # Step 4 note).
+        athlete = conn.execute(
+            "SELECT * FROM athletes WHERE id = %s", (identity.athlete_id,)
         ).fetchone()
-        if al:
-            athlete = conn.execute(
-                "SELECT * FROM athletes WHERE id = %s", (dict(al)["athlete_id"],)
-            ).fetchone()
-            if not athlete:
-                raise HTTPException(500, "Athlete profile not found.")
-            athlete_d = dict(athlete)
-            token = mint_session_token(
-                role="athlete", athlete_id=athlete_d["id"], parent_id=athlete_d["parent_id"],
-            )
-            return {"role": "athlete", "athlete": athlete_d, "session_token": token}
-
-        # 3. Verified, but no account exists — safe to say so (see docstring).
-        return {"verified": True, "has_account": False}
+        athlete_d = dict(athlete)
+        token = mint_session_token(
+            role="athlete", athlete_id=athlete_d["id"], parent_id=athlete_d["parent_id"],
+        )
+        return {"role": "athlete", "athlete": athlete_d, "session_token": token}
     finally:
         conn.close()
 
