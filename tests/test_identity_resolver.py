@@ -12,7 +12,13 @@ from db.setup import init_db
 from api.services.db_migrations import run_all
 from api.database import get_conn
 from api.main import app  # noqa: F401
-from api.services.identity_resolver import resolve_identity, NoExistingAccount, AmbiguousIdentity
+from api.services.identity_resolver import (
+    resolve_identity,
+    NoExistingAccount,
+    AmbiguousIdentity,
+    _resolve_exactly_one_owner,
+    _resolve_exactly_one_parent_owner,
+)
 
 
 @pytest.fixture
@@ -315,3 +321,80 @@ def test_percent_character_in_email_is_handled_safely(db):
         email="50%off+weird@example.com", email_verified=True,
     )
     assert result.parent_id == pid
+
+
+# -- Phase 6: _resolve_exactly_one_owner / _resolve_exactly_one_parent_owner --
+# Read-only building block factored out of resolve_identity()'s auto-link
+# step, for Apple's credential-first flow (see Phase 6 plan, Part A.8/F).
+
+
+def _auth_identities_count(conn):
+    return conn.execute("SELECT COUNT(*) c FROM auth_identities").fetchone()["c"]
+
+
+def test_resolve_exactly_one_owner_matches_a_single_parent_and_does_not_write(db):
+    pid = _make_parent(db, "parent1@example.com")
+    count_before = _auth_identities_count(db)
+    role, parent_id, athlete_id = _resolve_exactly_one_owner(
+        "parent1@example.com", email_verified=True
+    )
+    assert (role, parent_id, athlete_id) == ("parent", pid, None)
+    assert _auth_identities_count(db) == count_before
+
+
+def test_resolve_exactly_one_owner_matches_a_single_athlete_and_does_not_write(db):
+    pid = _make_parent(db, "parent1@example.com")
+    aid = _make_athlete_with_login(db, pid, "alex@example.com")
+    count_before = _auth_identities_count(db)
+    role, parent_id, athlete_id = _resolve_exactly_one_owner(
+        "alex@example.com", email_verified=True
+    )
+    assert (role, parent_id, athlete_id) == ("athlete", None, aid)
+    assert _auth_identities_count(db) == count_before
+
+
+def test_resolve_exactly_one_owner_zero_matches_raises_no_existing_account(db):
+    count_before = _auth_identities_count(db)
+    with pytest.raises(NoExistingAccount):
+        _resolve_exactly_one_owner("nobody@example.com", email_verified=True)
+    assert _auth_identities_count(db) == count_before
+
+
+def test_resolve_exactly_one_owner_ambiguous_match_raises_ambiguous_identity(db):
+    pid = _make_parent(db, "shared@example.com")
+    other_parent = _make_parent(db, "someone-else@example.com")
+    _make_athlete_with_login(db, other_parent, "shared@example.com")
+    count_before = _auth_identities_count(db)
+    with pytest.raises(AmbiguousIdentity):
+        _resolve_exactly_one_owner("shared@example.com", email_verified=True)
+    assert _auth_identities_count(db) == count_before
+
+
+def test_resolve_exactly_one_owner_unverified_email_raises_no_existing_account(db):
+    """Even though a matching parent exists, email_verified=False must fail
+    closed -- mirrors resolve_identity()'s own gating."""
+    _make_parent(db, "parent1@example.com")
+    count_before = _auth_identities_count(db)
+    with pytest.raises(NoExistingAccount):
+        _resolve_exactly_one_owner("parent1@example.com", email_verified=False)
+    assert _auth_identities_count(db) == count_before
+
+
+def test_resolve_exactly_one_parent_owner_returns_parent_id(db):
+    pid = _make_parent(db, "parent1@example.com")
+    count_before = _auth_identities_count(db)
+    result = _resolve_exactly_one_parent_owner("parent1@example.com")
+    assert result == pid
+    assert _auth_identities_count(db) == count_before
+
+
+def test_resolve_exactly_one_parent_owner_rejects_an_athlete_match(db):
+    """This flow (Hide-My-Email linking) is explicitly parent-scoped --
+    an athlete-only match has no use here and must raise NoExistingAccount,
+    per the function's docstring."""
+    pid = _make_parent(db, "parent1@example.com")
+    _make_athlete_with_login(db, pid, "alex@example.com")
+    count_before = _auth_identities_count(db)
+    with pytest.raises(NoExistingAccount):
+        _resolve_exactly_one_parent_owner("alex@example.com")
+    assert _auth_identities_count(db) == count_before

@@ -31,6 +31,72 @@ def _row_to_resolved_identity(row: dict) -> ResolvedIdentity:
     )
 
 
+def _resolve_exactly_one_owner(
+    email: str, *, email_verified: bool
+) -> tuple:
+    """
+    Read-only. Given an already-normalized email and whether it's verified,
+    determines whether it matches exactly one existing parent or athlete
+    owner. NEVER writes to auth_identities or any other table -- this is
+    the building block resolve_identity() uses internally for its own
+    auto-link step, and that a future Apple-specific flow (not part of
+    this task) will call directly, BEFORE any write, so its credential
+    capture can complete first.
+
+    Returns (role, parent_id, athlete_id) -- role is "parent" or "athlete",
+    exactly one of parent_id/athlete_id is set.
+
+    Raises NoExistingAccount if email_verified is False, or email is
+    falsy, or there are zero matches.
+    Raises AmbiguousIdentity if there are 2+ matches (one parent AND one
+    athlete_login both matching the same normalized email).
+    """
+    if not (email and email_verified):
+        raise NoExistingAccount()
+
+    conn = get_conn()
+    try:
+        parent = conn.execute(
+            "SELECT id FROM parents WHERE normalize_email(email) = %s", (email,)
+        ).fetchone()
+        athlete_login = conn.execute(
+            "SELECT athlete_id FROM athlete_logins WHERE normalize_email(email) = %s", (email,)
+        ).fetchone()
+
+        matches = []
+        if parent:
+            matches.append(("parent", dict(parent)["id"], None))
+        if athlete_login:
+            matches.append(("athlete", None, dict(athlete_login)["athlete_id"]))
+
+        if len(matches) == 0:
+            raise NoExistingAccount()
+        if len(matches) > 1:
+            raise AmbiguousIdentity()
+
+        return matches[0]
+    finally:
+        conn.close()
+
+
+def _resolve_exactly_one_parent_owner(email: str) -> int:
+    """
+    Parent-only variant of _resolve_exactly_one_owner, for flows (Hide-My-
+    Email linking) that are explicitly scoped to parent accounts only,
+    since only parents have an independent OTP-receiving email channel in
+    this architecture. Internally calls _resolve_exactly_one_owner(email,
+    email_verified=True) (the caller in this flow has already proven
+    ownership via a real OTP, so email_verified is definitionally true at
+    this point) and additionally raises NoExistingAccount if the match
+    turns out to be an athlete rather than a parent (this flow has no use
+    for an athlete match). Returns just parent_id.
+    """
+    role, parent_id, _athlete_id = _resolve_exactly_one_owner(email, email_verified=True)
+    if role != "parent":
+        raise NoExistingAccount()
+    return parent_id
+
+
 def resolve_identity(
     *,
     provider: str,
@@ -73,28 +139,9 @@ def resolve_identity(
         if existing:
             return _row_to_resolved_identity(dict(existing))
 
-        if not (email and email_verified):
-            raise NoExistingAccount()
-
-        parent = conn.execute(
-            "SELECT id FROM parents WHERE normalize_email(email) = %s", (email,)
-        ).fetchone()
-        athlete_login = conn.execute(
-            "SELECT athlete_id FROM athlete_logins WHERE normalize_email(email) = %s", (email,)
-        ).fetchone()
-
-        matches = []
-        if parent:
-            matches.append(("parent", dict(parent)["id"], None))
-        if athlete_login:
-            matches.append(("athlete", None, dict(athlete_login)["athlete_id"]))
-
-        if len(matches) == 0:
-            raise NoExistingAccount()
-        if len(matches) > 1:
-            raise AmbiguousIdentity()
-
-        role, parent_id, athlete_id = matches[0]
+        role, parent_id, athlete_id = _resolve_exactly_one_owner(
+            email, email_verified=email_verified
+        )
         try:
             conn.execute(
                 "INSERT INTO auth_identities "
