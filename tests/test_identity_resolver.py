@@ -202,21 +202,36 @@ def test_duplicate_provider_and_provider_subject_is_prevented(db):
 
 
 def test_provider_subject_is_case_sensitive(db):
-    """Two differently-cased provider_subject values for the same provider
-    are DISTINCT identities -- this function deliberately does not
-    re-normalize (see docstring), and the DB constraint is plain
-    case-sensitive TEXT."""
-    pid = _make_parent(db, "parent1@example.com")
+    """Two differently-cased provider_subject values are DISTINCT identity
+    keys -- this function deliberately does not re-normalize (see
+    docstring), and the DB constraint is plain case-sensitive TEXT.
+
+    Corrected (Phase 6): uses two different owners rather than the same
+    parent twice, since Phase 6's one-identity-per-provider-per-owner
+    partial-unique index would otherwise reject a second Google identity
+    for the same parent regardless of provider_subject casing -- that
+    constraint is orthogonal to what this test is actually proving. Using
+    two owners also makes this a strictly stronger test: it proves the
+    exact-match lookup for "google-sub-123" does NOT accidentally hit the
+    "Google-Sub-123" row just created for a DIFFERENT parent (which is
+    exactly what a latent case-insensitive comparison bug would look
+    like -- silently misattributing the second owner to the first)."""
+    pid1 = _make_parent(db, "parent1@example.com")
+    pid2 = _make_parent(db, "parent2@example.com")
+
     result1 = resolve_identity(
         provider="google", provider_subject="Google-Sub-123",
         email="parent1@example.com", email_verified=True,
     )
+    assert result1.parent_id == pid1
+
     result2 = resolve_identity(
         provider="google", provider_subject="google-sub-123",
-        email="parent1@example.com", email_verified=True,
+        email="parent2@example.com", email_verified=True,
     )
-    assert result1.parent_id == pid
-    assert result2.parent_id == pid
+    assert result2.parent_id == pid2
+    assert result2.parent_id != result1.parent_id
+
     count = db.execute(
         "SELECT COUNT(*) c FROM auth_identities WHERE provider = 'google'"
     ).fetchone()["c"]
