@@ -49,6 +49,9 @@ PyYAML>=6.0
 pytest>=7.4.0
 APScheduler>=3.10.0
 
+# Google ID-token verification (auth v2.1 Phase 6, api/services/google_auth.py).
+google-auth==2.57.0
+
 # PostgreSQL driver (migration/postgres-cloud-run). Raw SQL architecture is
 # preserved — no ORM. psycopg_pool is available for later pooling hardening
 # but not wired in yet; see docs/postgres-migration-report.md Phase 1 note.
