@@ -6,9 +6,11 @@ session issuance removed) in favor of the OTP-verified /email/request +
 /email/verify flow below. Keeps /api/athletes/* intact for backward compat.
 """
 import logging
+import os
 import secrets
 from datetime import datetime
 
+import jwt
 import psycopg
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -50,6 +52,32 @@ _AMBIGUOUS_IDENTITY_MESSAGE = "Something went wrong. Please contact support."
 # numbers duplicated at each call site.
 _CHALLENGE_TTL_MINUTES = 5
 _PENDING_LINK_TTL_MINUTES = 10
+
+# auth v2.1 Phase 6 Gate 3 -- narrow, dev-only diagnostic logging so real
+# Google/Apple provider behavior (audience match, nonce-claim transform,
+# Apple's signing alg/JWKS key type, whether an authorization_code is
+# actually present) can be read from backend logs after a real-device
+# sign-in run against a LOCALLY-run backend. OFF by default; requires this
+# explicit opt-in env var, matching this codebase's existing
+# os.getenv(NAME, "false")-style boolean-flag convention (see
+# api/services/notification_service.py's NOTIFICATION_DRY_RUN) rather than
+# introducing a new one. This flag must never plausibly be set in
+# production -- it exists solely for a person running this backend locally
+# against a real device. See _empirical_logging_enabled()'s call sites in
+# google_verify/apple_verify below for exactly what is (and, just as
+# importantly, is not) logged when it's on.
+_EMPIRICAL_LOGGING_ENV_VAR = "PROVIDER_AUTH_EMPIRICAL_LOGGING"
+
+
+def _empirical_logging_enabled() -> bool:
+    """Read at call time (never cached as a module-level constant) so it
+    reflects the environment at the moment of each request -- matching this
+    file's/this codebase's existing pattern of call-time os.environ reads
+    for config (e.g. google_auth.py's _google_allowed_audiences(),
+    apple_auth.py's _apple_bundle_id(), session_auth.py's _secret()),
+    rather than a value frozen at import time. Accepts "1" or "true"
+    (case-insensitive) as ON; anything else (including unset) is OFF."""
+    return os.getenv(_EMPIRICAL_LOGGING_ENV_VAR, "false").strip().lower() in ("1", "true")
 
 
 class LoginRequest(BaseModel):
@@ -562,6 +590,27 @@ def google_verify(data: GoogleVerifyRequest, background_tasks: BackgroundTasks):
     except GoogleVerificationError:
         raise HTTPException(401, _GOOGLE_VERIFY_FAILED_MESSAGE)
 
+    # auth v2.1 Phase 6 Gate 3 -- flag-gated, dev-only empirical diagnostic
+    # (see _empirical_logging_enabled() above; OFF -> this entire block is
+    # skipped, zero behavior/log/performance difference from before this
+    # change). Logs only two safe booleans -- never the token, the
+    # configured audience value itself, the subject, or the email.
+    # observed_audience_matches_expected is genuinely available here, not
+    # fabricated: reaching this line at all means verify_google_id_token's
+    # internal audience-allowlist check already passed -- a mismatch would
+    # have raised GoogleVerificationError above, already caught into a 401
+    # before this point, so this is always True on the line below (a
+    # mismatch is empirically knowable by its ABSENCE: a 401 in the logs
+    # with no matching provider_auth_empirical line means the audience
+    # didn't match). email_verified is already a plain boolean claim this
+    # code reads from `identity` elsewhere in this function.
+    if _empirical_logging_enabled():
+        logger.info(
+            "provider_auth_empirical google_verify: "
+            "observed_audience_matches_expected=%s email_verified=%s",
+            True, identity.email_verified,
+        )
+
     try:
         resolved = resolve_identity(
             provider="google", provider_subject=identity.sub,
@@ -748,6 +797,18 @@ async def _require_apple_exchange_and_encrypt(authorization_code: str | None, *,
     except AppleVerificationError:
         logger.error("apple exchange: authorization-code exchange failed")
         raise HTTPException(502, _APPLE_EXCHANGE_FAILED_MESSAGE)
+
+    # auth v2.1 Phase 6 Gate 3 -- flag-gated, dev-only empirical diagnostic,
+    # logged separately here (in addition to apple_verify's own log point
+    # above) because this line only runs when the exchange path was
+    # actually taken AND actually succeeded -- confirming empirically not
+    # just that authorization_code was present in the request but that it
+    # was genuinely usable end-to-end. Never logs the code, the raw
+    # refresh_token (already in hand as `raw_refresh_token` above, never
+    # referenced below), or anything derived from either.
+    if _empirical_logging_enabled():
+        logger.info("provider_auth_empirical apple_exchange: authorization_code_present=True exchange_succeeded=True")
+
     return encrypt_refresh_token(raw_refresh_token)
 
 
@@ -766,6 +827,50 @@ async def apple_verify(data: AppleVerifyRequest, background_tasks: BackgroundTas
         identity = verify_apple_identity_token(data.identity_token, raw_nonce)
     except AppleVerificationError:
         raise HTTPException(401, _APPLE_VERIFY_FAILED_MESSAGE)
+
+    # auth v2.1 Phase 6 Gate 3 -- flag-gated, dev-only empirical diagnostic
+    # (see _empirical_logging_enabled() above; OFF -> this entire block is
+    # skipped, zero behavior/log/performance difference from before this
+    # change). Logs only safe facts -- never the token, the raw nonce, the
+    # authorization code, the subject, or the email.
+    #
+    # observed_alg is read via a side-channel, header-only parse of
+    # data.identity_token (jwt.get_unverified_header) -- the JWT header is
+    # the unencrypted/unsigned-verification-independent portion of the
+    # token, readable by design (that's how any JWT verifier picks a key
+    # before checking a signature), so this is safe. Deliberately does NOT
+    # call into apple_auth.py or touch verify_apple_identity_token's return
+    # contract at all.
+    #
+    # The JWKS key type (kty) is deliberately NOT logged here. Unlike alg,
+    # it isn't observable from the token alone -- it lives on the matched
+    # JWKS key, which only apple_auth.py's private, cached
+    # _fetch_apple_jwks()/kid-matching logic has in hand. Surfacing it would
+    # require either duplicating that fetch/cache/match logic here (a real,
+    # security-adjacent behavior duplication, not "just a logger.info
+    # call") or adding a new function to apple_auth.py to expose it (a
+    # small but real contract change to that reviewed module). Per this
+    # task's instructions, that fork is reported back rather than done
+    # silently -- see this commit's message / the task report for the
+    # explanation; the coordinator can decide whether to add a minimal
+    # exported helper to apple_auth.py as a small, separately-reviewed
+    # follow-up.
+    #
+    # nonce_comparison_result is always True on this line: reaching it at
+    # all means verify_apple_identity_token's internal
+    # _apple_nonce_matches() check already passed -- a mismatch would have
+    # raised AppleVerificationError above, already caught into a 401 before
+    # this point (mirrors google_verify's identical reasoning above).
+    if _empirical_logging_enabled():
+        try:
+            observed_alg = jwt.get_unverified_header(data.identity_token).get("alg")
+        except Exception:
+            observed_alg = None
+        logger.info(
+            "provider_auth_empirical apple_verify: observed_alg=%s "
+            "authorization_code_present=%s nonce_comparison_result=%s",
+            observed_alg, bool(data.authorization_code), True,
+        )
 
     # Case A — exact mapping already exists. Authoritative, never re-decided
     # by email. A direct, read-only SELECT — not resolve_identity().
