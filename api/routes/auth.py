@@ -20,6 +20,7 @@ from api.services.identity_resolver import (
     resolve_identity,
     NoExistingAccount,
     AmbiguousIdentity,
+    OwnerAlreadyLinkedToDifferentSubject,
     ResolvedIdentity,
     _resolve_exactly_one_owner,
     _resolve_exactly_one_parent_owner,
@@ -560,6 +561,14 @@ def google_verify(data: GoogleVerifyRequest, background_tasks: BackgroundTasks):
     except AmbiguousIdentity:
         logger.error("google_verify: ambiguous identity for a verified Google account")
         raise HTTPException(409, _AMBIGUOUS_IDENTITY_MESSAGE)
+    except OwnerAlreadyLinkedToDifferentSubject:
+        # auth v2.1 Phase 6 corrective pass (external review): same owner,
+        # same provider, different provider_subject -- the per-owner-per-
+        # provider UNIQUE indexes rejected the insert. Fail closed with the
+        # same generic 409 used for AmbiguousIdentity above; zero PII
+        # (no subject, no parent/athlete ID) in the response or this log line.
+        logger.error("google_verify: owner already linked to a different Google subject")
+        raise HTTPException(409, _AMBIGUOUS_IDENTITY_MESSAGE)
 
     return _mint_session_for_resolved_identity(resolved, background_tasks)
 
@@ -806,9 +815,14 @@ def _consume_pending_link_and_create_apple_identity(
     Hide-My-Email branch) into a new auth_identities row + its
     apple_provider_credentials row. Any conflict rolls back everything."""
     try:
+        # auth v2.1 Phase 6 corrective pass (external review): re-check
+        # expires_at here too, not just in apple_link_existing's earlier
+        # SELECT -- a pending link can pass that earlier read while still
+        # valid, then expire before this final atomic consume runs, and
+        # without this clause would still be successfully consumed.
         consumed = conn.execute(
             "UPDATE apple_pending_links SET consumed_at = now() "
-            "WHERE pending_link_id = %s AND consumed_at IS NULL "
+            "WHERE pending_link_id = %s AND consumed_at IS NULL AND expires_at > now() "
             "RETURNING provider_subject, encrypted_refresh_token, encryption_nonce",
             (pending["pending_link_id"],),
         ).fetchone()

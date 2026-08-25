@@ -6,7 +6,9 @@ import os
 os.environ["DB_PATH"] = ":memory:"
 
 from datetime import datetime
+from unittest.mock import patch
 
+import psycopg
 import pytest
 from db.setup import init_db
 from api.services.db_migrations import run_all
@@ -16,6 +18,7 @@ from api.services.identity_resolver import (
     resolve_identity,
     NoExistingAccount,
     AmbiguousIdentity,
+    OwnerAlreadyLinkedToDifferentSubject,
     _resolve_exactly_one_owner,
     _resolve_exactly_one_parent_owner,
 )
@@ -401,6 +404,121 @@ def test_resolve_exactly_one_parent_owner_returns_parent_id(db):
     result = _resolve_exactly_one_parent_owner("parent1@example.com")
     assert result == pid
     assert _auth_identities_count(db) == count_before
+
+
+# -- Phase 6 corrective pass (external review): owner already linked to a
+# DIFFERENT provider_subject for the same provider must fail closed with a
+# typed exception, not let a raw UniqueViolation escape resolve_identity().
+
+
+def test_owner_already_linked_to_different_google_subject_raises_typed_exception(db):
+    """A parent already has a Google auth_identities row for subject_A. A
+    NEW verified Google identity for subject_B, resolving by email to that
+    SAME parent, must be rejected -- the per-owner-per-provider partial
+    UNIQUE index rejects subject_B's insert, and the exact-subject re-fetch
+    (which only looks for subject_B) finds nothing, so the resolver must
+    raise the typed exception instead of letting the raw UniqueViolation
+    propagate."""
+    pid = _make_parent(db, "parent1@example.com")
+    resolve_identity(
+        provider="google", provider_subject="google-subject-A",
+        email="parent1@example.com", email_verified=True,
+    )
+    count_before = _auth_identities_count(db)
+
+    with pytest.raises(OwnerAlreadyLinkedToDifferentSubject):
+        resolve_identity(
+            provider="google", provider_subject="google-subject-B",
+            email="parent1@example.com", email_verified=True,
+        )
+
+    # No new row created -- the conflicting insert was rolled back, and
+    # nothing else was written in its place.
+    assert _auth_identities_count(db) == count_before
+    row = db.execute(
+        "SELECT 1 FROM auth_identities WHERE provider = 'google' AND provider_subject = 'google-subject-B'"
+    ).fetchone()
+    assert row is None
+    # The original mapping is untouched.
+    original = db.execute(
+        "SELECT parent_id FROM auth_identities WHERE provider = 'google' AND provider_subject = 'google-subject-A'"
+    ).fetchone()
+    assert original["parent_id"] == pid
+
+
+def test_athlete_owner_already_linked_to_different_google_subject_raises_typed_exception(db):
+    """Same conflict as above, but for an athlete owner."""
+    pid = _make_parent(db, "parent1@example.com")
+    aid = _make_athlete_with_login(db, pid, "alex@example.com")
+    resolve_identity(
+        provider="google", provider_subject="google-athlete-subject-A",
+        email="alex@example.com", email_verified=True,
+    )
+    count_before = _auth_identities_count(db)
+
+    with pytest.raises(OwnerAlreadyLinkedToDifferentSubject):
+        resolve_identity(
+            provider="google", provider_subject="google-athlete-subject-B",
+            email="alex@example.com", email_verified=True,
+        )
+
+    assert _auth_identities_count(db) == count_before
+    row = db.execute(
+        "SELECT 1 FROM auth_identities WHERE provider = 'google' AND provider_subject = 'google-athlete-subject-B'"
+    ).fetchone()
+    assert row is None
+    original = db.execute(
+        "SELECT athlete_id FROM auth_identities WHERE provider = 'google' AND provider_subject = 'google-athlete-subject-A'"
+    ).fetchone()
+    assert original["athlete_id"] == aid
+
+
+def test_concurrent_identical_resolve_exact_same_subject_race_remains_benign(db):
+    """The pre-existing benign race this except block was originally built
+    for (Phase 5): two concurrent resolve_identity() calls for the EXACT
+    SAME (provider, provider_subject) both attempt the auto-link insert; one
+    wins, the other hits UniqueViolation. The loser's exact-subject re-fetch
+    DOES find a row (the winner's), so it must return that result normally
+    -- never raise OwnerAlreadyLinkedToDifferentSubject, never raise at all.
+    This corrective pass must not weaken this existing behavior."""
+    pid = _make_parent(db, "parent1@example.com")
+
+    real_execute = psycopg.Connection.execute
+
+    def flaky_execute(self, query, *args, **kwargs):
+        text = str(query)
+        if "INSERT INTO auth_identities" in text:
+            # Simulate a concurrent identical request winning the race
+            # first -- on a SEPARATE connection/transaction, so it commits
+            # independently and survives this connection's own rollback --
+            # then this connection's own insert collides with it.
+            winner_conn = get_conn()
+            try:
+                real_execute(
+                    winner_conn,
+                    "INSERT INTO auth_identities "
+                    "(provider, provider_subject, parent_id, athlete_id, email, email_verified) "
+                    "VALUES ('google', 'google-subject-shared', %s, NULL, %s, TRUE)",
+                    (pid, "parent1@example.com"),
+                )
+                winner_conn.commit()
+            finally:
+                winner_conn.close()
+            raise psycopg.errors.UniqueViolation("simulated concurrent identical insert")
+        return real_execute(self, query, *args, **kwargs)
+
+    with patch.object(psycopg.Connection, "execute", flaky_execute):
+        result = resolve_identity(
+            provider="google", provider_subject="google-subject-shared",
+            email="parent1@example.com", email_verified=True,
+        )
+
+    assert result.role == "parent"
+    assert result.parent_id == pid
+    count = db.execute(
+        "SELECT COUNT(*) c FROM auth_identities WHERE provider = 'google' AND provider_subject = 'google-subject-shared'"
+    ).fetchone()["c"]
+    assert count == 1
 
 
 def test_resolve_exactly_one_parent_owner_rejects_an_athlete_match(db):

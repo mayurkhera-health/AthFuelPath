@@ -24,6 +24,18 @@ class AmbiguousIdentity(Exception):
     Fail closed — never guess which owner is correct."""
 
 
+class OwnerAlreadyLinkedToDifferentSubject(Exception):
+    """auth v2.1 Phase 6 corrective pass (external review): the resolved
+    owner (parent or athlete) already has an existing auth_identities row
+    for this provider under a DIFFERENT provider_subject. The per-owner-
+    per-provider partial UNIQUE indexes (db/postgres/004_phase6_provider_
+    auth.sql: auth_identities_one_per_provider_per_parent/_athlete) reject
+    a second identity row for the same owner+provider, so this is NOT the
+    benign same-subject race the surrounding except block already handles
+    -- it's a real conflict. Fail closed: never relink, never let the raw
+    UniqueViolation escape to the route layer."""
+
+
 def _row_to_resolved_identity(row: dict) -> ResolvedIdentity:
     return ResolvedIdentity(
         role="parent" if row["parent_id"] is not None else "athlete",
@@ -176,7 +188,13 @@ def resolve_identity(
             ).fetchone()
             if existing:
                 return _row_to_resolved_identity(dict(existing))
-            raise
+            # No row for THIS exact subject means the UniqueViolation did
+            # NOT come from the benign same-subject race above -- it came
+            # from the per-owner-per-provider partial UNIQUE indexes
+            # instead: this owner already has a DIFFERENT provider_subject
+            # linked for this provider. Fail closed instead of letting the
+            # raw UniqueViolation propagate to the route layer.
+            raise OwnerAlreadyLinkedToDifferentSubject()
 
         return ResolvedIdentity(role=role, parent_id=parent_id, athlete_id=athlete_id)
     finally:

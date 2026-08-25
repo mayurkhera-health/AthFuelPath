@@ -300,6 +300,66 @@ def test_ambiguous_owner_returns_409_generic_message_creates_nothing(client):
     assert count_auth_identities("google") == 0
 
 
+# --- Owner already linked to a different subject (Phase 6 corrective pass) -
+
+def test_owner_already_linked_to_different_google_subject_returns_409_generic_message(client):
+    """Parent owner case. A parent already has an existing (google,
+    subject_A) mapping. A NEW verified Google identity for subject_B, whose
+    email resolves to that SAME parent, must fail closed with the same
+    generic 409 as the ambiguous-identity case above -- never a raw 500,
+    never a new identity row, never a session."""
+    parent_id = make_parent("parent1@example.com")
+    challenge_id_1 = issue_challenge(client)
+    first = call_google_verify(
+        client, challenge_id_1,
+        identity=google_identity(sub="google-subject-A", email="parent1@example.com"),
+    )
+    assert first.status_code == 200, first.text
+
+    challenge_id_2 = issue_challenge(client)
+    r = call_google_verify(
+        client, challenge_id_2,
+        identity=google_identity(sub="google-subject-B", email="parent1@example.com"),
+    )
+
+    assert r.status_code == 409, r.text
+    assert r.json() == {"detail": "Something went wrong. Please contact support."}
+    assert "session_token" not in r.text
+    body_text = r.text.lower()
+    assert "parent" not in body_text
+    assert "google-subject" not in body_text
+    assert str(parent_id) not in r.text
+    # Only the original mapping exists -- subject_B's insert never landed.
+    assert count_auth_identities("google") == 1
+    assert get_auth_identity("google", "google-subject-B") is None
+
+
+def test_owner_already_linked_to_different_google_subject_athlete_case_returns_409(client):
+    """Same conflict, athlete owner case."""
+    parent_id = make_parent("parent1@example.com")
+    athlete_id = make_athlete(parent_id, "Alex")
+    make_athlete_login(athlete_id, "alex@example.com")
+
+    challenge_id_1 = issue_challenge(client)
+    first = call_google_verify(
+        client, challenge_id_1,
+        identity=google_identity(sub="google-athlete-subject-A", email="alex@example.com"),
+    )
+    assert first.status_code == 200, first.text
+
+    challenge_id_2 = issue_challenge(client)
+    r = call_google_verify(
+        client, challenge_id_2,
+        identity=google_identity(sub="google-athlete-subject-B", email="alex@example.com"),
+    )
+
+    assert r.status_code == 409, r.text
+    assert r.json() == {"detail": "Something went wrong. Please contact support."}
+    assert "session_token" not in r.text
+    assert count_auth_identities("google") == 1
+    assert get_auth_identity("google", "google-athlete-subject-B") is None
+
+
 # --- Adversarial -----------------------------------------------------------
 
 def test_no_client_supplied_email_alone_produces_a_session(client):

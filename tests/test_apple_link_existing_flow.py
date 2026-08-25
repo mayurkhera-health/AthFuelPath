@@ -28,10 +28,14 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
+from fastapi import HTTPException
+
 from db.setup import init_db
 from api.services.db_migrations import run_all
 from api.database import get_conn
 from api.main import app
+from api.routes import auth as auth_routes
+from api.routes.auth import _consume_pending_link_and_create_apple_identity
 from api.services.provider_credential_crypto import encrypt_refresh_token, decrypt_refresh_token
 from api.services.session_auth import verify_session_token
 
@@ -320,6 +324,92 @@ def test_already_consumed_pending_link_cannot_be_reused(client):
     assert "session_token" not in second.text
     # Still exactly one identity row from the first, successful call.
     assert count_auth_identities("apple") == 1
+
+
+def test_pending_link_that_expires_between_lookup_and_final_consume_is_rejected(client):
+    """auth v2.1 Phase 6 corrective pass (external review): the final atomic
+    UPDATE in _consume_pending_link_and_create_apple_identity must re-check
+    expires_at, not just consumed_at. Proves the actual race, not just an
+    already-expired row: the pending link is valid (not expired, not
+    consumed) at apple_link_existing's own initial SELECT, then is forced to
+    expire in between that SELECT and the final consuming UPDATE, by
+    interleaving through _resolve_exactly_one_parent_owner (the one call
+    that runs between those two points in the real endpoint)."""
+    make_parent("parent1@example.com")
+    pending_link_id = seed_pending_link(provider_subject="race-expiry-sub")
+    insert_otp_row("parent1@example.com", "123456")
+
+    real_resolve = auth_routes._resolve_exactly_one_parent_owner
+
+    def expire_row_then_resolve(email, conn=None):
+        # At this point apple_link_existing's initial SELECT (WHERE
+        # consumed_at IS NULL AND expires_at > now()) has already run and
+        # found the row valid. Force it to expire right here, before the
+        # final atomic UPDATE runs.
+        conn.execute(
+            "UPDATE apple_pending_links SET expires_at = now() - interval '1 minute' "
+            "WHERE pending_link_id = %s",
+            (pending_link_id,),
+        )
+        return real_resolve(email, conn=conn)
+
+    with patch.object(
+        auth_routes, "_resolve_exactly_one_parent_owner", side_effect=expire_row_then_resolve,
+    ):
+        r = call_link_existing(
+            client, pending_link_id=pending_link_id, email="parent1@example.com", code="123456",
+        )
+
+    assert r.status_code == 401, r.text
+    assert r.json() == {
+        "detail": "This sign-in attempt has expired. Please try Continue with Apple again."
+    }
+    assert "session_token" not in r.text
+    assert count_auth_identities("apple") == 0
+    assert count_apple_credentials() == 0
+    pending = get_pending_link(pending_link_id)
+    # Rejected by the WHERE clause -- never actually consumed.
+    assert pending["consumed_at"] is None
+
+
+def test_consume_pending_link_where_clause_rejects_a_row_expired_after_being_read(client):
+    """Isolates the WHERE clause itself (not the route, not the earlier
+    SELECT): a pending-link dict that looks valid (as if just read) is
+    passed directly to _consume_pending_link_and_create_apple_identity, but
+    the underlying row's expires_at has already passed by the time this
+    call's own UPDATE runs. Proves expires_at > now() in that UPDATE -- not
+    some earlier check -- is what causes the rejection."""
+    parent_id = make_parent("parent2@example.com")
+    pending_link_id = seed_pending_link(provider_subject="direct-race-sub")
+
+    conn = get_conn()
+    try:
+        pending_d = conn.execute(
+            "SELECT * FROM apple_pending_links WHERE pending_link_id = %s", (pending_link_id,)
+        ).fetchone()
+        pending_d = dict(pending_d)
+        assert pending_d["consumed_at"] is None  # still looks valid to the caller
+
+        # Now expire it out from under the caller, simulating the row
+        # expiring between when it was read and this consume call.
+        conn.execute(
+            "UPDATE apple_pending_links SET expires_at = now() - interval '1 minute' "
+            "WHERE pending_link_id = %s",
+            (pending_link_id,),
+        )
+        conn.commit()
+
+        with pytest.raises(HTTPException) as exc_info:
+            _consume_pending_link_and_create_apple_identity(conn, pending_d, parent_id)
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.detail == (
+            "This sign-in attempt has expired. Please try Continue with Apple again."
+        )
+    finally:
+        conn.close()
+
+    assert count_auth_identities("apple") == 0
+    assert count_apple_credentials() == 0
 
 
 # --- Email resolution ----------------------------------------------------
