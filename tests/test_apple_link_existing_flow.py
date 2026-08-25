@@ -21,7 +21,7 @@ import os
 
 os.environ["DB_PATH"] = ":memory:"
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import psycopg
@@ -334,18 +334,42 @@ def test_pending_link_that_expires_between_lookup_and_final_consume_is_rejected(
     consumed) at apple_link_existing's own initial SELECT, then is forced to
     expire in between that SELECT and the final consuming UPDATE, by
     interleaving through _resolve_exactly_one_parent_owner (the one call
-    that runs between those two points in the real endpoint)."""
+    that runs between those two points in the real endpoint).
+
+    Hardened (auth v2.1 Phase 6 corrective pass, code-quality review finding
+    Important #2): this test's premise depends on that call order --
+    _resolve_exactly_one_parent_owner must be the one call that runs between
+    the initial SELECT and the final consuming UPDATE. If a future refactor
+    reordered owner-resolution to run BEFORE the initial SELECT, this test
+    would still pass -- the initial SELECT would now find the row already
+    expired and 401 immediately with this exact same message -- but for the
+    wrong reason: _consume_pending_link_and_create_apple_identity (and its
+    own expires_at re-check, the thing this test exists to prove) would
+    never even run, silently degrading this into a duplicate of
+    test_expired_pending_link_cannot_be_used above. To catch that loudly
+    instead of silently, this also spies on
+    _consume_pending_link_and_create_apple_identity directly and asserts:
+    (a) resolve-owner ran before consume, in that exact order, and (b) the
+    `pending` dict consume received still looks unexpired at the moment it
+    was called -- proving the 401 came from consume's OWN expires_at > now()
+    re-check racing the row, not from the earlier SELECT rejecting an
+    already-expired row. A reordering would flip or collapse this
+    call-order/timing evidence and fail these new assertions even though
+    the surface-level status/message assertions below would still pass."""
     make_parent("parent1@example.com")
     pending_link_id = seed_pending_link(provider_subject="race-expiry-sub")
     insert_otp_row("parent1@example.com", "123456")
 
+    call_order = []
     real_resolve = auth_routes._resolve_exactly_one_parent_owner
+    real_consume = auth_routes._consume_pending_link_and_create_apple_identity
 
     def expire_row_then_resolve(email, conn=None):
         # At this point apple_link_existing's initial SELECT (WHERE
         # consumed_at IS NULL AND expires_at > now()) has already run and
         # found the row valid. Force it to expire right here, before the
         # final atomic UPDATE runs.
+        call_order.append("resolve_owner")
         conn.execute(
             "UPDATE apple_pending_links SET expires_at = now() - interval '1 minute' "
             "WHERE pending_link_id = %s",
@@ -353,12 +377,32 @@ def test_pending_link_that_expires_between_lookup_and_final_consume_is_rejected(
         )
         return real_resolve(email, conn=conn)
 
+    consume_call_args = []
+
+    def spy_consume(conn, pending, parent_id):
+        call_order.append("consume")
+        consume_call_args.append(dict(pending))
+        return real_consume(conn, pending, parent_id)
+
     with patch.object(
         auth_routes, "_resolve_exactly_one_parent_owner", side_effect=expire_row_then_resolve,
+    ), patch.object(
+        auth_routes, "_consume_pending_link_and_create_apple_identity", side_effect=spy_consume,
     ):
         r = call_link_existing(
             client, pending_link_id=pending_link_id, email="parent1@example.com", code="123456",
         )
+
+    # Call-order guard (see docstring): proves resolve-owner ran, THEN
+    # consume ran -- if a refactor moved resolve-owner earlier than the
+    # initial SELECT, consume would never be reached at all and this
+    # assertion would fail loudly instead of the test silently degrading.
+    assert call_order == ["resolve_owner", "consume"], call_order
+    assert len(consume_call_args) == 1
+    # The dict handed to consume still looks unexpired -- proving the 401
+    # below came from consume's OWN expires_at > now() re-check racing the
+    # row, not from the earlier SELECT already rejecting an expired row.
+    assert consume_call_args[0]["expires_at"] > datetime.now(timezone.utc)
 
     assert r.status_code == 401, r.text
     assert r.json() == {

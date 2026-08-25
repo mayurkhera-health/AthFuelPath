@@ -22,6 +22,7 @@ from db.setup import init_db
 from api.services.db_migrations import run_all
 from api.database import get_conn
 from api.main import app
+from api.services.identity_resolver import OwnerAlreadyLinkedToDifferentSubject
 
 
 @pytest.fixture
@@ -320,6 +321,48 @@ def test_email_verify_ambiguous_parent_and_athlete_same_email_returns_409_with_n
     finally:
         conn.close()
     assert row is None
+
+
+# --- /email/verify: owner already linked to a different subject (Phase 6 corrective pass) -
+
+def test_email_verify_owner_already_linked_to_different_subject_returns_409_generic_message(client):
+    """auth v2.1 Phase 6 corrective pass (code-quality review finding
+    Important #1): resolve_identity() can raise
+    OwnerAlreadyLinkedToDifferentSubject (identity_resolver.py's own
+    per-owner-per-provider UNIQUE-violation handling -- proven directly, at
+    the resolver level, in tests/test_identity_resolver.py, and reachable
+    end-to-end on the Google side in tests/test_google_verify_flow.py).
+
+    For the 'email' provider specifically, provider_subject IS the
+    normalized email itself (db/postgres/003_auth_identities.sql's module
+    docstring: "for the 'email' provider they happen to be the same
+    normalized string, since email itself IS the trust mechanism"). Unlike
+    Google's opaque `sub`, there is no way to drive two DIFFERENT
+    provider_subject values to the same owner through a real end-to-end
+    OTP flow here -- the request's provider_subject is always exactly the
+    caller's own normalized email, so it can never diverge from itself for
+    the same owner. What this test actually needs to prove isn't that
+    resolve_identity() raises correctly (already covered generically,
+    provider-agnostically, in test_identity_resolver.py) -- it's that
+    email_auth_verify's OWN except-clause (the gap this corrective pass
+    closes) actually catches the exception instead of letting it propagate
+    into a raw 500. So this forces resolve_identity() to raise it directly
+    at the route boundary -- same patch-and-assert technique already used
+    by test_email_verify_invalid_otp_never_calls_resolver_or_creates_identity_row
+    above -- and asserts the route fails closed with the exact same generic
+    409 google_verify uses for the identical exception."""
+    make_parent("parent1@example.com")
+    insert_otp_row("parent1@example.com", "123456")
+    with patch(
+        "api.routes.auth.resolve_identity",
+        side_effect=OwnerAlreadyLinkedToDifferentSubject(),
+    ):
+        r = client.post(
+            "/api/auth/email/verify", json={"email": "parent1@example.com", "code": "123456"}
+        )
+    assert r.status_code == 409, r.text
+    assert r.json() == {"detail": "Something went wrong. Please contact support."}
+    assert "session_token" not in r.text
 
 
 # --- /email/verify: verified email, no existing account ------------------

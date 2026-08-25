@@ -176,6 +176,18 @@ def email_auth_verify(data: EmailAuthVerify, background_tasks: BackgroundTasks):
             "(auth_identities data integrity issue — multiple possible owners)"
         )
         raise HTTPException(409, "Something went wrong. Please contact support.")
+    except OwnerAlreadyLinkedToDifferentSubject:
+        # auth v2.1 Phase 6 corrective pass (code-quality review): same gap
+        # as google_verify's identical except-clause below -- resolve_identity()
+        # raises this when the resolved owner already has an 'email'-provider
+        # auth_identities row under a different provider_subject (the
+        # per-owner-per-provider UNIQUE index rejected the insert). Without
+        # this clause the exception would propagate unhandled into a raw
+        # ASGI 500, leaking exactly the kind of detail this corrective pass
+        # exists to close. Fail closed with the same generic 409 message
+        # used everywhere else in this file -- zero PII either way.
+        logger.error("email_auth_verify: owner already linked to a different email subject")
+        raise HTTPException(409, _AMBIGUOUS_IDENTITY_MESSAGE)
 
     conn = get_conn()
     try:
@@ -808,10 +820,13 @@ async def apple_verify(data: AppleVerifyRequest, background_tasks: BackgroundTas
 def _consume_pending_link_and_create_apple_identity(
     conn, pending: dict, parent_id: int,
 ) -> ResolvedIdentity:
-    """C.4 — transactional: atomically re-consumes the pending-link row
-    (guards against a concurrent double-use of the same pending_link_id),
-    then in the SAME transaction copies its ALREADY-encrypted credential
-    (no second exchange, it already happened synchronously in apple_verify's
+    """C.4 — transactional: atomically re-consumes the pending-link row,
+    guarding against both a concurrent double-use of the same
+    pending_link_id (consumed_at IS NULL) AND a pending link that expired
+    between apple_link_existing's earlier SELECT and this final UPDATE
+    (expires_at > now(), auth v2.1 Phase 6 corrective pass) -- then in the
+    SAME transaction copies its ALREADY-encrypted credential (no second
+    exchange, it already happened synchronously in apple_verify's
     Hide-My-Email branch) into a new auth_identities row + its
     apple_provider_credentials row. Any conflict rolls back everything."""
     try:
