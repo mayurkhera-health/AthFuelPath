@@ -32,8 +32,8 @@ def _row_to_resolved_identity(row: dict) -> ResolvedIdentity:
 
 
 def _resolve_exactly_one_owner(
-    email: str, *, email_verified: bool
-) -> tuple:
+    email: Optional[str], *, email_verified: bool, conn=None
+) -> tuple[str, Optional[int], Optional[int]]:
     """
     Read-only. Given an already-normalized email and whether it's verified,
     determines whether it matches exactly one existing parent or athlete
@@ -50,11 +50,19 @@ def _resolve_exactly_one_owner(
     falsy, or there are zero matches.
     Raises AmbiguousIdentity if there are 2+ matches (one parent AND one
     athlete_login both matching the same normalized email).
+
+    Accepts an optional caller-owned `conn` (same owns_conn pattern used
+    elsewhere in api/services/, e.g. fueliq_daily_challenge_service.py's
+    run_daily_challenge_push) so callers that already have an open
+    connection -- like resolve_identity()'s own auto-link step -- don't pay
+    for a second round-trip; opens and closes its own if none is passed.
     """
     if not (email and email_verified):
         raise NoExistingAccount()
 
-    conn = get_conn()
+    owns_conn = conn is None
+    if owns_conn:
+        conn = get_conn()
     try:
         parent = conn.execute(
             "SELECT id FROM parents WHERE normalize_email(email) = %s", (email,)
@@ -76,10 +84,11 @@ def _resolve_exactly_one_owner(
 
         return matches[0]
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
 
-def _resolve_exactly_one_parent_owner(email: str) -> int:
+def _resolve_exactly_one_parent_owner(email: str, conn=None) -> int:
     """
     Parent-only variant of _resolve_exactly_one_owner, for flows (Hide-My-
     Email linking) that are explicitly scoped to parent accounts only,
@@ -90,8 +99,13 @@ def _resolve_exactly_one_parent_owner(email: str) -> int:
     this point) and additionally raises NoExistingAccount if the match
     turns out to be an athlete rather than a parent (this flow has no use
     for an athlete match). Returns just parent_id.
+
+    Accepts an optional caller-owned `conn`, threaded straight through to
+    _resolve_exactly_one_owner -- same owns_conn pattern, see there.
     """
-    role, parent_id, _athlete_id = _resolve_exactly_one_owner(email, email_verified=True)
+    role, parent_id, _athlete_id = _resolve_exactly_one_owner(
+        email, email_verified=True, conn=conn
+    )
     if role != "parent":
         raise NoExistingAccount()
     return parent_id
@@ -140,7 +154,7 @@ def resolve_identity(
             return _row_to_resolved_identity(dict(existing))
 
         role, parent_id, athlete_id = _resolve_exactly_one_owner(
-            email, email_verified=email_verified
+            email, email_verified=email_verified, conn=conn
         )
         try:
             conn.execute(
