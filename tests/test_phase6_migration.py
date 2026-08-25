@@ -213,6 +213,38 @@ def test_apple_provider_credentials_cascades_on_auth_identity_delete(db):
     assert remaining == 0
 
 
+def test_deleting_a_parent_transitively_cascades_through_auth_identities_to_apple_provider_credentials(db):
+    """The test above deletes directly FROM auth_identities, proving only the
+    second hop of the CASCADE chain. The realistic production path is a
+    parent-initiated account deletion -- DELETE FROM parents -- which must
+    transitively cascade parents -> auth_identities (CASCADE, from Phase 5's
+    003_auth_identities.sql) -> apple_provider_credentials (CASCADE, new in
+    this migration). Postgres cascades are transitive by construction and
+    the FK declarations are correct, so this is a coverage gap rather than a
+    functional defect -- but in a COPPA-scoped app where parent-initiated
+    deletion is a real, safety-relevant flow, this specific two-hop path is
+    worth an explicit test, not just an inference from the single-hop test
+    above."""
+    pid = _make_parent(db, "parent1@example.com")
+    identity_id = _make_auth_identity(db, "apple", "apple-sub-1", parent_id=pid)
+    db.execute(
+        "INSERT INTO apple_provider_credentials (auth_identity_id, encrypted_refresh_token, encryption_nonce) "
+        "VALUES (%s, %s, %s)",
+        (identity_id, b"ciphertext-1", b"nonce-1"),
+    )
+    db.commit()
+    db.execute("DELETE FROM parents WHERE id = %s", (pid,))
+    db.commit()
+    remaining_identities = db.execute(
+        "SELECT COUNT(*) c FROM auth_identities WHERE id = %s", (identity_id,)
+    ).fetchone()["c"]
+    assert remaining_identities == 0
+    remaining_credentials = db.execute(
+        "SELECT COUNT(*) c FROM apple_provider_credentials WHERE auth_identity_id = %s", (identity_id,)
+    ).fetchone()["c"]
+    assert remaining_credentials == 0
+
+
 # --- 5. apple_pending_links NOT NULL credential columns -------------------
 
 def test_apple_pending_links_rejects_null_encrypted_refresh_token(db):
