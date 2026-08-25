@@ -156,21 +156,42 @@ def _apple_allowed_algorithms() -> list[str]:
     return algorithms
 
 
-def _fetch_apple_jwks() -> dict:
+def _fetch_apple_jwks_response() -> httpx.Response:
+    """Thin wrapper around the outbound HTTPS GET to Apple's JWKS endpoint —
+    isolated so tests can monkeypatch exactly this function to simulate a
+    network failure/timeout, without needing a real HTTP mock server and
+    without bypassing _fetch_apple_jwks's own caching/error-handling logic."""
+    return httpx.get(APPLE_JWKS_URL, timeout=15)
+
+
+def _fetch_apple_jwks(*, force_refresh: bool = False) -> dict:
     """Fetches and caches Apple's published JWKS
     (https://appleid.apple.com/auth/keys). Isolated in its own function
     (rather than inlined) specifically so tests can monkeypatch this exact
     function to return a locally-generated JWKS in Apple's published
     format, letting the real signature-verification code path run against
-    a token/key the test controls — no network access required."""
+    a token/key the test controls — no network access required.
+
+    force_refresh=True bypasses the cache unconditionally — used by
+    verify_apple_identity_token's one-shot retry when a token's kid isn't
+    found in the cached JWKS, so a legitimate token signed under a
+    just-rotated Apple key doesn't have to wait out the full cache TTL.
+
+    Raises AppleVerificationError (never a raw httpx exception) on any
+    network failure, timeout, or non-2xx response — matching this
+    function's callers, which all assume JWKS-fetch failures surface the
+    same way as any other verification failure."""
     now = time.time()
     cached = _jwks_cache.get("keys")
     fetched_at = _jwks_cache.get("fetched_at", 0.0)
-    if cached is not None and (now - fetched_at) < _JWKS_CACHE_TTL_SECONDS:
+    if not force_refresh and cached is not None and (now - fetched_at) < _JWKS_CACHE_TTL_SECONDS:
         return cached
-    resp = httpx.get(APPLE_JWKS_URL, timeout=15)
-    resp.raise_for_status()
-    data = resp.json()
+    try:
+        resp = _fetch_apple_jwks_response()
+        resp.raise_for_status()
+        data = resp.json()
+    except httpx.HTTPError as exc:
+        raise AppleVerificationError("Could not fetch Apple's signing keys.") from exc
     _jwks_cache["keys"] = data
     _jwks_cache["fetched_at"] = now
     return data
@@ -218,6 +239,13 @@ def verify_apple_identity_token(identity_token: str, raw_challenge_nonce: str) -
 
     jwks = _fetch_apple_jwks()
     matching_key = next((k for k in jwks.get("keys", []) if k.get("kid") == kid), None)
+    if matching_key is None:
+        # One-shot retry: Apple may have rotated its signing keys since our
+        # cached JWKS was fetched. Force exactly one fresh, cache-bypassing
+        # fetch and look up the kid once more before failing closed — not a
+        # full cache-invalidation loop, just a single bypass-cache retry.
+        jwks = _fetch_apple_jwks(force_refresh=True)
+        matching_key = next((k for k in jwks.get("keys", []) if k.get("kid") == kid), None)
     if matching_key is None:
         raise AppleVerificationError("Apple identity token references an unrecognized signing key.")
 

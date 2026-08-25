@@ -18,6 +18,7 @@ import base64
 import hashlib
 import time
 
+import httpx
 import jwt
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -104,7 +105,10 @@ def mock_jwks(monkeypatch, apple_signing_key):
     key in Apple's published JWKS format — the real signature-verification
     path in verify_apple_identity_token runs against this for real."""
     jwks = {"keys": [_public_jwk(apple_signing_key, TOKEN_KID)]}
-    monkeypatch.setattr(apple_auth, "_fetch_apple_jwks", lambda: jwks)
+    # Accepts **kwargs so it tolerates verify_apple_identity_token's
+    # force_refresh=True retry call (kid-rotation retry) without erroring —
+    # this fixture just always returns the same fixed JWKS.
+    monkeypatch.setattr(apple_auth, "_fetch_apple_jwks", lambda **_: jwks)
     return jwks
 
 
@@ -258,6 +262,91 @@ def test_unknown_kid_is_rejected(mock_jwks, apple_signing_key):
     )
     with pytest.raises(AppleVerificationError):
         verify_apple_identity_token(token, raw_nonce)
+
+
+# --- 5b. JWKS fetch failure surfaces as AppleVerificationError -------------
+# (code-review follow-up: _fetch_apple_jwks's HTTP call must never let a raw
+# httpx exception escape verify_apple_identity_token, per its own docstring.)
+
+def test_jwks_fetch_network_failure_raises_apple_verification_error(monkeypatch, apple_signing_key):
+    raw_nonce = _raw_nonce()
+    token = _build_token(signing_key=apple_signing_key, nonce_claim=_hashed_nonce_claim(raw_nonce))
+
+    def _raise_timeout():
+        raise httpx.TimeoutException("simulated JWKS fetch timeout")
+
+    # Deliberately does NOT monkeypatch _fetch_apple_jwks itself -- patching
+    # only the underlying HTTP wrapper proves _fetch_apple_jwks's own
+    # try/except converts the failure, not just that the test bypassed it.
+    monkeypatch.setattr(apple_auth, "_fetch_apple_jwks_response", _raise_timeout)
+
+    with pytest.raises(AppleVerificationError):
+        verify_apple_identity_token(token, raw_nonce)
+
+
+def test_jwks_fetch_non_2xx_response_raises_apple_verification_error(monkeypatch, apple_signing_key):
+    raw_nonce = _raw_nonce()
+    token = _build_token(signing_key=apple_signing_key, nonce_claim=_hashed_nonce_claim(raw_nonce))
+
+    class _FakeErrorResponse:
+        def raise_for_status(self):
+            raise httpx.HTTPStatusError("simulated 500", request=None, response=None)
+
+    monkeypatch.setattr(apple_auth, "_fetch_apple_jwks_response", lambda: _FakeErrorResponse())
+
+    with pytest.raises(AppleVerificationError):
+        verify_apple_identity_token(token, raw_nonce)
+
+
+# --- 5c. Unknown kid triggers a one-shot cache-bypass retry (key rotation) --
+
+def test_kid_rotation_triggers_one_shot_retry_and_succeeds(monkeypatch, apple_signing_key):
+    """Simulates Apple having rotated its signing key: the cached JWKS
+    doesn't have the token's kid, but a force_refresh=True fetch does. Must
+    succeed after exactly one retry, not fail closed on stale cache alone."""
+    raw_nonce = _raw_nonce()
+    token = _build_token(signing_key=apple_signing_key, nonce_claim=_hashed_nonce_claim(raw_nonce))
+
+    stale_jwks = {"keys": []}  # missing TOKEN_KID entirely -- simulates a stale cache
+    fresh_jwks = {"keys": [_public_jwk(apple_signing_key, TOKEN_KID)]}
+    calls = []
+
+    def _fake_fetch(*, force_refresh: bool = False):
+        calls.append(force_refresh)
+        return fresh_jwks if force_refresh else stale_jwks
+
+    monkeypatch.setattr(apple_auth, "_fetch_apple_jwks", _fake_fetch)
+
+    identity = verify_apple_identity_token(token, raw_nonce)
+
+    assert identity.sub
+    # Exactly one initial (cached) lookup, then exactly one forced retry --
+    # not a loop, not zero retries.
+    assert calls == [False, True]
+
+
+def test_kid_still_unknown_after_retry_fails_closed(monkeypatch, apple_signing_key):
+    """If the kid genuinely doesn't exist even after the one-shot retry
+    (not a rotation, just a bad/unknown kid), verification must still fail
+    closed -- the retry is bounded, not an infinite loop."""
+    raw_nonce = _raw_nonce()
+    token = _build_token(
+        signing_key=apple_signing_key,
+        kid="permanently-unknown-kid",
+        nonce_claim=_hashed_nonce_claim(raw_nonce),
+    )
+    jwks_without_kid = {"keys": [_public_jwk(apple_signing_key, TOKEN_KID)]}
+    calls = []
+
+    def _fake_fetch(*, force_refresh: bool = False):
+        calls.append(force_refresh)
+        return jwks_without_kid
+
+    monkeypatch.setattr(apple_auth, "_fetch_apple_jwks", _fake_fetch)
+
+    with pytest.raises(AppleVerificationError):
+        verify_apple_identity_token(token, raw_nonce)
+    assert calls == [False, True]
 
 
 # --- 6. Wrong issuer ----------------------------------------------------------
@@ -440,8 +529,7 @@ def test_exchange_http_error_status_rejected(monkeypatch):
 
 
 def test_exchange_transport_failure_rejected(monkeypatch):
-    import httpx as httpx_mod
-    _mock_exchange_request(monkeypatch, httpx_mod.ConnectError("boom"))
+    _mock_exchange_request(monkeypatch, httpx.ConnectError("boom"))
     with pytest.raises(AppleVerificationError):
         asyncio.run(
             exchange_authorization_code_for_refresh_token("auth-code-abc", expected_sub="any-sub")
