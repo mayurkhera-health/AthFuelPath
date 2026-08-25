@@ -23,6 +23,7 @@ call-sites directly (see tests/test_email_auth_flow.py's
 import os
 from unittest.mock import patch
 
+import google.auth.exceptions
 import pytest
 
 from api.services.google_auth import (
@@ -115,22 +116,32 @@ def test_nonce_claim_absent_from_token_raises_fails_closed():
 
 
 @pytest.mark.parametrize(
-    "underlying_error_message",
+    "underlying_exception_class,underlying_error_message",
     [
-        "Token used too early or is expired.",
-        "Wrong issuer.",
-        "Could not verify token signature.",
+        # Expired token and invalid signature: empirically confirmed (against
+        # the actual pinned google-auth==2.57.0 source) to be raised by
+        # google.auth.jwt.decode() as InvalidValue/MalformedError -- both of
+        # which happen to subclass ValueError (and GoogleAuthError).
+        (google.auth.exceptions.InvalidValue, "Token expired, 100 < 200"),
+        (google.auth.exceptions.MalformedError, "Could not verify token signature."),
+        # Wrong issuer: empirically confirmed to be raised by
+        # verify_oauth2_token() directly as a bare GoogleAuthError -- NOT a
+        # ValueError subclass. This is the case CRITICAL finding #1 was about:
+        # a plain `except ValueError:` does not catch this.
+        (google.auth.exceptions.GoogleAuthError, "Wrong issuer."),
     ],
 )
-def test_underlying_library_value_error_raises_google_verification_error(
-    underlying_error_message,
+def test_underlying_library_error_raises_google_verification_error(
+    underlying_exception_class, underlying_error_message
 ):
-    """Simulates invalid signature / wrong issuer / expired token — all of
-    which google.oauth2.id_token.verify_oauth2_token raises as ValueError
-    per its documented contract."""
+    """Simulates invalid signature / expired token / wrong issuer -- the
+    real exception types google.oauth2.id_token.verify_oauth2_token raises
+    for each, per empirical confirmation against the pinned library's
+    actual source (not the library's own imprecise docstring, which only
+    mentions ValueError)."""
     with patch(
         "api.services.google_auth.google_id_token.verify_oauth2_token",
-        side_effect=ValueError(underlying_error_message),
+        side_effect=underlying_exception_class(underlying_error_message),
     ):
         with pytest.raises(GoogleVerificationError) as exc_info:
             verify_google_id_token("fake-id-token", RAW_NONCE)
@@ -138,6 +149,23 @@ def test_underlying_library_value_error_raises_google_verification_error(
     # The generic exception message must never leak the underlying
     # library's specific failure reason or the raw token.
     assert underlying_error_message not in str(exc_info.value)
+    assert "fake-id-token" not in str(exc_info.value)
+
+
+def test_cert_fetch_network_failure_raises_google_verification_error():
+    """CRITICAL finding #2: _fetch_certs() raises
+    google.auth.exceptions.TransportError (a GoogleAuthError subclass, not
+    a ValueError) when Google's cert endpoint is unreachable or returns a
+    non-200 response -- a real, reachable failure mode, not hypothetical."""
+    with patch(
+        "api.services.google_auth.google_id_token.verify_oauth2_token",
+        side_effect=google.auth.exceptions.TransportError(
+            "Could not fetch certificates at https://www.googleapis.com/oauth2/v1/certs"
+        ),
+    ):
+        with pytest.raises(GoogleVerificationError) as exc_info:
+            verify_google_id_token("fake-id-token", RAW_NONCE)
+
     assert "fake-id-token" not in str(exc_info.value)
 
 

@@ -27,10 +27,22 @@ separate empirical/configuration steps this module does not perform.
 Everything else here (signature, issuer, expiry checks delegated to
 google.oauth2.id_token.verify_oauth2_token) rests on Google's own published
 library contract, not a guess.
+
+Known follow-up, not implemented here: google.oauth2.id_token's own
+docstring recommends wrapping the transport Request with an external HTTP
+caching layer (e.g. CacheControl) so Google's certs aren't re-fetched over
+the network on every single verification call. This module deliberately
+does not add that -- CacheControl is not currently a dependency of this
+codebase, and a hand-rolled cache risks silently serving stale keys past a
+real Google key rotation if it doesn't correctly honor cache-control
+semantics, which is a worse failure mode than the current latency/
+availability cost for a security-sensitive minors' app. Left as an
+explicit, documented follow-up rather than silently uncached.
 """
 import os
 from dataclasses import dataclass
 
+import google.auth.exceptions
 from google.auth.transport import requests as google_auth_requests
 from google.oauth2 import id_token as google_id_token
 
@@ -99,6 +111,11 @@ def verify_google_id_token(id_token_str: str, raw_challenge_nonce: str) -> Verif
     check nonce at all, this is an additional required step. Raises
     GoogleVerificationError on any failure. Returns sub/email/
     email_verified read from the verified token claims only.
+
+    Note: a misconfigured GOOGLE_ALLOWED_AUDIENCES (env var unset) raises a
+    separate, uncaught RuntimeError from _google_allowed_audiences() --
+    that's a deployment-configuration error, not a token-verification
+    failure, so it is deliberately not wrapped as GoogleVerificationError.
     """
     allowed_audiences = _google_allowed_audiences()
 
@@ -106,15 +123,32 @@ def verify_google_id_token(id_token_str: str, raw_challenge_nonce: str) -> Verif
     # audience check only supports a single expected value, which would
     # defeat the allowlist design. Signature/issuer/expiry are still fully
     # verified by this call, per google-auth's documented contract.
+    #
+    # Exception surface, empirically confirmed against the actual pinned
+    # google-auth==2.57.0 source (not assumed from the docstring alone,
+    # which is itself imprecise here):
+    #   - verify_oauth2_token() raises google.auth.exceptions.GoogleAuthError
+    #     directly for a wrong issuer -- this is NOT a ValueError subclass.
+    #   - Signature/expiry/audience/malformed-claim failures are raised by
+    #     google.auth.jwt.decode() (the code path actually exercised here,
+    #     since the configured certs URL returns the x509-map cert format,
+    #     not a JWK set) as google.auth.exceptions.InvalidValue or
+    #     .MalformedError -- both of which happen to subclass BOTH
+    #     GoogleAuthError and ValueError.
+    #   - _fetch_certs() raises google.auth.exceptions.TransportError (a
+    #     GoogleAuthError subclass, not a ValueError) on a non-200 response
+    #     or connection failure while fetching Google's certs -- a real,
+    #     reachable failure mode (Google's cert endpoint being briefly
+    #     unreachable), not hypothetical.
+    # Catching (ValueError, GoogleAuthError) together covers all of the
+    # above, including TransportError via GoogleAuthError.
     try:
         idinfo = google_id_token.verify_oauth2_token(
             id_token_str, google_auth_requests.Request()
         )
-    except ValueError:
-        # google-auth raises ValueError for invalid signature, wrong
-        # issuer, and expired tokens per its documented contract. Never
-        # surface the underlying message or the raw token -- both could
-        # contain sensitive detail unsafe to log.
+    except (ValueError, google.auth.exceptions.GoogleAuthError):
+        # Never surface the underlying message or the raw token -- both
+        # could contain sensitive detail unsafe to log.
         raise GoogleVerificationError("Google ID token failed verification.")
 
     if idinfo.get("aud") not in allowed_audiences:
