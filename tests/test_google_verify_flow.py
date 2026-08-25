@@ -251,6 +251,7 @@ def test_challenge_for_wrong_provider_is_rejected(client):
 def test_unknown_challenge_id_is_rejected(client):
     r = call_google_verify(client, "not-a-real-challenge-id", identity=google_identity())
     assert r.status_code == 401, r.text
+    assert "session_token" not in r.text
 
 
 # --- No-account / ambiguous -----------------------------------------------
@@ -308,7 +309,7 @@ def test_no_client_supplied_email_alone_produces_a_session(client):
         "/api/auth/google/verify",
         json={"challenge_id": "junk", "id_token": "junk-not-a-real-token"},
     )
-    assert r.status_code in (401, 422), r.text
+    assert r.status_code == 401, r.text
     assert "session_token" not in r.text
 
 

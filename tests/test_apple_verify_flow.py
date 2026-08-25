@@ -382,6 +382,53 @@ def test_existing_exact_apple_identity_with_missing_credential_does_not_mint_ses
     assert count_auth_identities("apple", "defensive-coverage-sub") == 1
 
 
+def test_concurrent_credential_store_race_is_treated_as_benign_not_a_500(client):
+    """Case A's missing-credential branch: _has_stored_apple_credential's
+    check and _store_apple_credential's insert each open their own separate
+    connection with no shared transaction/locking between them (TOCTOU) --
+    a genuine gap given apple_provider_credentials.auth_identity_id is
+    NOT NULL UNIQUE. Two concurrent requests for the same not-yet-stored
+    Apple identity (e.g. a client retry-on-timeout) can both pass the check,
+    both perform the external exchange, and then race on the insert.
+    Simulates this request LOSING that race -- its own insert hits a
+    genuine UniqueViolation because another concurrent request's insert
+    already won. That must be treated as benign, not an uncaught 500: this
+    request still succeeds with a session minted, exactly as if its own
+    insert had gone through."""
+    parent_id = make_parent("parent1@example.com")
+    auth_identity_id = seed_apple_identity(parent_id=parent_id, provider_subject="race-sub")
+    assert count_apple_credentials() == 0
+
+    real_execute = psycopg.Connection.execute
+
+    def flaky_execute(self, query, *args, **kwargs):
+        text = str(query)
+        if "INSERT INTO apple_provider_credentials" in text:
+            raise psycopg.errors.UniqueViolation(
+                "simulated concurrent request already stored this credential first"
+            )
+        return real_execute(self, query, *args, **kwargs)
+
+    challenge_id = issue_challenge(client)
+    with patch.object(psycopg.Connection, "execute", flaky_execute):
+        r = call_apple_verify(
+            client, challenge_id,
+            identity=apple_identity(sub="race-sub", email="parent1@example.com"),
+        )
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["role"] == "parent"
+    assert body["parent"]["id"] == parent_id
+    assert body["session_token"]
+    # Still exactly the one identity row -- no second one was created, and
+    # this request never persisted its own credential (the simulated
+    # concurrent winner's row is what would exist in a real race).
+    assert count_auth_identities("apple", "race-sub") == 1
+    untouched = get_auth_identity("race-sub")
+    assert untouched["id"] == auth_identity_id
+
+
 def test_successful_pending_link_creation_always_contains_encrypted_credential_material(client):
     """Hide-My-Email path, successful mocked exchange -> the resulting
     apple_pending_links row's encrypted_refresh_token/encryption_nonce are
@@ -514,6 +561,9 @@ def test_no_account_and_unverified_email_falls_through_to_hide_my_email_path(cli
 def test_full_name_is_never_persisted_anywhere_in_the_response_or_db(client):
     # VerifiedAppleIdentity structurally has no fullName field at all --
     # this proves apple_verify's response never leaks one even indirectly.
+    # parents.full_name legitimately appears as the "parent" object's
+    # full_name key (the resolved parent's own name) -- what must never
+    # appear is an Apple-supplied fullName under any key/casing.
     make_parent("parent1@example.com")
     challenge_id = issue_challenge(client)
     r = call_apple_verify(
@@ -521,8 +571,14 @@ def test_full_name_is_never_persisted_anywhere_in_the_response_or_db(client):
         identity=apple_identity(sub="no-name-sub", email="parent1@example.com"),
     )
     assert r.status_code == 200, r.text
-    assert "fullName" not in r.text
-    assert "full_name" not in r.text.replace('"full_name"', "")  # parents.full_name legitimately appears
+    body = r.json()
+    # "fullName" (Apple's camelCase field) must never appear as a key
+    # anywhere in the response, at any nesting level -- only the
+    # legitimate, pre-existing "full_name" key (the resolved parent's own
+    # stored name) is allowed to appear.
+    assert "fullName" not in body
+    assert "fullName" not in body["parent"]
+    assert body["parent"]["full_name"] == "Test Parent"
 
 
 def test_no_client_supplied_email_alone_produces_a_session(client):
@@ -530,7 +586,7 @@ def test_no_client_supplied_email_alone_produces_a_session(client):
         "/api/auth/apple/verify",
         json={"challenge_id": "junk", "identity_token": "junk-not-a-real-token"},
     )
-    assert r.status_code in (401, 422), r.text
+    assert r.status_code == 401, r.text
     assert "session_token" not in r.text
 
 

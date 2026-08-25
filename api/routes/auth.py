@@ -44,6 +44,12 @@ _APPLE_VERIFY_FAILED_MESSAGE = "Apple sign-in could not be verified. Please try 
 _APPLE_EXCHANGE_FAILED_MESSAGE = "Apple sign-in could not be completed. Please try again."
 _AMBIGUOUS_IDENTITY_MESSAGE = "Something went wrong. Please contact support."
 
+# auth v2.1 Phase 6 — named TTL constants (interpolated via Postgres's own
+# make_interval(), never raw string-embedded SQL intervals) instead of magic
+# numbers duplicated at each call site.
+_CHALLENGE_TTL_MINUTES = 5
+_PENDING_LINK_TTL_MINUTES = 10
+
 
 class LoginRequest(BaseModel):
     email: str
@@ -438,15 +444,27 @@ def _consume_challenge(challenge_id: str, *, provider: str, generic_message: str
     return dict(row)["raw_nonce"]
 
 
-def _mint_session_for_resolved_identity(resolved: ResolvedIdentity, background_tasks: BackgroundTasks) -> dict:
+def _mint_session_for_resolved_identity(
+    resolved: ResolvedIdentity, background_tasks: BackgroundTasks, conn=None,
+) -> dict:
     """Shared success-branch helper (Part F) — reuses the exact same pattern
     email_auth_verify already has (full row lookup, last_login_at/login-alert
     ONLY for the parent branch, mint_session_token), fed by a ResolvedIdentity
     instead of resolve_identity()'s return value directly, so google_verify/
     apple_verify/apple_link_existing all share one implementation instead of
     quadruplicating it. email_auth_verify itself is intentionally left with
-    its own copy of this logic, unmodified, per this task's scope."""
-    conn = get_conn()
+    its own copy of this logic, unmodified, per this task's scope.
+
+    Accepts an optional caller-owned `conn` — same owns_conn idiom as
+    identity_resolver.py's _resolve_exactly_one_owner/
+    _resolve_exactly_one_parent_owner — so a caller that already has a
+    connection open (e.g. apple_link_existing, still inside its own
+    transaction) doesn't pay for a second physical connection (no pooling
+    exists — get_conn() opens a fresh one every call). Opens/closes its own
+    when none is passed, exactly like every other caller of this function."""
+    owns_conn = conn is None
+    if owns_conn:
+        conn = get_conn()
     try:
         if resolved.role == "parent":
             parent = conn.execute(
@@ -483,7 +501,8 @@ def _mint_session_for_resolved_identity(resolved: ResolvedIdentity, background_t
         )
         return {"role": "athlete", "athlete": athlete_d, "session_token": token}
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
 
 @router.post("/provider/challenge")
@@ -507,8 +526,8 @@ def provider_challenge(data: ProviderChallengeRequest):
         # silently (mis)interpreted in that session timezone instead of UTC.
         conn.execute(
             "INSERT INTO provider_auth_challenges (challenge_id, provider, raw_nonce, expires_at) "
-            "VALUES (%s, %s, %s, now() + interval '5 minutes')",
-            (challenge_id, data.provider, raw_nonce),
+            "VALUES (%s, %s, %s, now() + make_interval(mins => %s))",
+            (challenge_id, data.provider, raw_nonce, _CHALLENGE_TTL_MINUTES),
         )
         conn.commit()
     finally:
@@ -584,15 +603,31 @@ def _has_stored_apple_credential(auth_identity_id: int) -> bool:
 
 def _store_apple_credential(auth_identity_id: int, ciphertext: bytes, nonce: bytes) -> None:
     """Case A's missing-credential branch — a single-table insert, the
-    existing auth_identities row is left completely untouched."""
+    existing auth_identities row is left completely untouched.
+
+    auth_identity_id is NOT NULL UNIQUE on apple_provider_credentials, and
+    _has_stored_apple_credential's check + this insert are not covered by a
+    shared transaction/lock (each opens its own connection, same as every
+    other helper in this file) — so two concurrent requests for the same
+    not-yet-stored Apple identity (e.g. a client retry-on-timeout) can both
+    pass the check, both perform the external Apple exchange, and then race
+    here. Whichever loses the race hits a genuine UniqueViolation: that's
+    benign, not an error — it just means the other concurrent request's
+    credential already won, so this one proceeds to mint a session same as
+    if its own insert had succeeded, exactly like the UniqueViolation
+    idioms elsewhere in this file (_create_apple_identity_with_credential,
+    _consume_pending_link_and_create_apple_identity)."""
     conn = get_conn()
     try:
-        conn.execute(
-            "INSERT INTO apple_provider_credentials "
-            "(auth_identity_id, encrypted_refresh_token, encryption_nonce) VALUES (%s, %s, %s)",
-            (auth_identity_id, ciphertext, nonce),
-        )
-        conn.commit()
+        try:
+            conn.execute(
+                "INSERT INTO apple_provider_credentials "
+                "(auth_identity_id, encrypted_refresh_token, encryption_nonce) VALUES (%s, %s, %s)",
+                (auth_identity_id, ciphertext, nonce),
+            )
+            conn.commit()
+        except psycopg.errors.UniqueViolation:
+            conn.rollback()
     finally:
         conn.close()
 
@@ -663,10 +698,10 @@ def _create_apple_pending_link(
             "INSERT INTO apple_pending_links "
             "(pending_link_id, provider_subject, email_from_token, email_verified_from_token, "
             "encrypted_refresh_token, encryption_nonce, expires_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s, now() + interval '10 minutes')",
+            "VALUES (%s, %s, %s, %s, %s, %s, now() + make_interval(mins => %s))",
             (
                 pending_link_id, provider_subject, email_from_token, email_verified_from_token,
-                encrypted_refresh_token, encryption_nonce,
+                encrypted_refresh_token, encryption_nonce, _PENDING_LINK_TTL_MINUTES,
             ),
         )
         conn.commit()
@@ -675,12 +710,14 @@ def _create_apple_pending_link(
     return pending_link_id
 
 
-async def _require_apple_exchange(authorization_code: str | None, *, expected_sub: str) -> tuple[bytes, bytes]:
+async def _require_apple_exchange_and_encrypt(authorization_code: str | None, *, expected_sub: str) -> tuple[bytes, bytes]:
     """Shared by every branch that needs Apple's mandatory synchronous
-    exchange before any write (A.8's "one rule, stated once"). Raises
-    HTTPException(502) uniformly — no branch may skip this or treat a
-    missing/failed exchange as anything but a hard failure. Returns
-    (ciphertext, nonce) ready to store."""
+    exchange before any write (A.8's "one rule, stated once"). Performs the
+    exchange AND encrypts the result (see provider_credential_crypto) before
+    returning, so every caller gets ciphertext ready to store, never a raw
+    refresh token. Raises HTTPException(502) uniformly — no branch may skip
+    this or treat a missing/failed exchange as anything but a hard failure.
+    Returns (ciphertext, nonce) ready to store."""
     if not authorization_code:
         raise HTTPException(502, _APPLE_EXCHANGE_FAILED_MESSAGE)
     try:
@@ -688,6 +725,7 @@ async def _require_apple_exchange(authorization_code: str | None, *, expected_su
             authorization_code, expected_sub=expected_sub,
         )
     except AppleVerificationError:
+        logger.error("apple exchange: authorization-code exchange failed")
         raise HTTPException(502, _APPLE_EXCHANGE_FAILED_MESSAGE)
     return encrypt_refresh_token(raw_refresh_token)
 
@@ -714,7 +752,7 @@ async def apple_verify(data: AppleVerifyRequest, background_tasks: BackgroundTas
     if existing:
         auth_identity_id, resolved = existing
         if not _has_stored_apple_credential(auth_identity_id):
-            ciphertext, nonce = await _require_apple_exchange(
+            ciphertext, nonce = await _require_apple_exchange_and_encrypt(
                 data.authorization_code, expected_sub=identity.sub,
             )
             _store_apple_credential(auth_identity_id, ciphertext, nonce)
@@ -729,7 +767,7 @@ async def apple_verify(data: AppleVerifyRequest, background_tasks: BackgroundTas
     except NoExistingAccount:
         # Hide-My-Email path. Exchange BEFORE creating anything — no
         # credential-less pending link can ever be created.
-        ciphertext, nonce = await _require_apple_exchange(
+        ciphertext, nonce = await _require_apple_exchange_and_encrypt(
             data.authorization_code, expected_sub=identity.sub,
         )
         pending_link_id = _create_apple_pending_link(
@@ -751,7 +789,7 @@ async def apple_verify(data: AppleVerifyRequest, background_tasks: BackgroundTas
 
     # Exactly one owner. Exchange BEFORE creating the identity mapping, then
     # create the mapping + its credential in ONE transaction.
-    ciphertext, nonce = await _require_apple_exchange(data.authorization_code, expected_sub=identity.sub)
+    ciphertext, nonce = await _require_apple_exchange_and_encrypt(data.authorization_code, expected_sub=identity.sub)
     resolved = _create_apple_identity_with_credential(
         provider_subject=identity.sub, owner=owner, ciphertext=ciphertext, nonce=nonce,
     )
@@ -839,7 +877,11 @@ def apple_link_existing(data: AppleLinkExistingRequest, background_tasks: Backgr
             )
 
         resolved = _consume_pending_link_and_create_apple_identity(conn, pending_d, parent_id)
+        # Pass this same still-open conn through rather than letting
+        # _mint_session_for_resolved_identity open a second physical
+        # connection after this transaction's connection closes (owns_conn
+        # idiom, matching identity_resolver.py's
+        # _resolve_exactly_one_owner/_resolve_exactly_one_parent_owner).
+        return _mint_session_for_resolved_identity(resolved, background_tasks, conn=conn)
     finally:
         conn.close()
-
-    return _mint_session_for_resolved_identity(resolved, background_tasks)

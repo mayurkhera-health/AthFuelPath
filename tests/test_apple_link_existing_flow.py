@@ -324,11 +324,15 @@ def test_already_consumed_pending_link_cannot_be_reused(client):
 
 # --- Email resolution ----------------------------------------------------
 
+_LINK_EXISTING_401_MESSAGE = "We couldn't verify that account. Please check the email and try again."
+
+
 def test_no_matching_parent_account_returns_401_generic_message(client):
     pending_link_id = seed_pending_link(provider_subject="no-parent-sub")
     insert_otp_row("nobody@example.com", "123456")
     r = call_link_existing(client, pending_link_id=pending_link_id, email="nobody@example.com", code="123456")
     assert r.status_code == 401, r.text
+    assert r.json() == {"detail": _LINK_EXISTING_401_MESSAGE}
     assert count_auth_identities("apple") == 0
 
 
@@ -340,6 +344,7 @@ def test_athlete_only_email_is_rejected_this_flow_is_parent_scoped(client):
     insert_otp_row("alex@example.com", "123456")
     r = call_link_existing(client, pending_link_id=pending_link_id, email="alex@example.com", code="123456")
     assert r.status_code == 401, r.text
+    assert r.json() == {"detail": _LINK_EXISTING_401_MESSAGE}
     assert count_auth_identities("apple") == 0
 
 
@@ -352,6 +357,7 @@ def test_ambiguous_email_returns_401_generic_message(client):
     insert_otp_row("dual@example.com", "123456")
     r = call_link_existing(client, pending_link_id=pending_link_id, email="dual@example.com", code="123456")
     assert r.status_code == 401, r.text
+    assert r.json() == {"detail": _LINK_EXISTING_401_MESSAGE}
     assert count_auth_identities("apple") == 0
 
 
