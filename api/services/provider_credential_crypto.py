@@ -82,7 +82,15 @@ def decrypt_refresh_token(ciphertext: bytes, nonce: bytes) -> str:
     """Decrypts; raises on any tampering (AEAD tag mismatch) rather than
     silently returning corrupted data. Propagates cryptography.exceptions.
     InvalidTag on a bad tag/wrong nonce/wrong key, and
-    ProviderCredentialCryptoError on missing/malformed configuration."""
+    ProviderCredentialCryptoError on missing/malformed configuration —
+    including a wrong-length nonce, checked explicitly here rather than left
+    to raise AESGCM's own bare ValueError, which would be a third,
+    undocumented exception type outside this module's two-exception
+    contract."""
+    if len(nonce) != _NONCE_LENGTH_BYTES:
+        raise ProviderCredentialCryptoError(
+            f"nonce must be exactly {_NONCE_LENGTH_BYTES} bytes; got {len(nonce)} bytes."
+        )
     aesgcm = AESGCM(_key())
     plaintext = aesgcm.decrypt(nonce, ciphertext, None)
     return plaintext.decode("utf-8")
