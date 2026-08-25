@@ -6,19 +6,43 @@ session issuance removed) in favor of the OTP-verified /email/request +
 /email/verify flow below. Keeps /api/athletes/* intact for backward compat.
 """
 import logging
+import secrets
 from datetime import datetime
 
+import psycopg
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
 from api.database import get_conn
 from api.services import login_alerts
 from api.services.session_auth import mint_session_token, require_session
 from api.services.otp_auth import issue_otp, verify_otp as verify_otp_code, OtpRateLimited, OtpDeliveryFailed
-from api.services.identity_resolver import resolve_identity, NoExistingAccount, AmbiguousIdentity
+from api.services.identity_resolver import (
+    resolve_identity,
+    NoExistingAccount,
+    AmbiguousIdentity,
+    ResolvedIdentity,
+    _resolve_exactly_one_owner,
+    _resolve_exactly_one_parent_owner,
+)
+from api.services.google_auth import verify_google_id_token, GoogleVerificationError
+from api.services.apple_auth import (
+    verify_apple_identity_token,
+    exchange_authorization_code_for_refresh_token,
+    AppleVerificationError,
+)
+from api.services.provider_credential_crypto import encrypt_refresh_token
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# auth v2.1 Phase 6 (Part K) — fixed, generic 401/409/502 messages, reused
+# verbatim across every branch that needs them so no response ever hints
+# which specific check failed.
+_GOOGLE_VERIFY_FAILED_MESSAGE = "Google sign-in could not be verified. Please try again."
+_APPLE_VERIFY_FAILED_MESSAGE = "Apple sign-in could not be verified. Please try again."
+_APPLE_EXCHANGE_FAILED_MESSAGE = "Apple sign-in could not be completed. Please try again."
+_AMBIGUOUS_IDENTITY_MESSAGE = "Something went wrong. Please contact support."
 
 
 class LoginRequest(BaseModel):
@@ -42,6 +66,28 @@ class EmailAuthRequest(BaseModel):
 class EmailAuthVerify(BaseModel):
     email: str
     code: str
+
+
+class ProviderChallengeRequest(BaseModel):
+    provider: str  # "google" | "apple"
+
+
+class GoogleVerifyRequest(BaseModel):
+    challenge_id: str
+    id_token: str
+
+
+class AppleVerifyRequest(BaseModel):
+    challenge_id: str
+    identity_token: str
+    authorization_code: str | None = None  # required whenever no stored
+    # credential exists yet for this identity — see apple_verify below.
+
+
+class AppleLinkExistingRequest(BaseModel):
+    pending_link_id: str
+    email: str    # the EXISTING AthFuelPath account's email, typed by the user
+    code: str     # the OTP just sent to that email via the existing /email/request
 
 
 @router.post("/email/request")
@@ -332,3 +378,468 @@ def create_athlete_login(athlete_id: int, data: AthleteCreateLoginRequest):
         return {"role": "athlete", "athlete": dict(athlete), "session_token": token}
     finally:
         conn.close()
+
+
+# ============================================================================
+# auth v2.1 Phase 6 — Google + Apple Sign-In
+# (docs/superpowers/plans/2026-08-24-auth-v2.1-phase-6.md, Parts A.6/A.8/C/F)
+#
+# Google's flow hands a verified (provider, provider_subject, email,
+# email_verified) straight to the unchanged resolve_identity(), exactly like
+# email_auth_verify above. Apple's flow deliberately does NOT call
+# resolve_identity() at all (A.8, corrected 4th round): a first-time Apple
+# identity has a mandatory external dependency (capturing a refresh token,
+# the Phase-10 revocation prerequisite) that must succeed BEFORE the
+# identity mapping is durably created — resolve_identity()'s auto-link path
+# would INSERT the mapping first, which could leave a partially-complete
+# Apple identity (mapping without credential) behind if the exchange then
+# failed. Apple uses only the read-only _resolve_exactly_one_owner() /
+# _resolve_exactly_one_parent_owner() building blocks and performs its own
+# atomic, credential-first writes below.
+# ============================================================================
+
+
+def _cleanup_expired_provider_auth_state() -> None:
+    """Opportunistic, bounded cleanup (A.11) — no scheduler needed. Called at
+    the top of provider_challenge(), the highest-traffic entry point into
+    this subsystem, so stale rows never accumulate indefinitely. Narrowly
+    scoped to exactly these two Phase 6 temporary tables. Consumed
+    apple_pending_links rows (successfully completed links) are intentionally
+    left alone — they're inert once consumed."""
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM provider_auth_challenges WHERE expires_at < now()")
+        conn.execute("DELETE FROM apple_pending_links WHERE expires_at < now() AND consumed_at IS NULL")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _consume_challenge(challenge_id: str, *, provider: str, generic_message: str) -> str:
+    """Atomically consumes a provider-auth challenge (A.6) — the exact same
+    atomic-consumption idiom otp_auth.py already uses for OTP codes. No row
+    returned (doesn't exist, wrong provider, already consumed, or expired)
+    means 401 BEFORE any provider-token verification is even attempted. A
+    successfully consumed challenge can never authenticate a second request —
+    the atomic `WHERE consumed_at IS NULL` guarantees this at the DB layer."""
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "UPDATE provider_auth_challenges SET consumed_at = now() "
+            "WHERE challenge_id = %s AND provider = %s AND consumed_at IS NULL AND expires_at > now() "
+            "RETURNING raw_nonce",
+            (challenge_id, provider),
+        ).fetchone()
+        conn.commit()
+    finally:
+        conn.close()
+    if not row:
+        raise HTTPException(401, generic_message)
+    return dict(row)["raw_nonce"]
+
+
+def _mint_session_for_resolved_identity(resolved: ResolvedIdentity, background_tasks: BackgroundTasks) -> dict:
+    """Shared success-branch helper (Part F) — reuses the exact same pattern
+    email_auth_verify already has (full row lookup, last_login_at/login-alert
+    ONLY for the parent branch, mint_session_token), fed by a ResolvedIdentity
+    instead of resolve_identity()'s return value directly, so google_verify/
+    apple_verify/apple_link_existing all share one implementation instead of
+    quadruplicating it. email_auth_verify itself is intentionally left with
+    its own copy of this logic, unmodified, per this task's scope."""
+    conn = get_conn()
+    try:
+        if resolved.role == "parent":
+            parent = conn.execute(
+                "SELECT * FROM parents WHERE id = %s", (resolved.parent_id,)
+            ).fetchone()
+            parent_d = dict(parent)
+            athletes = [dict(a) for a in conn.execute(
+                "SELECT * FROM athletes WHERE parent_id = %s", (parent_d["id"],)
+            ).fetchall()]
+
+            try:
+                is_new = not parent_d.get("last_login_at")
+                conn.execute(
+                    "UPDATE parents SET last_login_at = %s WHERE id = %s",
+                    (datetime.utcnow().isoformat(), parent_d["id"]),
+                )
+                conn.commit()
+                background_tasks.add_task(
+                    login_alerts.notify_login, parent_d,
+                    is_new=is_new, athlete_hint=login_alerts.athlete_hint(athletes),
+                )
+            except Exception:
+                logger.warning("login alert scheduling failed (non-blocking)", exc_info=True)
+
+            token = mint_session_token(role="parent", parent_id=parent_d["id"])
+            return {"role": "parent", "parent": parent_d, "athletes": athletes, "session_token": token}
+
+        athlete = conn.execute(
+            "SELECT * FROM athletes WHERE id = %s", (resolved.athlete_id,)
+        ).fetchone()
+        athlete_d = dict(athlete)
+        token = mint_session_token(
+            role="athlete", athlete_id=athlete_d["id"], parent_id=athlete_d["parent_id"],
+        )
+        return {"role": "athlete", "athlete": athlete_d, "session_token": token}
+    finally:
+        conn.close()
+
+
+@router.post("/provider/challenge")
+def provider_challenge(data: ProviderChallengeRequest):
+    """A.6/C.1 — server-issued, single-use, short-lived nonce challenge that
+    replaces a mobile-generated nonce as the authoritative replay-protection
+    mechanism. No auth required — issuing a challenge reveals nothing about
+    any account. Stores the RAW issued nonce (not a pre-committed hash under
+    an assumed transform, see google_auth.py/apple_auth.py)."""
+    if data.provider not in ("google", "apple"):
+        raise HTTPException(422, "Unsupported provider.")
+    _cleanup_expired_provider_auth_state()
+    raw_nonce = secrets.token_urlsafe(32)
+    challenge_id = secrets.token_urlsafe(24)
+    conn = get_conn()
+    try:
+        # expiry computed via Postgres's own now() + interval, not Python
+        # datetime arithmetic -- expires_at is TIMESTAMPTZ and this session's
+        # timezone is not guaranteed to be UTC (e.g. local dev defaults to
+        # the machine's zone), so a naive Python isoformat() string would be
+        # silently (mis)interpreted in that session timezone instead of UTC.
+        conn.execute(
+            "INSERT INTO provider_auth_challenges (challenge_id, provider, raw_nonce, expires_at) "
+            "VALUES (%s, %s, %s, now() + interval '5 minutes')",
+            (challenge_id, data.provider, raw_nonce),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"challenge_id": challenge_id, "nonce": raw_nonce}
+
+
+@router.post("/google/verify")
+def google_verify(data: GoogleVerifyRequest, background_tasks: BackgroundTasks):
+    """C.2 — Google's flow is explicitly unchanged/unweakened: verify the
+    challenge + ID token server-side, then hand straight to the unchanged
+    resolve_identity(), exactly as email_auth_verify already does for the
+    email provider."""
+    raw_nonce = _consume_challenge(
+        data.challenge_id, provider="google", generic_message=_GOOGLE_VERIFY_FAILED_MESSAGE,
+    )
+    try:
+        identity = verify_google_id_token(data.id_token, raw_nonce)
+    except GoogleVerificationError:
+        raise HTTPException(401, _GOOGLE_VERIFY_FAILED_MESSAGE)
+
+    try:
+        resolved = resolve_identity(
+            provider="google", provider_subject=identity.sub,
+            email=identity.email.strip().lower() if identity.email else None,
+            email_verified=identity.email_verified,
+        )
+    except NoExistingAccount:
+        return {"verified": True, "has_account": False}
+    except AmbiguousIdentity:
+        logger.error("google_verify: ambiguous identity for a verified Google account")
+        raise HTTPException(409, _AMBIGUOUS_IDENTITY_MESSAGE)
+
+    return _mint_session_for_resolved_identity(resolved, background_tasks)
+
+
+# --- Apple: read-only building blocks (Case A of A.8) ----------------------
+
+def _find_exact_apple_identity(provider_subject: str):
+    """A direct, READ-ONLY exact-match lookup — NEVER resolve_identity(),
+    whose auto-link INSERT would create a mapping before any Apple credential
+    exists. Returns (auth_identity_id, ResolvedIdentity) or None."""
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT id, parent_id, athlete_id FROM auth_identities "
+            "WHERE provider = 'apple' AND provider_subject = %s",
+            (provider_subject,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return None
+    row_d = dict(row)
+    resolved = ResolvedIdentity(
+        role="parent" if row_d["parent_id"] is not None else "athlete",
+        parent_id=row_d["parent_id"], athlete_id=row_d["athlete_id"],
+    )
+    return row_d["id"], resolved
+
+
+def _has_stored_apple_credential(auth_identity_id: int) -> bool:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM apple_provider_credentials WHERE auth_identity_id = %s",
+            (auth_identity_id,),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def _store_apple_credential(auth_identity_id: int, ciphertext: bytes, nonce: bytes) -> None:
+    """Case A's missing-credential branch — a single-table insert, the
+    existing auth_identities row is left completely untouched."""
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO apple_provider_credentials "
+            "(auth_identity_id, encrypted_refresh_token, encryption_nonce) VALUES (%s, %s, %s)",
+            (auth_identity_id, ciphertext, nonce),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _create_apple_identity_with_credential(
+    provider_subject: str, owner: tuple, ciphertext: bytes, nonce: bytes,
+) -> ResolvedIdentity:
+    """Case B's exactly-one-owner branch (A.8) — the ONE-transaction dual
+    insert: creates the auth_identities row and its apple_provider_credentials
+    row TOGETHER, committed or rolled back as a single unit (one conn, one
+    commit()). Any uniqueness/storage failure on either insert rolls back the
+    entire transaction — the identity mapping and its credential are created
+    together or not at all; there is no intermediate observable state where
+    one exists without the other (Part L, item 8)."""
+    role, parent_id, athlete_id = owner
+    conn = get_conn()
+    try:
+        try:
+            row = conn.execute(
+                "INSERT INTO auth_identities "
+                "(provider, provider_subject, parent_id, athlete_id, email, email_verified) "
+                "VALUES ('apple', %s, %s, %s, NULL, FALSE) RETURNING id",
+                (provider_subject, parent_id, athlete_id),
+            ).fetchone()
+            auth_identity_id = dict(row)["id"]
+            conn.execute(
+                "INSERT INTO apple_provider_credentials "
+                "(auth_identity_id, encrypted_refresh_token, encryption_nonce) VALUES (%s, %s, %s)",
+                (auth_identity_id, ciphertext, nonce),
+            )
+            conn.commit()
+        except psycopg.errors.UniqueViolation:
+            conn.rollback()
+            # Matches this codebase's existing "owner already linked" 409
+            # pattern (create_athlete_login above) — fails closed, never
+            # partially applies either insert.
+            raise HTTPException(
+                409, "This account is already linked to a different Apple sign-in."
+            ) from None
+        except Exception:
+            # ANY failure between the two inserts (Part L, item 8) rolls
+            # back the whole transaction — the identity mapping and its
+            # credential are created together or not at all, never one
+            # without the other.
+            conn.rollback()
+            raise
+    finally:
+        conn.close()
+    return ResolvedIdentity(role=role, parent_id=parent_id, athlete_id=athlete_id)
+
+
+def _create_apple_pending_link(
+    *, provider_subject: str, email_from_token: str | None, email_verified_from_token: bool,
+    encrypted_refresh_token: bytes, encryption_nonce: bytes,
+) -> str:
+    """Hide-My-Email path (A.8) — only ever called with an already-encrypted
+    credential already in hand (the caller performed the synchronous exchange
+    BEFORE calling this). There is no such thing as a credential-less pending
+    link in this design — apple_pending_links' credential columns are
+    NOT NULL at the schema level too (db/postgres/004_phase6_provider_auth.sql)."""
+    pending_link_id = secrets.token_urlsafe(24)
+    conn = get_conn()
+    try:
+        # Expiry computed via Postgres's own now() + interval -- see
+        # provider_challenge()'s identical comment on why a naive Python
+        # isoformat() string must never be written into a TIMESTAMPTZ column.
+        conn.execute(
+            "INSERT INTO apple_pending_links "
+            "(pending_link_id, provider_subject, email_from_token, email_verified_from_token, "
+            "encrypted_refresh_token, encryption_nonce, expires_at) "
+            "VALUES (%s, %s, %s, %s, %s, %s, now() + interval '10 minutes')",
+            (
+                pending_link_id, provider_subject, email_from_token, email_verified_from_token,
+                encrypted_refresh_token, encryption_nonce,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return pending_link_id
+
+
+async def _require_apple_exchange(authorization_code: str | None, *, expected_sub: str) -> tuple[bytes, bytes]:
+    """Shared by every branch that needs Apple's mandatory synchronous
+    exchange before any write (A.8's "one rule, stated once"). Raises
+    HTTPException(502) uniformly — no branch may skip this or treat a
+    missing/failed exchange as anything but a hard failure. Returns
+    (ciphertext, nonce) ready to store."""
+    if not authorization_code:
+        raise HTTPException(502, _APPLE_EXCHANGE_FAILED_MESSAGE)
+    try:
+        raw_refresh_token = await exchange_authorization_code_for_refresh_token(
+            authorization_code, expected_sub=expected_sub,
+        )
+    except AppleVerificationError:
+        raise HTTPException(502, _APPLE_EXCHANGE_FAILED_MESSAGE)
+    return encrypt_refresh_token(raw_refresh_token)
+
+
+@router.post("/apple/verify")
+async def apple_verify(data: AppleVerifyRequest, background_tasks: BackgroundTasks):
+    """C.3/A.8 — THE most critical part of Phase 6. Apple NEVER calls
+    resolve_identity(). Case A (exact mapping already exists) is looked up
+    directly and read-only; Case B (no exact mapping) uses only the
+    read-only _resolve_exactly_one_owner() building block. Every first-time
+    write path performs its mandatory synchronous credential exchange BEFORE
+    any auth_identities/apple_pending_links row is created."""
+    raw_nonce = _consume_challenge(
+        data.challenge_id, provider="apple", generic_message=_APPLE_VERIFY_FAILED_MESSAGE,
+    )
+    try:
+        identity = verify_apple_identity_token(data.identity_token, raw_nonce)
+    except AppleVerificationError:
+        raise HTTPException(401, _APPLE_VERIFY_FAILED_MESSAGE)
+
+    # Case A — exact mapping already exists. Authoritative, never re-decided
+    # by email. A direct, read-only SELECT — not resolve_identity().
+    existing = _find_exact_apple_identity(identity.sub)
+    if existing:
+        auth_identity_id, resolved = existing
+        if not _has_stored_apple_credential(auth_identity_id):
+            ciphertext, nonce = await _require_apple_exchange(
+                data.authorization_code, expected_sub=identity.sub,
+            )
+            _store_apple_credential(auth_identity_id, ciphertext, nonce)
+        # Credential already existed: no exchange attempted at all, even if
+        # authorization_code is present in this request (A.8/Part K).
+        return _mint_session_for_resolved_identity(resolved, background_tasks)
+
+    # Case B — no exact mapping. READ-ONLY owner match only; never a write.
+    email = identity.email.strip().lower() if identity.email else None
+    try:
+        owner = _resolve_exactly_one_owner(email, email_verified=identity.email_verified)
+    except NoExistingAccount:
+        # Hide-My-Email path. Exchange BEFORE creating anything — no
+        # credential-less pending link can ever be created.
+        ciphertext, nonce = await _require_apple_exchange(
+            data.authorization_code, expected_sub=identity.sub,
+        )
+        pending_link_id = _create_apple_pending_link(
+            provider_subject=identity.sub,
+            email_from_token=identity.email,
+            email_verified_from_token=identity.email_verified,
+            encrypted_refresh_token=ciphertext,
+            encryption_nonce=nonce,
+        )
+        return {
+            "verified": True, "has_account": False,
+            "apple_linkable": True, "pending_link_id": pending_link_id,
+        }
+    except AmbiguousIdentity:
+        # Checked BEFORE the exchange — no reason to spend an Apple API
+        # round-trip on a request that 409s regardless.
+        logger.error("apple_verify: ambiguous identity for a verified Apple account")
+        raise HTTPException(409, _AMBIGUOUS_IDENTITY_MESSAGE)
+
+    # Exactly one owner. Exchange BEFORE creating the identity mapping, then
+    # create the mapping + its credential in ONE transaction.
+    ciphertext, nonce = await _require_apple_exchange(data.authorization_code, expected_sub=identity.sub)
+    resolved = _create_apple_identity_with_credential(
+        provider_subject=identity.sub, owner=owner, ciphertext=ciphertext, nonce=nonce,
+    )
+    return _mint_session_for_resolved_identity(resolved, background_tasks)
+
+
+def _consume_pending_link_and_create_apple_identity(
+    conn, pending: dict, parent_id: int,
+) -> ResolvedIdentity:
+    """C.4 — transactional: atomically re-consumes the pending-link row
+    (guards against a concurrent double-use of the same pending_link_id),
+    then in the SAME transaction copies its ALREADY-encrypted credential
+    (no second exchange, it already happened synchronously in apple_verify's
+    Hide-My-Email branch) into a new auth_identities row + its
+    apple_provider_credentials row. Any conflict rolls back everything."""
+    try:
+        consumed = conn.execute(
+            "UPDATE apple_pending_links SET consumed_at = now() "
+            "WHERE pending_link_id = %s AND consumed_at IS NULL "
+            "RETURNING provider_subject, encrypted_refresh_token, encryption_nonce",
+            (pending["pending_link_id"],),
+        ).fetchone()
+        if not consumed:
+            conn.rollback()
+            raise HTTPException(
+                401, "This sign-in attempt has expired. Please try Continue with Apple again."
+            )
+        consumed_d = dict(consumed)
+
+        row = conn.execute(
+            "INSERT INTO auth_identities "
+            "(provider, provider_subject, parent_id, athlete_id, email, email_verified) "
+            "VALUES ('apple', %s, %s, NULL, NULL, FALSE) RETURNING id",
+            (consumed_d["provider_subject"], parent_id),
+        ).fetchone()
+        auth_identity_id = dict(row)["id"]
+
+        conn.execute(
+            "INSERT INTO apple_provider_credentials "
+            "(auth_identity_id, encrypted_refresh_token, encryption_nonce) VALUES (%s, %s, %s)",
+            (auth_identity_id, consumed_d["encrypted_refresh_token"], consumed_d["encryption_nonce"]),
+        )
+        conn.commit()
+    except psycopg.errors.UniqueViolation:
+        conn.rollback()
+        raise HTTPException(
+            409, "This account is already linked to a different Apple sign-in."
+        ) from None
+    except HTTPException:
+        raise
+    except Exception:
+        conn.rollback()
+        raise
+    return ResolvedIdentity(role="parent", parent_id=parent_id, athlete_id=None)
+
+
+@router.post("/apple/link-existing")
+def apple_link_existing(data: AppleLinkExistingRequest, background_tasks: BackgroundTasks):
+    """C.4 — completes the Hide-My-Email path: typing an email alone can
+    never link anything — a genuine, freshly-verified OTP is required first.
+    Explicitly parent-scoped (A.8) — an athlete has no independent
+    OTP-receiving email channel in this architecture."""
+    email = data.email.strip().lower()
+    if not verify_otp_code(email, data.code.strip()):
+        raise HTTPException(401, "Invalid or expired code. Please request a new one.")
+
+    conn = get_conn()
+    try:
+        pending = conn.execute(
+            "SELECT * FROM apple_pending_links WHERE pending_link_id = %s "
+            "AND consumed_at IS NULL AND expires_at > now()",
+            (data.pending_link_id,),
+        ).fetchone()
+        if not pending:
+            raise HTTPException(
+                401, "This sign-in attempt has expired. Please try Continue with Apple again."
+            )
+        pending_d = dict(pending)
+
+        try:
+            parent_id = _resolve_exactly_one_parent_owner(email, conn=conn)
+        except (NoExistingAccount, AmbiguousIdentity):
+            raise HTTPException(
+                401, "We couldn't verify that account. Please check the email and try again."
+            )
+
+        resolved = _consume_pending_link_and_create_apple_identity(conn, pending_d, parent_id)
+    finally:
+        conn.close()
+
+    return _mint_session_for_resolved_identity(resolved, background_tasks)
