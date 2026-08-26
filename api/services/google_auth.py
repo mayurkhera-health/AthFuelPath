@@ -171,13 +171,12 @@ def verify_google_id_token(id_token_str: str, raw_challenge_nonce: str) -> Verif
         raise GoogleVerificationError("Google ID token failed verification.")
 
     # auth v2.1 Phase 6 corrective pass (external review) -- diagnostic-only,
-    # flag-gated nonce-transform observation. This exists because
-    # _google_nonce_matches() below is a PLACEHOLDER pending empirical
-    # confirmation of the actual transform react-native-nitro-google-signin
-    # applies (see this module's own docstring and _google_nonce_matches'
-    # docstring) -- if the raw-equality guess turns out to be wrong, this
-    # lets a person running the backend locally see whether raw OR sha256
-    # WOULD have matched, without ever weakening enforcement to accept
+    # flag-gated nonce-transform observation. This is what CONFIRMED
+    # _google_nonce_matches() below via real-device Gate 3 validation
+    # (sha256-of-raw, not the earlier raw-equality guess -- see this
+    # module's own docstring and _google_nonce_matches' docstring). Left
+    # in place so a person running the backend locally can still see
+    # whether raw OR sha256 WOULD have matched, without ever weakening
     # either. Logs ONLY two booleans -- never the raw nonce, the token's
     # nonce claim, the token itself, or the computed hash value.
     #

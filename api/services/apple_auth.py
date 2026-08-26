@@ -298,13 +298,12 @@ def verify_apple_identity_token(identity_token: str, raw_challenge_nonce: str) -
         raise AppleVerificationError("Apple identity token failed verification.") from exc
 
     # auth v2.1 Phase 6 corrective pass (external review) -- diagnostic-only,
-    # flag-gated nonce-transform observation. This exists because
-    # _apple_nonce_matches() below is a PLACEHOLDER pending empirical
-    # confirmation of the actual transform expo-apple-authentication's
-    # native flow applies (see this module's own docstring and
-    # _apple_nonce_matches' docstring) -- if the sha256-prehash guess turns
-    # out to be wrong, this lets a person running the backend locally see
-    # whether raw OR sha256 WOULD have matched, without ever weakening
+    # flag-gated nonce-transform observation. This is what CONFIRMED
+    # _apple_nonce_matches() below via real-device Gate 3 validation (raw
+    # nonce passthrough, not the earlier sha256-prehash guess -- see this
+    # module's own docstring and _apple_nonce_matches' docstring). Left in
+    # place so a person running the backend locally can still see whether
+    # raw OR sha256 WOULD have matched, without ever weakening
     # enforcement to accept either. Logs ONLY two booleans -- never the raw
     # nonce, the token's nonce claim, the token itself, or the computed hash
     # value. Independent of google_auth.py's identical-shaped diagnostic --
