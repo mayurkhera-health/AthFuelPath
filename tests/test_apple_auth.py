@@ -16,6 +16,7 @@ mismatched response from ever producing a usable refresh token.
 import asyncio
 import base64
 import hashlib
+import logging
 import time
 
 import httpx
@@ -405,6 +406,93 @@ def test_missing_nonce_claim_fails(mock_jwks, apple_signing_key):
     token = _build_token(signing_key=apple_signing_key, nonce_claim=None)
     with pytest.raises(AppleVerificationError):
         verify_apple_identity_token(token, raw_nonce)
+
+
+# --- 9b. auth v2.1 Phase 6 corrective pass (external review) -- Correction
+# 2: flag-gated, diagnostic-only nonce-transform observation.
+# _apple_nonce_matches is a sha256-prehash PLACEHOLDER pending empirical
+# confirmation -- these tests prove the diagnostic sees BOTH a raw-match and
+# a sha256-match independently (so a wrong guess is diagnosable), while the
+# actual enforcement (_apple_nonce_matches, unmodified) remains the sole
+# determinant of pass/fail in every case, including when both diagnostic
+# booleans are False. Independent of google_auth.py's identical-shaped
+# tests -- separate logger, separate module, deliberately not shared logic.
+# ---------------------------------------------------------------------------
+
+APPLE_LOGGER = "api.services.apple_auth"
+
+
+def test_apple_nonce_diagnostic_sha256_match_only_logs_true_and_verification_succeeds(caplog, monkeypatch, mock_jwks, apple_signing_key):
+    """sha256(raw) matches the token's nonce claim -- this IS the currently
+    enforced transform, so verification succeeds, exactly as it does today."""
+    monkeypatch.setenv("PROVIDER_AUTH_EMPIRICAL_LOGGING", "1")
+    raw_nonce = _raw_nonce()
+    token = _build_token(signing_key=apple_signing_key, nonce_claim=_hashed_nonce_claim(raw_nonce))
+
+    with caplog.at_level(logging.INFO, logger=APPLE_LOGGER):
+        identity = verify_apple_identity_token(token, raw_nonce)
+    assert identity.sub == "apple-sub-0001"
+
+    matches = [rec for rec in caplog.records if "provider_auth_empirical apple_verify" in rec.getMessage()]
+    assert len(matches) == 1, caplog.text
+    msg = matches[0].getMessage()
+    assert "nonce_raw_match=False" in msg
+    assert "nonce_sha256_match=True" in msg
+
+
+def test_apple_nonce_diagnostic_raw_match_only_logs_true_false_and_verification_still_fails_closed(caplog, monkeypatch, mock_jwks, apple_signing_key):
+    """Raw comparison matches (the token's nonce claim is the UNHASHED raw
+    value); sha256 does not. _apple_nonce_matches is UNCHANGED
+    sha256-prehash enforcement, so this must still raise
+    AppleVerificationError -- the diagnostic observes but never overrides
+    enforcement."""
+    monkeypatch.setenv("PROVIDER_AUTH_EMPIRICAL_LOGGING", "1")
+    raw_nonce = _raw_nonce()
+    token = _build_token(signing_key=apple_signing_key, nonce_claim=raw_nonce)
+
+    with caplog.at_level(logging.INFO, logger=APPLE_LOGGER):
+        with pytest.raises(AppleVerificationError):
+            verify_apple_identity_token(token, raw_nonce)
+
+    matches = [rec for rec in caplog.records if "provider_auth_empirical apple_verify" in rec.getMessage()]
+    assert len(matches) == 1, caplog.text
+    msg = matches[0].getMessage()
+    assert "nonce_raw_match=True" in msg
+    assert "nonce_sha256_match=False" in msg
+
+
+def test_apple_nonce_diagnostic_neither_match_logs_false_false_and_verification_still_fails_closed(caplog, monkeypatch, mock_jwks, apple_signing_key):
+    """Most important assertion in this correction: when NEITHER transform
+    matches, the diagnostic logs both booleans False, and enforcement still
+    fails closed via the existing, unmodified AppleVerificationError --
+    diagnostics observing never overrides enforcement."""
+    monkeypatch.setenv("PROVIDER_AUTH_EMPIRICAL_LOGGING", "1")
+    raw_nonce = _raw_nonce()
+    token = _build_token(signing_key=apple_signing_key, nonce_claim="a-completely-unrelated-nonce-value")
+
+    with caplog.at_level(logging.INFO, logger=APPLE_LOGGER):
+        with pytest.raises(AppleVerificationError):
+            verify_apple_identity_token(token, raw_nonce)
+
+    matches = [rec for rec in caplog.records if "provider_auth_empirical apple_verify" in rec.getMessage()]
+    assert len(matches) == 1, caplog.text
+    msg = matches[0].getMessage()
+    assert "nonce_raw_match=False" in msg
+    assert "nonce_sha256_match=False" in msg
+
+
+def test_apple_nonce_diagnostic_flag_off_emits_no_log_lines(caplog, monkeypatch, mock_jwks, apple_signing_key):
+    """Flag-off inertness extends cleanly to the new nonce-diagnostic log
+    line too -- zero log records, and enforcement behavior is identical to
+    before this correction existed."""
+    monkeypatch.delenv("PROVIDER_AUTH_EMPIRICAL_LOGGING", raising=False)
+    raw_nonce = _raw_nonce()
+    token = _build_token(signing_key=apple_signing_key, nonce_claim=_hashed_nonce_claim(raw_nonce))
+
+    with caplog.at_level(logging.DEBUG, logger=APPLE_LOGGER):
+        identity = verify_apple_identity_token(token, raw_nonce)
+    assert identity.sub == "apple-sub-0001"
+    assert caplog.records == []
 
 
 def test_apple_nonce_matches_unit():

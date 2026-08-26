@@ -641,3 +641,44 @@ def test_issued_apple_session_token_is_valid_against_require_session(client):
     identity = verify_session_token(token)
     assert identity["role"] == "parent"
     assert identity["parent_id"] == parent_id
+
+
+# ============================================================================
+# auth v2.1 Phase 6 corrective pass (external review) -- Correction 1:
+# verify_apple_identity_token's own _apple_allowed_algorithms() raises a bare
+# RuntimeError (not AppleVerificationError) when APPLE_ALLOWED_ALGORITHMS is
+# unset -- a DEPLOYMENT config problem, not a bad sign-in attempt. Before
+# this fix, `except AppleVerificationError:` alone let this propagate as a
+# raw, unhandled 500. It must instead become a controlled, GENERIC response,
+# distinct from the 401 verification-failed message (reusing that message
+# would misrepresent a server config problem as a real auth decision).
+# ============================================================================
+
+APPLE_CONFIG_ERROR_MSG = "Apple sign-in is not available right now. Please try again later."
+
+
+def test_apple_verify_config_runtime_error_returns_generic_503_not_401(client):
+    challenge_id = issue_challenge(client)
+    r = call_apple_verify(
+        client, challenge_id,
+        verify_error=RuntimeError(
+            "APPLE_ALLOWED_ALGORITHMS env var is not set — the Apple identity-token "
+            "signing algorithm has not been empirically confirmed"
+        ),
+    )
+    assert r.status_code == 503, r.text
+    assert r.json() == {"detail": APPLE_CONFIG_ERROR_MSG}
+    # Distinct from the 401 verification-failed message -- a config problem
+    # must never be represented as a real authentication decision.
+    assert r.json()["detail"] != APPLE_VERIFY_MSG
+    # Never leaks which env var is missing or any other internal detail.
+    assert "APPLE_ALLOWED_ALGORITHMS" not in r.text
+
+
+def test_apple_verify_config_runtime_error_happens_before_any_owner_resolution(client):
+    make_parent("parent1@example.com")
+    challenge_id = issue_challenge(client)
+    with patch("api.routes.auth._resolve_exactly_one_owner") as mock_resolve:
+        r = call_apple_verify(client, challenge_id, verify_error=RuntimeError("config missing"))
+    assert r.status_code == 503, r.text
+    mock_resolve.assert_not_called()

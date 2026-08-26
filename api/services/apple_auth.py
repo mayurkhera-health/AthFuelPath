@@ -33,6 +33,7 @@ empirical confirmation step only ever requires changing this file's
 internals (or an env var, for the algorithm allowlist) — never call sites.
 """
 import hashlib
+import logging
 import os
 import time
 from dataclasses import dataclass
@@ -41,6 +42,23 @@ from typing import Optional
 import httpx
 import jwt
 from jwt import PyJWK
+
+logger = logging.getLogger(__name__)
+
+# auth v2.1 Phase 6 corrective pass (external review) -- tiny, duplicated
+# env-read helper, matching this codebase's established tolerance for small
+# per-module config-flag duplication (e.g. this file's own
+# _apple_bundle_id(), google_auth.py's identical copy) rather than importing
+# api.routes.auth's identical _empirical_logging_enabled() (which would risk
+# a circular import: api.routes.auth imports this module). Keep in sync with
+# api.routes.auth._empirical_logging_enabled() and google_auth.py's copy if
+# the env var name or accepted values ever change.
+_EMPIRICAL_LOGGING_ENV_VAR = "PROVIDER_AUTH_EMPIRICAL_LOGGING"
+
+
+def _empirical_logging_enabled() -> bool:
+    return os.getenv(_EMPIRICAL_LOGGING_ENV_VAR, "false").strip().lower() in ("1", "true")
+
 
 APPLE_JWKS_URL = "https://appleid.apple.com/auth/keys"
 APPLE_TOKEN_URL = "https://appleid.apple.com/auth/token"
@@ -265,6 +283,37 @@ def verify_apple_identity_token(identity_token: str, raw_challenge_nonce: str) -
         )
     except jwt.InvalidTokenError as exc:
         raise AppleVerificationError("Apple identity token failed verification.") from exc
+
+    # auth v2.1 Phase 6 corrective pass (external review) -- diagnostic-only,
+    # flag-gated nonce-transform observation. This exists because
+    # _apple_nonce_matches() below is a PLACEHOLDER pending empirical
+    # confirmation of the actual transform expo-apple-authentication's
+    # native flow applies (see this module's own docstring and
+    # _apple_nonce_matches' docstring) -- if the sha256-prehash guess turns
+    # out to be wrong, this lets a person running the backend locally see
+    # whether raw OR sha256 WOULD have matched, without ever weakening
+    # enforcement to accept either. Logs ONLY two booleans -- never the raw
+    # nonce, the token's nonce claim, the token itself, or the computed hash
+    # value. Independent of google_auth.py's identical-shaped diagnostic --
+    # deliberately not shared logic, since the two providers' nonce
+    # transforms are treated as potentially different.
+    #
+    # CRITICAL: this never influences pass/fail. The unmodified
+    # _apple_nonce_matches() call immediately below remains the sole
+    # determinant of verification outcome -- a genuine mismatch (both
+    # booleans False) still raises AppleVerificationError exactly as before
+    # this diagnostic was added.
+    if _empirical_logging_enabled():
+        token_nonce_claim = claims.get("nonce")
+        nonce_raw_match = bool(token_nonce_claim) and raw_challenge_nonce == token_nonce_claim
+        nonce_sha256_match = (
+            bool(token_nonce_claim)
+            and hashlib.sha256(raw_challenge_nonce.encode()).hexdigest() == token_nonce_claim
+        )
+        logger.info(
+            "provider_auth_empirical apple_verify: nonce_raw_match=%s nonce_sha256_match=%s",
+            nonce_raw_match, nonce_sha256_match,
+        )
 
     if not _apple_nonce_matches(raw_challenge_nonce, claims.get("nonce")):
         raise AppleVerificationError("Apple identity token nonce did not match the issued challenge.")

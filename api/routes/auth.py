@@ -47,6 +47,23 @@ _APPLE_VERIFY_FAILED_MESSAGE = "Apple sign-in could not be verified. Please try 
 _APPLE_EXCHANGE_FAILED_MESSAGE = "Apple sign-in could not be completed. Please try again."
 _AMBIGUOUS_IDENTITY_MESSAGE = "Something went wrong. Please contact support."
 
+# auth v2.1 Phase 6 corrective pass (external review) -- distinct from the
+# above *_VERIFY_FAILED_MESSAGE constants on purpose. Those mean "this
+# particular sign-in attempt's credentials were rejected" (401). These mean
+# "this deployment isn't configured yet" -- a server-side problem, not the
+# caller's fault -- raised when verify_apple_identity_token/
+# verify_google_id_token's own config-read helpers
+# (_apple_allowed_algorithms/_google_allowed_audiences) raise a bare
+# RuntimeError because their required env var is unset. Reusing the 401
+# verification-failed message for this would misrepresent a server
+# configuration problem as a real authentication decision. Deliberately
+# generic -- never includes the missing env var name or any other internal
+# detail, so a response can't be used to fingerprint server configuration
+# state beyond "auth attempted, provider unavailable" vs "auth attempted,
+# credentials wrong."
+_APPLE_CONFIG_ERROR_MESSAGE = "Apple sign-in is not available right now. Please try again later."
+_GOOGLE_CONFIG_ERROR_MESSAGE = "Google sign-in is not available right now. Please try again later."
+
 # auth v2.1 Phase 6 — named TTL constants (interpolated via Postgres's own
 # make_interval(), never raw string-embedded SQL intervals) instead of magic
 # numbers duplicated at each call site.
@@ -589,6 +606,18 @@ def google_verify(data: GoogleVerifyRequest, background_tasks: BackgroundTasks):
         identity = verify_google_id_token(data.id_token, raw_nonce)
     except GoogleVerificationError:
         raise HTTPException(401, _GOOGLE_VERIFY_FAILED_MESSAGE)
+    except RuntimeError:
+        # auth v2.1 Phase 6 corrective pass (external review) -- symmetric
+        # fix to apple_verify's identical gap below: verify_google_id_token's
+        # own _google_allowed_audiences() raises a bare RuntimeError (not
+        # GoogleVerificationError) whenever GOOGLE_ALLOWED_AUDIENCES is
+        # unset, which the `except GoogleVerificationError:` above does not
+        # catch. Without this, that RuntimeError would propagate as an
+        # unhandled 500 instead of this controlled, generic response. Same
+        # reasoning as _APPLE_CONFIG_ERROR_MESSAGE above: a distinct status
+        # code and a generic message, never the missing env var name.
+        logger.error("google_verify: Google sign-in is not configured (see server config)")
+        raise HTTPException(503, _GOOGLE_CONFIG_ERROR_MESSAGE)
 
     # auth v2.1 Phase 6 Gate 3 -- flag-gated, dev-only empirical diagnostic
     # (see _empirical_logging_enabled() above; OFF -> this entire block is
@@ -823,41 +852,24 @@ async def apple_verify(data: AppleVerifyRequest, background_tasks: BackgroundTas
     raw_nonce = _consume_challenge(
         data.challenge_id, provider="apple", generic_message=_APPLE_VERIFY_FAILED_MESSAGE,
     )
-    try:
-        identity = verify_apple_identity_token(data.identity_token, raw_nonce)
-    except AppleVerificationError:
-        # auth v2.1 Phase 6 Gate 3 follow-up -- flag-gated, dev-only empirical
-        # diagnostic, mirroring the success-path log point below but for the
-        # FAILURE path. This closes a real operational gap: apple_auth.py's
-        # _apple_allowed_algorithms() fail-closed-raises whenever
-        # APPLE_ALLOWED_ALGORITHMS is unset (correct, unchanged here), which
-        # is exactly the state for the very first real-device empirical run
-        # -- meaning verify_apple_identity_token ALWAYS raises before
-        # returning, meaning the success-gated log line below would never
-        # fire and Apple's observed alg would never be observable. Same
-        # safe side-channel technique as the success path: a header-only,
-        # signature/claims-independent parse via jwt.get_unverified_header.
-        # Wrapped in its own try/except so a malformed/unparseable token
-        # (the very thing that can cause AppleVerificationError in the first
-        # place) never masks or changes this 401 -- best-effort only, never
-        # logs anything else about the token (no claims, no signature, no
-        # raw token).
-        if _empirical_logging_enabled():
-            try:
-                observed_alg = jwt.get_unverified_header(data.identity_token).get("alg")
-            except Exception:
-                observed_alg = None
-            logger.info(
-                "provider_auth_empirical apple_verify_failed: observed_alg=%s",
-                observed_alg,
-            )
-        raise HTTPException(401, _APPLE_VERIFY_FAILED_MESSAGE)
 
-    # auth v2.1 Phase 6 Gate 3 -- flag-gated, dev-only empirical diagnostic
-    # (see _empirical_logging_enabled() above; OFF -> this entire block is
-    # skipped, zero behavior/log/performance difference from before this
-    # change). Logs only safe facts -- never the token, the raw nonce, the
-    # authorization code, the subject, or the email.
+    # auth v2.1 Phase 6 corrective pass (external review) -- the observed_alg
+    # side-channel parse MUST happen BEFORE verify_apple_identity_token is
+    # even called, not inside any exception handler tied to that call's
+    # outcome. Reason: apple_auth.py's _apple_allowed_algorithms() -- called
+    # as the FIRST line inside verify_apple_identity_token -- raises a bare
+    # RuntimeError (not AppleVerificationError) whenever
+    # APPLE_ALLOWED_ALGORITHMS is unset, which is unavoidably the exact
+    # state of the very first real-device empirical run (we don't know the
+    # real alg yet -- that's the whole point). A parse placed inside
+    # `except AppleVerificationError:` (as a previous commit, 9f14796, did)
+    # never runs on that RuntimeError path -- the one fact we need could
+    # never be observed that way. Computing it here, unconditionally on the
+    # flag and before the call, means it's available (and logged -- see the
+    # except branches below) no matter which of the three outcomes
+    # (success / AppleVerificationError / RuntimeError) follows. Wrapped in
+    # its own try/except, same as the pre-existing pattern -- a malformed/
+    # unparseable identity_token must never crash this.
     #
     # observed_alg is read via a side-channel, header-only parse of
     # data.identity_token (jwt.get_unverified_header) -- the JWT header is
@@ -866,6 +878,53 @@ async def apple_verify(data: AppleVerifyRequest, background_tasks: BackgroundTas
     # before checking a signature), so this is safe. Deliberately does NOT
     # call into apple_auth.py or touch verify_apple_identity_token's return
     # contract at all.
+    observed_alg = None
+    if _empirical_logging_enabled():
+        try:
+            observed_alg = jwt.get_unverified_header(data.identity_token).get("alg")
+        except Exception:
+            observed_alg = None
+
+    try:
+        identity = verify_apple_identity_token(data.identity_token, raw_nonce)
+    except AppleVerificationError:
+        # auth v2.1 Phase 6 Gate 3 follow-up -- flag-gated, dev-only
+        # empirical diagnostic for the FAILURE path, reusing the
+        # observed_alg already parsed above (not re-parsed here) so this
+        # single fact is never logged twice for one request.
+        if _empirical_logging_enabled():
+            logger.info(
+                "provider_auth_empirical apple_verify_failed: observed_alg=%s",
+                observed_alg,
+            )
+        raise HTTPException(401, _APPLE_VERIFY_FAILED_MESSAGE)
+    except RuntimeError:
+        # auth v2.1 Phase 6 corrective pass (external review) -- distinct
+        # from AppleVerificationError above: this means the DEPLOYMENT isn't
+        # configured yet (e.g. APPLE_ALLOWED_ALGORITHMS or APPLE_BUNDLE_ID
+        # genuinely unset), not that this particular sign-in attempt is bad.
+        # See _APPLE_CONFIG_ERROR_MESSAGE's own comment for why this must
+        # never reuse the 401 verification-failed message or leak which env
+        # var is missing. Still reuses the same pre-parsed observed_alg --
+        # this is exactly the operational gap this corrective pass closes:
+        # without this branch, the one fact we need on the very first
+        # real-device run (with APPLE_ALLOWED_ALGORITHMS genuinely unset)
+        # could never be observed, because the RuntimeError would have
+        # propagated past both this handler and the diagnostic logging.
+        logger.error("apple_verify: Apple sign-in is not configured (see server config)")
+        if _empirical_logging_enabled():
+            logger.info(
+                "provider_auth_empirical apple_verify_config_error: observed_alg=%s",
+                observed_alg,
+            )
+        raise HTTPException(503, _APPLE_CONFIG_ERROR_MESSAGE)
+
+    # auth v2.1 Phase 6 Gate 3 -- flag-gated, dev-only empirical diagnostic
+    # (see _empirical_logging_enabled() above; OFF -> this entire block is
+    # skipped, zero behavior/log/performance difference from before this
+    # change). Logs only safe facts -- never the token, the raw nonce, the
+    # authorization code, the subject, or the email. observed_alg reuses the
+    # value already parsed above (not re-parsed here).
     #
     # The JWKS key type (kty) is deliberately NOT logged here. Unlike alg,
     # it isn't observable from the token alone -- it lives on the matched
@@ -887,10 +946,6 @@ async def apple_verify(data: AppleVerifyRequest, background_tasks: BackgroundTas
     # raised AppleVerificationError above, already caught into a 401 before
     # this point (mirrors google_verify's identical reasoning above).
     if _empirical_logging_enabled():
-        try:
-            observed_alg = jwt.get_unverified_header(data.identity_token).get("alg")
-        except Exception:
-            observed_alg = None
         logger.info(
             "provider_auth_empirical apple_verify: observed_alg=%s "
             "authorization_code_present=%s nonce_comparison_result=%s",

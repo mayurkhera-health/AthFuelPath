@@ -430,6 +430,124 @@ def test_flag_on_google_verify_log_never_contains_sensitive_values(client, caplo
     assert "g-secret-sub-999" not in log_text
 
 
+# ============================================================================
+# auth v2.1 Phase 6 corrective pass (external review) -- Correction 1: the
+# Apple algorithm-observation bootstrap. Before this fix, a bare RuntimeError
+# from verify_apple_identity_token (APPLE_ALLOWED_ALGORITHMS genuinely
+# unset -- unavoidably the exact state of the very first real-device
+# empirical run) skipped past BOTH `except AppleVerificationError:` AND the
+# observed_alg diagnostic logging that lived inside it -- meaning the one
+# fact we need (Apple's real signing alg) could never be observed. The fix:
+# parse observed_alg unconditionally-on-the-flag BEFORE calling
+# verify_apple_identity_token at all, so it's captured no matter which of
+# the three outcomes (success / AppleVerificationError / RuntimeError)
+# follows.
+# ============================================================================
+
+APPLE_CONFIG_ERROR_MESSAGE = "Apple sign-in is not available right now. Please try again later."
+
+
+def test_flag_on_config_runtime_error_still_logs_observed_alg_the_core_bootstrap_proof(client, caplog, monkeypatch):
+    """(a) The core "first empirical run must work" proof: flag on,
+    APPLE_ALLOWED_ALGORITHMS genuinely unset (simulated here via
+    verify_apple_identity_token raising RuntimeError, exactly what
+    apple_auth.py's _apple_allowed_algorithms() does when that env var is
+    unset), a real parseable JWT header -- the observed_alg log line still
+    fires. Before this fix, this was structurally impossible: the RuntimeError
+    skipped past both the except-block and its diagnostic logging."""
+    monkeypatch.setenv(FLAG, "1")
+    challenge_id, _nonce = issue_challenge(client, "apple")
+    real_token = real_jwt_with_alg(alg="HS256", kid="bootstrap-proof-kid")
+
+    with caplog.at_level(logging.INFO, logger=AUTH_LOGGER):
+        with patch(
+            "api.routes.auth.verify_apple_identity_token",
+            side_effect=RuntimeError(
+                "APPLE_ALLOWED_ALGORITHMS env var is not set — the Apple "
+                "identity-token signing algorithm has not been empirically confirmed"
+            ),
+        ):
+            r = client.post(
+                "/api/auth/apple/verify",
+                json={
+                    "challenge_id": challenge_id,
+                    "identity_token": real_token,
+                    "authorization_code": "fake-auth-code",
+                },
+            )
+
+    # (b) the response is the new generic config-error response, NOT the 401
+    # verification-failed message.
+    assert r.status_code == 503, r.text
+    assert r.json() == {"detail": APPLE_CONFIG_ERROR_MESSAGE}
+    assert set(r.json().keys()) == {"detail"}
+
+    matches = [
+        rec for rec in caplog.records
+        if "provider_auth_empirical" in rec.getMessage() and "observed_alg=" in rec.getMessage()
+    ]
+    assert len(matches) == 1, caplog.text
+    assert "observed_alg=HS256" in matches[0].getMessage()
+    # Never leaks the missing env var name into the logs either.
+    assert "APPLE_ALLOWED_ALGORITHMS" not in caplog.text
+
+
+def test_flag_off_config_runtime_error_emits_no_empirical_log_lines_but_response_unchanged(client, caplog, monkeypatch):
+    """(c) Flag off -> zero new *diagnostic* log lines (the flag only gates
+    the provider_auth_empirical-tagged logging, not the response), and the
+    response is the same generic config-error response regardless of the
+    flag -- proving the flag's inertness extends cleanly to this new path
+    too."""
+    monkeypatch.delenv(FLAG, raising=False)
+    challenge_id, _nonce = issue_challenge(client, "apple")
+    real_token = real_jwt_with_alg(alg="HS256", kid="bootstrap-flag-off-kid")
+
+    with caplog.at_level(logging.DEBUG, logger=AUTH_LOGGER):
+        with patch(
+            "api.routes.auth.verify_apple_identity_token",
+            side_effect=RuntimeError("APPLE_ALLOWED_ALGORITHMS env var is not set"),
+        ):
+            r = client.post(
+                "/api/auth/apple/verify",
+                json={
+                    "challenge_id": challenge_id,
+                    "identity_token": real_token,
+                    "authorization_code": "fake-auth-code",
+                },
+            )
+    assert r.status_code == 503, r.text
+    assert r.json() == {"detail": APPLE_CONFIG_ERROR_MESSAGE}
+
+    empirical_matches = [rec for rec in caplog.records if "provider_auth_empirical" in rec.getMessage()]
+    assert empirical_matches == [], caplog.text
+
+
+def test_flag_on_config_runtime_error_with_malformed_token_does_not_crash(client, monkeypatch):
+    """(d) A malformed identity_token must not crash the config-error path
+    either -- the best-effort observed_alg parse (wrapped in its own
+    try/except, falling back to None) must never itself become a new
+    failure mode, even when the underlying call also happens to fail with a
+    RuntimeError."""
+    monkeypatch.setenv(FLAG, "1")
+    challenge_id, _nonce = issue_challenge(client, "apple")
+    malformed_token = "this-is-not-a-jwt-at-all"
+
+    with patch(
+        "api.routes.auth.verify_apple_identity_token",
+        side_effect=RuntimeError("APPLE_ALLOWED_ALGORITHMS env var is not set"),
+    ):
+        r = client.post(
+            "/api/auth/apple/verify",
+            json={
+                "challenge_id": challenge_id,
+                "identity_token": malformed_token,
+                "authorization_code": "fake-auth-code",
+            },
+        )
+    assert r.status_code == 503, r.text
+    assert r.json() == {"detail": APPLE_CONFIG_ERROR_MESSAGE}
+
+
 def test_flag_on_apple_verify_log_never_contains_sensitive_values(client, caplog, monkeypatch):
     monkeypatch.setenv(FLAG, "1")
     make_parent("secret-parent2@example.com")

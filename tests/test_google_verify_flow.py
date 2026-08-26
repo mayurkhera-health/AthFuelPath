@@ -380,3 +380,35 @@ def test_provider_verification_happens_before_resolve_identity(client):
         r = call_google_verify(client, challenge_id, error=GoogleVerificationError("bad"))
     assert r.status_code == 401, r.text
     mock_resolve.assert_not_called()
+
+
+# ============================================================================
+# auth v2.1 Phase 6 corrective pass (external review) -- symmetric fix noted
+# alongside Correction 1: verify_google_id_token's own
+# _google_allowed_audiences() has the identical unset-env-var RuntimeError
+# pattern as Apple's _apple_allowed_algorithms(). Same generic-message
+# pattern applied here for symmetry (trivial, exact mirror of the Apple fix).
+# ============================================================================
+
+GOOGLE_CONFIG_ERROR_MSG = "Google sign-in is not available right now. Please try again later."
+
+
+def test_google_verify_config_runtime_error_returns_generic_503_not_401(client):
+    challenge_id = issue_challenge(client)
+    r = call_google_verify(
+        client, challenge_id,
+        error=RuntimeError("GOOGLE_ALLOWED_AUDIENCES env var is not set"),
+    )
+    assert r.status_code == 503, r.text
+    assert r.json() == {"detail": GOOGLE_CONFIG_ERROR_MSG}
+    assert r.json()["detail"] != GOOGLE_MSG
+    assert "GOOGLE_ALLOWED_AUDIENCES" not in r.text
+
+
+def test_google_verify_config_runtime_error_happens_before_resolve_identity(client):
+    make_parent("parent1@example.com")
+    challenge_id = issue_challenge(client)
+    with patch("api.routes.auth.resolve_identity") as mock_resolve:
+        r = call_google_verify(client, challenge_id, error=RuntimeError("config missing"))
+    assert r.status_code == 503, r.text
+    mock_resolve.assert_not_called()

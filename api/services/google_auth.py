@@ -39,12 +39,30 @@ semantics, which is a worse failure mode than the current latency/
 availability cost for a security-sensitive minors' app. Left as an
 explicit, documented follow-up rather than silently uncached.
 """
+import hashlib
+import logging
 import os
 from dataclasses import dataclass
 
 import google.auth.exceptions
 from google.auth.transport import requests as google_auth_requests
 from google.oauth2 import id_token as google_id_token
+
+logger = logging.getLogger(__name__)
+
+# auth v2.1 Phase 6 corrective pass (external review) -- tiny, duplicated
+# env-read helper, matching this codebase's established tolerance for small
+# per-module config-flag duplication (e.g. this file's own
+# _google_allowed_audiences(), apple_auth.py's _apple_bundle_id()) rather
+# than importing api.routes.auth's identical _empirical_logging_enabled()
+# (which would risk a circular import: api.routes.auth imports this module).
+# Keep in sync with api.routes.auth._empirical_logging_enabled() and
+# apple_auth.py's copy if the env var name or accepted values ever change.
+_EMPIRICAL_LOGGING_ENV_VAR = "PROVIDER_AUTH_EMPIRICAL_LOGGING"
+
+
+def _empirical_logging_enabled() -> bool:
+    return os.getenv(_EMPIRICAL_LOGGING_ENV_VAR, "false").strip().lower() in ("1", "true")
 
 
 @dataclass
@@ -153,6 +171,34 @@ def verify_google_id_token(id_token_str: str, raw_challenge_nonce: str) -> Verif
 
     if idinfo.get("aud") not in allowed_audiences:
         raise GoogleVerificationError("Google ID token failed verification.")
+
+    # auth v2.1 Phase 6 corrective pass (external review) -- diagnostic-only,
+    # flag-gated nonce-transform observation. This exists because
+    # _google_nonce_matches() below is a PLACEHOLDER pending empirical
+    # confirmation of the actual transform react-native-nitro-google-signin
+    # applies (see this module's own docstring and _google_nonce_matches'
+    # docstring) -- if the raw-equality guess turns out to be wrong, this
+    # lets a person running the backend locally see whether raw OR sha256
+    # WOULD have matched, without ever weakening enforcement to accept
+    # either. Logs ONLY two booleans -- never the raw nonce, the token's
+    # nonce claim, the token itself, or the computed hash value.
+    #
+    # CRITICAL: this never influences pass/fail. The unmodified
+    # _google_nonce_matches() call immediately below remains the sole
+    # determinant of verification outcome -- a genuine mismatch (both
+    # booleans False) still raises GoogleVerificationError exactly as before
+    # this diagnostic was added.
+    if _empirical_logging_enabled():
+        token_nonce_claim = idinfo.get("nonce")
+        nonce_raw_match = bool(token_nonce_claim) and raw_challenge_nonce == token_nonce_claim
+        nonce_sha256_match = (
+            bool(token_nonce_claim)
+            and hashlib.sha256(raw_challenge_nonce.encode()).hexdigest() == token_nonce_claim
+        )
+        logger.info(
+            "provider_auth_empirical google_verify: nonce_raw_match=%s nonce_sha256_match=%s",
+            nonce_raw_match, nonce_sha256_match,
+        )
 
     if not _google_nonce_matches(raw_challenge_nonce, idinfo.get("nonce")):
         raise GoogleVerificationError("Google ID token failed verification.")
