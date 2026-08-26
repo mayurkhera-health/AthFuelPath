@@ -15,14 +15,16 @@ with two checks that library call does NOT perform on its own:
      _google_nonce_matches() (per A.6) — verify_oauth2_token does not
      check nonce at all; that's a required additional step layered on top.
 
-_google_nonce_matches() is a PLACEHOLDER pending Task-1-style empirical
-confirmation of the exact transform react-native-nitro-google-signin
-applies to the nonce before it lands in the token's nonce claim (A.6). It
-is deliberately factored out as its own function so it can be replaced
-later (e.g. with a SHA-256 comparison) without touching any caller. Nothing
-in this module hardcodes a guessed final value for that transform, or for
-the audience allowlist's actual production contents — those are later,
-separate empirical/configuration steps this module does not perform.
+_google_nonce_matches() is now CONFIRMED, not a placeholder (Phase 6 plan,
+A.6, real-device Gate 3 validation): react-native-nitro-google-signin's
+flow results in the token's nonce claim being
+sha256(raw_nonce).hexdigest() -- not the raw value verbatim, contrary to
+the earlier placeholder guess based on standard OIDC nonce-echo behavior.
+It accepts SHA-256(raw) ONLY -- no dual-accept, no fallback to a raw-
+equality comparison. It remains factored out as its own function so any
+future correction would only ever require changing this function's body,
+never a caller. The audience allowlist's actual production contents
+remain a later, separate configuration step this module does not perform.
 
 Everything else here (signature, issuer, expiry checks delegated to
 google.oauth2.id_token.verify_oauth2_token) rests on Google's own published
@@ -101,21 +103,17 @@ def _google_allowed_audiences() -> set[str]:
 
 def _google_nonce_matches(raw_challenge_nonce: str, token_nonce_claim: str | None) -> bool:
     """
-    PLACEHOLDER pending Task-1-style empirical confirmation (Phase 6 plan,
-    section A.6) of exactly what transform react-native-nitro-google-signin
-    applies to the nonce before it lands in the token's nonce claim. Until
-    that confirmation happens, this compares the raw value directly
-    (raw_challenge_nonce == token_nonce_claim) as the most standard OIDC
-    behavior (per Google's own OpenID Connect docs, the nonce you supply
-    is typically echoed verbatim into the token's nonce claim, unlike
-    Apple's SDK which is documented to pre-hash it) -- but this must be
-    empirically re-verified against a real token from the actual selected
-    SDK before this function is trusted in production. This function's
-    body must be trivially replaceable with a corrected transform (e.g. a
-    SHA-256 comparison) without touching any caller -- that's the whole
-    point of factoring it out separately from verify_google_id_token.
+    CONFIRMED behavior (Phase 6 plan, A.6) from real-device Gate 3
+    validation: react-native-nitro-google-signin's flow results in the
+    token's nonce claim being sha256(raw_nonce).hexdigest() -- not the raw
+    value verbatim, contrary to the earlier placeholder guess based on
+    standard OIDC nonce-echo behavior. Accepts SHA-256(raw) ONLY -- no
+    dual-accept, no fallback to a raw-equality comparison.
     """
-    return bool(token_nonce_claim) and raw_challenge_nonce == token_nonce_claim
+    return (
+        bool(token_nonce_claim)
+        and hashlib.sha256(raw_challenge_nonce.encode()).hexdigest() == token_nonce_claim
+    )
 
 
 def verify_google_id_token(id_token_str: str, raw_challenge_nonce: str) -> VerifiedGoogleIdentity:

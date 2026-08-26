@@ -65,7 +65,7 @@ def _idinfo(**overrides):
 def test_valid_token_matching_nonce_and_allowlisted_audience_returns_identity():
     with patch(
         "api.services.google_auth.google_id_token.verify_oauth2_token",
-        return_value=_idinfo(),
+        return_value=_idinfo(nonce=_sha256_hex(RAW_NONCE)),
     ):
         identity = verify_google_id_token("fake-id-token", RAW_NONCE)
 
@@ -91,7 +91,7 @@ def test_audience_is_approved_web_client_id_succeeds_positive_control():
     must itself pass."""
     with patch(
         "api.services.google_auth.google_id_token.verify_oauth2_token",
-        return_value=_idinfo(aud=APPROVED_WEB_CLIENT_ID),
+        return_value=_idinfo(aud=APPROVED_WEB_CLIENT_ID, nonce=_sha256_hex(RAW_NONCE)),
     ):
         identity = verify_google_id_token("fake-id-token", RAW_NONCE)
     assert identity.sub == "1234567890"
@@ -190,8 +190,12 @@ def test_allowed_audiences_parses_comma_separated_set(monkeypatch):
 # --- _google_nonce_matches (unit-tested directly, in isolation) ----------
 
 
-def test_google_nonce_matches_true_when_equal():
-    assert _google_nonce_matches("abc123", "abc123") is True
+def test_google_nonce_matches_true_when_sha256_of_raw():
+    assert _google_nonce_matches("abc123", hashlib.sha256(b"abc123").hexdigest()) is True
+
+
+def test_google_nonce_matches_false_when_raw_verbatim_no_longer_accepted():
+    assert _google_nonce_matches("abc123", "abc123") is False
 
 
 def test_google_nonce_matches_false_when_different():
@@ -219,17 +223,19 @@ def _sha256_hex(raw: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-def test_google_nonce_diagnostic_raw_match_only_logs_true_false_and_verification_succeeds(caplog, monkeypatch):
-    """Raw comparison matches (== the current, actually-enforced transform);
-    sha256 does not. Verification succeeds, exactly as it does today."""
+def test_google_nonce_diagnostic_raw_match_only_logs_true_false_and_verification_fails_closed(caplog, monkeypatch):
+    """Raw comparison matches, but sha256(raw) does not. _google_nonce_matches
+    is CONFIRMED sha256-only enforcement, so this must raise
+    GoogleVerificationError -- the diagnostic observes but never overrides
+    enforcement."""
     monkeypatch.setenv("PROVIDER_AUTH_EMPIRICAL_LOGGING", "1")
     with caplog.at_level(logging.INFO, logger=GOOGLE_LOGGER):
         with patch(
             "api.services.google_auth.google_id_token.verify_oauth2_token",
             return_value=_idinfo(nonce=RAW_NONCE),
         ):
-            identity = verify_google_id_token("fake-id-token", RAW_NONCE)
-    assert identity.sub == "1234567890"
+            with pytest.raises(GoogleVerificationError):
+                verify_google_id_token("fake-id-token", RAW_NONCE)
 
     matches = [rec for rec in caplog.records if "provider_auth_empirical google_verify" in rec.getMessage()]
     assert len(matches) == 1, caplog.text
@@ -238,11 +244,10 @@ def test_google_nonce_diagnostic_raw_match_only_logs_true_false_and_verification
     assert "nonce_sha256_match=False" in msg
 
 
-def test_google_nonce_diagnostic_sha256_match_only_logs_false_true_and_verification_still_fails_closed(caplog, monkeypatch):
+def test_google_nonce_diagnostic_sha256_match_only_logs_false_true_and_verification_succeeds(caplog, monkeypatch):
     """sha256(raw) matches the token's nonce claim; raw equality does not.
-    _google_nonce_matches is UNCHANGED raw-equality enforcement, so this
-    must still raise GoogleVerificationError -- the diagnostic observes but
-    never overrides enforcement."""
+    This IS the confirmed, currently enforced transform, so verification
+    succeeds."""
     monkeypatch.setenv("PROVIDER_AUTH_EMPIRICAL_LOGGING", "1")
     sha256_nonce = _sha256_hex(RAW_NONCE)
     with caplog.at_level(logging.INFO, logger=GOOGLE_LOGGER):
@@ -250,8 +255,8 @@ def test_google_nonce_diagnostic_sha256_match_only_logs_false_true_and_verificat
             "api.services.google_auth.google_id_token.verify_oauth2_token",
             return_value=_idinfo(nonce=sha256_nonce),
         ):
-            with pytest.raises(GoogleVerificationError):
-                verify_google_id_token("fake-id-token", RAW_NONCE)
+            identity = verify_google_id_token("fake-id-token", RAW_NONCE)
+    assert identity.sub == "1234567890"
 
     matches = [rec for rec in caplog.records if "provider_auth_empirical google_verify" in rec.getMessage()]
     assert len(matches) == 1, caplog.text
@@ -289,7 +294,7 @@ def test_google_nonce_diagnostic_flag_off_emits_no_log_lines(caplog, monkeypatch
     with caplog.at_level(logging.DEBUG, logger=GOOGLE_LOGGER):
         with patch(
             "api.services.google_auth.google_id_token.verify_oauth2_token",
-            return_value=_idinfo(nonce=RAW_NONCE),
+            return_value=_idinfo(nonce=_sha256_hex(RAW_NONCE)),
         ):
             identity = verify_google_id_token("fake-id-token", RAW_NONCE)
     assert identity.sub == "1234567890"

@@ -9,10 +9,10 @@ satisfy Phase 10's revocation prerequisite (A.7/A.8). It does NOT call
 any way — this is a pure verification/exchange service; the atomic,
 credential-first orchestration lives in `api/routes/auth.py` (Part F/C.3).
 
-Two things in this file are DELIBERATELY left configurable rather than
-hardcoded, because they are empirically unconfirmed as of this writing
-(plan A.5/A.6, pending a real-device test against the actual native
-`expo-apple-authentication` flow — a later, separate task):
+One thing in this file remains DELIBERATELY left configurable rather than
+hardcoded, because it is still empirically unconfirmed as of this writing
+(plan A.5, pending a real-device test against a live JWKS fetch and a
+genuine decoded token header):
 
   1. The user identity token's signing algorithm (`_apple_allowed_algorithms`)
      — do NOT assume this matches ES256 just because
@@ -23,14 +23,18 @@ hardcoded, because they are empirically unconfirmed as of this writing
      identity token's algorithm is APPLE's choice for what Apple produces,
      and has not yet been empirically confirmed against a live JWKS fetch
      and a genuine decoded token header.
-  2. The nonce-claim comparison transform (`_apple_nonce_matches`) — Apple's
-     docs describe a SHA-256 pre-hash for some of its web/JS flows; whether
-     `expo-apple-authentication`'s native path does the same has not yet
-     been confirmed against a real token.
 
-Both are built as small, swappable functions specifically so the pending
-empirical confirmation step only ever requires changing this file's
-internals (or an env var, for the algorithm allowlist) — never call sites.
+The nonce-claim comparison transform (`_apple_nonce_matches`, plan A.6) is
+now CONFIRMED, not a placeholder: real-device Gate 3 validation showed
+`expo-apple-authentication`'s native flow embeds the raw challenge nonce
+verbatim into the token's `nonce` claim (RS256-signed tokens observed; no
+SHA-256 pre-hash, contrary to the earlier placeholder guess drawn from
+Apple's web/JS-flow docs). It accepts raw ONLY — no dual-accept, no
+fallback to a hashed comparison.
+
+`_apple_allowed_algorithms` remains built as a small, swappable, env-driven
+function specifically so its pending empirical confirmation only ever
+requires an env var change — never a call-site change.
 """
 import hashlib
 import logging
@@ -130,19 +134,15 @@ def _apple_private_key() -> str:
 
 def _apple_nonce_matches(raw_challenge_nonce: str, token_nonce_claim: Optional[str]) -> bool:
     """
-    PLACEHOLDER pending empirical confirmation (Phase 6 plan, A.6) of the
-    actual transform expo-apple-authentication's native flow applies.
-    Apple's documentation for SOME of its web/JS flows describes a
-    SHA-256 pre-hash of the supplied nonce before it's embedded in the
-    token's nonce claim -- this is used here as the best-available
-    documented default, but MUST be empirically re-verified against a
-    real token from the actual native module before this is trusted in
-    production; if the real behavior turns out to be verbatim (unhashed),
-    this function's body is the only thing that needs to change. Trivially
-    swappable, matching google_auth.py's identical pattern for the same
-    reason.
+    CONFIRMED behavior (Phase 6 plan, A.6) from real-device Gate 3
+    validation: Apple's native `expo-apple-authentication` flow embeds the
+    raw challenge nonce verbatim into the identity token's `nonce` claim
+    (RS256 signing algorithm observed on the real device token) -- no
+    SHA-256 pre-hash, contrary to the earlier placeholder guess drawn from
+    Apple's web/JS-flow docs. Accepts raw ONLY -- no dual-accept, no
+    fallback to a hashed comparison.
     """
-    return bool(token_nonce_claim) and hashlib.sha256(raw_challenge_nonce.encode()).hexdigest() == token_nonce_claim
+    return bool(token_nonce_claim) and raw_challenge_nonce == token_nonce_claim
 
 
 def _apple_allowed_algorithms() -> list[str]:
@@ -266,6 +266,19 @@ def verify_apple_identity_token(identity_token: str, raw_challenge_nonce: str) -
         matching_key = next((k for k in jwks.get("keys", []) if k.get("kid") == kid), None)
     if matching_key is None:
         raise AppleVerificationError("Apple identity token references an unrecognized signing key.")
+
+    # auth v2.1 Phase 6 Gate 3 finalization -- diagnostic-only, flag-gated
+    # JWKS key-type observation (closes a gap explicitly deferred in an
+    # earlier commit). Reuses the already-selected `matching_key` dict --
+    # no second JWKS fetch, no duplicated key-selection logic. Logs ONLY
+    # the key's `kty` field (e.g. "RSA") -- never `kid`, never any key
+    # material (`n`/`e`/`x5c`), never the token, claims, subject, email, or
+    # nonce.
+    if _empirical_logging_enabled():
+        logger.info(
+            "provider_auth_empirical apple_verify: matched_jwks_kty=%s",
+            matching_key.get("kty"),
+        )
 
     try:
         signing_key = PyJWK(matching_key)
