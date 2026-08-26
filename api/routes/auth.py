@@ -826,6 +826,31 @@ async def apple_verify(data: AppleVerifyRequest, background_tasks: BackgroundTas
     try:
         identity = verify_apple_identity_token(data.identity_token, raw_nonce)
     except AppleVerificationError:
+        # auth v2.1 Phase 6 Gate 3 follow-up -- flag-gated, dev-only empirical
+        # diagnostic, mirroring the success-path log point below but for the
+        # FAILURE path. This closes a real operational gap: apple_auth.py's
+        # _apple_allowed_algorithms() fail-closed-raises whenever
+        # APPLE_ALLOWED_ALGORITHMS is unset (correct, unchanged here), which
+        # is exactly the state for the very first real-device empirical run
+        # -- meaning verify_apple_identity_token ALWAYS raises before
+        # returning, meaning the success-gated log line below would never
+        # fire and Apple's observed alg would never be observable. Same
+        # safe side-channel technique as the success path: a header-only,
+        # signature/claims-independent parse via jwt.get_unverified_header.
+        # Wrapped in its own try/except so a malformed/unparseable token
+        # (the very thing that can cause AppleVerificationError in the first
+        # place) never masks or changes this 401 -- best-effort only, never
+        # logs anything else about the token (no claims, no signature, no
+        # raw token).
+        if _empirical_logging_enabled():
+            try:
+                observed_alg = jwt.get_unverified_header(data.identity_token).get("alg")
+            except Exception:
+                observed_alg = None
+            logger.info(
+                "provider_auth_empirical apple_verify_failed: observed_alg=%s",
+                observed_alg,
+            )
         raise HTTPException(401, _APPLE_VERIFY_FAILED_MESSAGE)
 
     # auth v2.1 Phase 6 Gate 3 -- flag-gated, dev-only empirical diagnostic

@@ -38,11 +38,12 @@ from api.services.db_migrations import run_all
 from api.database import get_conn
 from api.main import app
 from api.services.google_auth import VerifiedGoogleIdentity
-from api.services.apple_auth import VerifiedAppleIdentity
+from api.services.apple_auth import VerifiedAppleIdentity, AppleVerificationError
 
 FLAG = "PROVIDER_AUTH_EMPIRICAL_LOGGING"
 AUTH_LOGGER = "api.routes.auth"
 TEST_KEY_B64 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="  # 32 zero bytes, base64
+APPLE_VERIFY_FAILED_MESSAGE = "Apple sign-in could not be verified. Please try again."
 
 
 @pytest.fixture(autouse=True)
@@ -189,6 +190,31 @@ def test_flag_off_apple_verify_direct_link_emits_no_log_records(client, caplog):
     assert caplog.records == []
 
 
+def test_flag_off_apple_verify_failure_emits_no_log_records(client, caplog):
+    """Same inertness guarantee as the two tests above, extended to the
+    failure path this task adds (Gate 3 follow-up): verify_apple_identity_token
+    raising AppleVerificationError, flag off. Zero new log records, and the
+    401 response is the plain pre-existing one -- proving the new
+    best-effort log line genuinely does nothing when the flag is off, on
+    this path too."""
+    challenge_id, _nonce = issue_challenge(client, "apple")
+    real_token = real_jwt_with_alg(alg="HS256", kid="failure-inertness-kid")
+
+    with caplog.at_level(logging.DEBUG, logger=AUTH_LOGGER):
+        with patch("api.routes.auth.verify_apple_identity_token", side_effect=AppleVerificationError("bad token")):
+            r = client.post(
+                "/api/auth/apple/verify",
+                json={
+                    "challenge_id": challenge_id,
+                    "identity_token": real_token,
+                    "authorization_code": "fake-auth-code",
+                },
+            )
+    assert r.status_code == 401, r.text
+    assert r.json() == {"detail": APPLE_VERIFY_FAILED_MESSAGE}
+    assert caplog.records == []
+
+
 def test_empirical_logging_enabled_helper_defaults_to_false(monkeypatch):
     from api.routes.auth import _empirical_logging_enabled
     monkeypatch.delenv(FLAG, raising=False)
@@ -318,6 +344,64 @@ def test_flag_on_apple_verify_case_a_existing_credential_logs_verify_fact_but_no
 
     exchange_matches = [rec for rec in caplog.records if "provider_auth_empirical apple_exchange" in rec.getMessage()]
     assert exchange_matches == []
+
+
+def test_flag_on_apple_verify_failure_logs_observed_alg_and_401_is_unchanged(client, caplog, monkeypatch):
+    """The operational gap this task closes: verify_apple_identity_token
+    raises (e.g. APPLE_ALLOWED_ALGORITHMS genuinely unset for the first
+    real-device run, or any other verification failure) BEFORE the existing
+    success-gated log line ever runs -- so without this failure-path log
+    line, the one fact we need (Apple's observed alg) would never be
+    observable on the very first real run. Flag on, a real/parseable JWT
+    header, verification fails -> the new log line still fires with the
+    correct alg, and the 401 response is byte-identical to the pre-existing
+    generic failure response (same status, same and only 'detail' key, same
+    message) -- proving this is purely additive logging, not a behavior
+    change."""
+    monkeypatch.setenv(FLAG, "1")
+    challenge_id, _nonce = issue_challenge(client, "apple")
+    real_token = real_jwt_with_alg(alg="HS256", kid="failure-test-kid")
+
+    with caplog.at_level(logging.INFO, logger=AUTH_LOGGER):
+        with patch("api.routes.auth.verify_apple_identity_token", side_effect=AppleVerificationError("bad token")):
+            r = client.post(
+                "/api/auth/apple/verify",
+                json={
+                    "challenge_id": challenge_id,
+                    "identity_token": real_token,
+                    "authorization_code": "fake-auth-code",
+                },
+            )
+    assert r.status_code == 401, r.text
+    assert r.json() == {"detail": APPLE_VERIFY_FAILED_MESSAGE}
+    assert set(r.json().keys()) == {"detail"}
+
+    matches = [rec for rec in caplog.records if "provider_auth_empirical apple_verify_failed" in rec.getMessage()]
+    assert len(matches) == 1, caplog.text
+    assert "observed_alg=HS256" in matches[0].getMessage()
+
+
+def test_flag_on_apple_verify_failure_with_malformed_token_swallows_parse_error_and_401_is_unchanged(client, monkeypatch):
+    """The best-effort observed_alg parse must never itself become a new
+    failure mode: a malformed/unparseable identity_token (jwt.get_unverified_header
+    raising) must be swallowed cleanly, with the caller still getting exactly
+    the same 401 they'd have gotten before this change -- no 500, no
+    exception escaping the route, no altered response."""
+    monkeypatch.setenv(FLAG, "1")
+    challenge_id, _nonce = issue_challenge(client, "apple")
+    malformed_token = "this-is-not-a-jwt-at-all"
+
+    with patch("api.routes.auth.verify_apple_identity_token", side_effect=AppleVerificationError("bad token")):
+        r = client.post(
+            "/api/auth/apple/verify",
+            json={
+                "challenge_id": challenge_id,
+                "identity_token": malformed_token,
+                "authorization_code": "fake-auth-code",
+            },
+        )
+    assert r.status_code == 401, r.text
+    assert r.json() == {"detail": APPLE_VERIFY_FAILED_MESSAGE}
 
 
 # ============================================================================

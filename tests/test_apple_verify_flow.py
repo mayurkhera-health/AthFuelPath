@@ -472,6 +472,28 @@ def test_apple_verification_error_returns_401_generic_message(client):
     assert "session_token" not in r.text
 
 
+def test_apple_verification_error_401_response_is_byte_identical_with_empirical_logging_flag_on(client, monkeypatch):
+    """Gate 3 follow-up (this task): apple_verify now also does a best-effort
+    observed_alg log on this same failure path when
+    PROVIDER_AUTH_EMPIRICAL_LOGGING is on. That log line must be purely
+    additive -- explicitly confirm the 401 response (status code + full JSON
+    body) is identical whether the flag is off or on, i.e. the new logging
+    never alters what the caller receives."""
+    make_parent("parent1@example.com")
+
+    monkeypatch.delenv("PROVIDER_AUTH_EMPIRICAL_LOGGING", raising=False)
+    challenge_id_off = issue_challenge(client)
+    r_off = call_apple_verify(client, challenge_id_off, verify_error=AppleVerificationError("bad token"))
+
+    monkeypatch.setenv("PROVIDER_AUTH_EMPIRICAL_LOGGING", "1")
+    challenge_id_on = issue_challenge(client)
+    r_on = call_apple_verify(client, challenge_id_on, verify_error=AppleVerificationError("bad token"))
+
+    assert r_off.status_code == r_on.status_code == 401
+    assert r_off.json() == r_on.json() == {"detail": APPLE_VERIFY_MSG}
+    assert r_off.headers["content-type"] == r_on.headers["content-type"]
+
+
 def test_consumed_challenge_cannot_authenticate_a_second_request(client):
     parent_id = make_parent("parent1@example.com")
     challenge_id = issue_challenge(client)
