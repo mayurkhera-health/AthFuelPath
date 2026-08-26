@@ -484,17 +484,65 @@ def update_parent(parent_id: int, data: ParentUpdate, _: bool = Depends(require_
         if not row:
             raise HTTPException(404, "Parent not found.")
         fields, values, changed = [], [], {}
+        new_email = None
         if data.full_name is not None:
             fields.append("full_name = %s"); values.append(data.full_name); changed["full_name"] = data.full_name
         if data.email is not None:
-            email = data.email.strip().lower()
-            if not _EMAIL_RE.match(email):
+            new_email = data.email.strip().lower()
+            if not _EMAIL_RE.match(new_email):
                 raise HTTPException(400, "Invalid email format.")
-            fields.append("email = %s"); values.append(email); changed["email"] = email
+            fields.append("email = %s"); values.append(new_email); changed["email"] = new_email
         if not fields:
             return dict(row)
         try:
+            conn.execute("BEGIN")
             conn.execute(f"UPDATE parents SET {', '.join(fields)} WHERE id = %s", values + [parent_id])
+            if new_email is not None:
+                # auth v2.1 Phase 6 corrective fix (production audit): this
+                # admin edit used to touch only parents.email, leaving that
+                # parent's provider='email' auth_identities row's
+                # provider_subject pointing at the OLD email. Since
+                # resolve_identity() treats (provider, provider_subject) as
+                # authoritative and only auto-links by email when there is
+                # NO existing row for the provider, that stale row meant the
+                # parent's NEXT ordinary login (via the NEW email) would miss
+                # the exact-match lookup, fall into resolve_identity()'s
+                # auto-link path, and try to INSERT a second provider='email'
+                # row for the same parent -- which migration 004's
+                # UNIQUE(provider, parent_id) partial index rejects, breaking
+                # that login with an unrelated-looking 409. Updating the
+                # existing row's provider_subject in the SAME transaction as
+                # the parents.email UPDATE keeps them in sync atomically and
+                # guarantees at most one provider='email' row per parent —
+                # this is always an UPDATE, never an INSERT.
+                #
+                # If no provider='email' row exists yet for this parent, this
+                # UPDATE simply matches zero rows -- NOT an error. Read
+                # api/services/identity_resolver.py and api/routes/
+                # onboarding.py: auth_identities rows are created lazily, by
+                # resolve_identity()'s auto-link step on first login, not at
+                # parent-creation time -- so a parent who has never logged in
+                # yet legitimately has zero auth_identities rows. In that
+                # case there's nothing to keep in sync here; that parent's
+                # first login will auto-link correctly using the
+                # just-updated parents.email.
+                #
+                # Cross-owner collision (new email already belongs to a
+                # DIFFERENT parent/athlete's provider='email' identity): not
+                # re-checked here by hand -- auth_identities already carries
+                # CONSTRAINT auth_identities_provider_subject_uniq UNIQUE
+                # (provider, provider_subject) (db/postgres/003_auth_identities
+                # .sql), so this UPDATE raises the same psycopg.errors.
+                # UniqueViolation caught below, and the whole transaction
+                # (both writes) rolls back together -- exactly the established
+                # catch-and-rollback idiom used elsewhere (identity_resolver.
+                # py, auth.py's corrective pass), not a separate pre-check-
+                # then-write race.
+                conn.execute(
+                    "UPDATE auth_identities SET provider_subject = %s, email = %s, "
+                    "updated_at = sqlite_now() WHERE provider = 'email' AND parent_id = %s",
+                    (new_email, new_email, parent_id),
+                )
             conn.commit()
         except psycopg.errors.UniqueViolation:
             conn.rollback()

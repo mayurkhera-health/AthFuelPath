@@ -3,8 +3,11 @@
 import os
 os.environ["DB_PATH"] = ":memory:"
 
+import hashlib
 from datetime import datetime, timedelta
+from unittest.mock import patch
 
+import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
@@ -12,6 +15,7 @@ from db.setup import init_db
 from api.services.db_migrations import run_all
 from api.database import get_conn
 from api.services import admin_auth
+from api.services.identity_resolver import resolve_identity, NoExistingAccount
 from api.main import app
 
 PASSWORD = "s3cret-admin"
@@ -288,3 +292,217 @@ def test_delete_parent_cascades_all_athletes(ctx):
                       (ids["ava"], ids["ben"])).fetchone()["count"] == 0
     assert ka.execute("SELECT COUNT(*) AS count FROM admin_audit_log WHERE action='delete_parent' AND target_id=%s",
                       (ids["sarah"],)).fetchone()["count"] == 1
+
+
+# ── Admin parent-email edit keeps auth_identities in sync (auth v2.1 Phase 6) ─
+# Migration 004 (db/postgres/004_phase6_provider_auth.sql) adds
+# UNIQUE(provider, parent_id) to auth_identities. Before this corrective fix,
+# an admin email edit updated parents.email but left that parent's
+# provider='email' auth_identities row's provider_subject pointing at the OLD
+# email -- so the parent's NEXT ordinary login (resolve_identity() auto-link,
+# see api/services/identity_resolver.py) would try to INSERT a second
+# provider='email' row for the same parent and get rejected by the new
+# constraint, breaking login with an unrelated-looking 409. These tests use
+# the same `ctx` fixture as the rest of this file; that fixture's parents are
+# inserted directly via SQL (no login has ever happened), so unlike
+# production's Phase-5-backfilled parents they start with ZERO
+# auth_identities rows -- _add_email_identity() below seeds one to simulate
+# an already-backfilled/already-logged-in parent where relevant.
+
+def _add_email_identity(conn, parent_id=None, athlete_id=None, email=None):
+    conn.execute(
+        "INSERT INTO auth_identities (provider, provider_subject, parent_id, athlete_id, email, email_verified) "
+        "VALUES ('email', %s, %s, %s, %s, TRUE)",
+        (email, parent_id, athlete_id, email),
+    )
+    conn.commit()
+
+
+def _count_email_identities(conn, parent_id):
+    return conn.execute(
+        "SELECT COUNT(*) AS count FROM auth_identities WHERE provider = 'email' AND parent_id = %s",
+        (parent_id,),
+    ).fetchone()["count"]
+
+
+def _insert_otp_row(conn, email, code):
+    code_hash = hashlib.sha256(code.encode()).hexdigest()
+    expires_at = (datetime.utcnow() + timedelta(minutes=10)).isoformat()
+    conn.execute(
+        "INSERT INTO otp_codes (email, code_hash, expires_at, attempts, used) VALUES (%s, %s, %s, 0, 0)",
+        (email.lower(), code_hash, expires_at),
+    )
+    conn.commit()
+
+
+def test_update_parent_email_syncs_auth_identity_atomically(ctx):
+    """Requirement 1 + 6: both parents.email and the provider='email' identity's
+    provider_subject update together, and no second identity row appears."""
+    c, ids, ka = ctx
+    _add_email_identity(ka, parent_id=ids["mike"], email="mike@y.com")
+    assert _count_email_identities(ka, ids["mike"]) == 1
+
+    r = c.put(f"/api/admin/parents/{ids['mike']}", json={"email": "mike-new@y.com"})
+    assert r.status_code == 200
+    assert r.json()["email"] == "mike-new@y.com"
+
+    parent_row = ka.execute("SELECT email FROM parents WHERE id = %s", (ids["mike"],)).fetchone()
+    assert parent_row["email"] == "mike-new@y.com"
+
+    identity = ka.execute(
+        "SELECT provider_subject, email FROM auth_identities WHERE provider = 'email' AND parent_id = %s",
+        (ids["mike"],),
+    ).fetchone()
+    assert identity["provider_subject"] == "mike-new@y.com"
+    assert identity["email"] == "mike-new@y.com"
+    assert _count_email_identities(ka, ids["mike"]) == 1  # still exactly one
+
+
+def test_update_parent_email_old_email_no_longer_resolves(ctx):
+    """Requirement 2: resolving by the OLD email no longer finds this parent."""
+    c, ids, ka = ctx
+    _add_email_identity(ka, parent_id=ids["mike"], email="mike@y.com")
+    r = c.put(f"/api/admin/parents/{ids['mike']}", json={"email": "mike-new@y.com"})
+    assert r.status_code == 200
+
+    with pytest.raises(NoExistingAccount):
+        resolve_identity(
+            provider="email", provider_subject="mike@y.com",
+            email="mike@y.com", email_verified=True,
+        )
+
+
+def test_update_parent_email_new_email_resolves_to_same_parent(ctx):
+    """Requirement 3 (resolver level): a lookup by the NEW email resolves to
+    the same parent_id."""
+    c, ids, ka = ctx
+    _add_email_identity(ka, parent_id=ids["mike"], email="mike@y.com")
+    c.put(f"/api/admin/parents/{ids['mike']}", json={"email": "mike-new@y.com"})
+
+    result = resolve_identity(
+        provider="email", provider_subject="mike-new@y.com",
+        email="mike-new@y.com", email_verified=True,
+    )
+    assert result.role == "parent"
+    assert result.parent_id == ids["mike"]
+
+
+def test_update_parent_email_new_login_end_to_end_via_otp_verify(ctx):
+    """Requirement 3 (end-to-end): a real /api/auth/email/verify login with the
+    NEW email, after the admin edit, resolves to the same parent -- through
+    the actual OTP verify flow, not just the resolver."""
+    c, ids, ka = ctx
+    _add_email_identity(ka, parent_id=ids["mike"], email="mike@y.com")
+    c.put(f"/api/admin/parents/{ids['mike']}", json={"email": "mike-new@y.com"})
+
+    _insert_otp_row(ka, "mike-new@y.com", "123456")
+    r = c.post("/api/auth/email/verify", json={"email": "mike-new@y.com", "code": "123456"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["role"] == "parent"
+    assert body["parent"]["id"] == ids["mike"]
+    assert "session_token" in body
+
+
+def test_update_parent_email_cross_owner_collision_fails_closed(ctx):
+    """Requirement 4: colliding with a DIFFERENT parent's email identity fails
+    the whole edit closed -- no partial state for either parent."""
+    c, ids, ka = ctx
+    _add_email_identity(ka, parent_id=ids["mike"], email="mike@y.com")
+    _add_email_identity(ka, parent_id=ids["sarah"], email="sarah@x.com")
+
+    r = c.put(f"/api/admin/parents/{ids['mike']}", json={"email": "sarah@x.com"})
+    assert r.status_code == 409
+
+    mike_row = ka.execute("SELECT email FROM parents WHERE id = %s", (ids["mike"],)).fetchone()
+    sarah_row = ka.execute("SELECT email FROM parents WHERE id = %s", (ids["sarah"],)).fetchone()
+    assert mike_row["email"] == "mike@y.com"
+    assert sarah_row["email"] == "sarah@x.com"
+
+    mike_identity = ka.execute(
+        "SELECT provider_subject FROM auth_identities WHERE provider='email' AND parent_id=%s",
+        (ids["mike"],),
+    ).fetchone()
+    sarah_identity = ka.execute(
+        "SELECT provider_subject FROM auth_identities WHERE provider='email' AND parent_id=%s",
+        (ids["sarah"],),
+    ).fetchone()
+    assert mike_identity["provider_subject"] == "mike@y.com"
+    assert sarah_identity["provider_subject"] == "sarah@x.com"
+    assert _count_email_identities(ka, ids["mike"]) == 1
+    assert _count_email_identities(ka, ids["sarah"]) == 1
+
+
+def test_update_parent_email_collision_caught_by_auth_identities_constraint_alone(ctx):
+    """Confirms the cross-owner check structurally relies on auth_identities'
+    own CONSTRAINT auth_identities_provider_subject_uniq UNIQUE(provider,
+    provider_subject) (003_auth_identities.sql), not just parents.email's
+    UNIQUE constraint: this collision target is an ATHLETE-owned identity row
+    under an email no PARENT holds, so parents.email's own uniqueness never
+    fires -- only the auth_identities UPDATE can catch it, and it must."""
+    c, ids, ka = ctx
+    _add_email_identity(ka, parent_id=ids["mike"], email="mike@y.com")
+    _add_email_identity(ka, athlete_id=ids["leo"], email="shared-login@example.com")
+
+    r = c.put(f"/api/admin/parents/{ids['mike']}", json={"email": "shared-login@example.com"})
+    assert r.status_code == 409
+
+    mike_row = ka.execute("SELECT email FROM parents WHERE id = %s", (ids["mike"],)).fetchone()
+    assert mike_row["email"] == "mike@y.com"
+    mike_identity = ka.execute(
+        "SELECT provider_subject FROM auth_identities WHERE provider='email' AND parent_id=%s",
+        (ids["mike"],),
+    ).fetchone()
+    assert mike_identity["provider_subject"] == "mike@y.com"
+    athlete_identity = ka.execute(
+        "SELECT provider_subject FROM auth_identities WHERE provider='email' AND athlete_id=%s",
+        (ids["leo"],),
+    ).fetchone()
+    assert athlete_identity["provider_subject"] == "shared-login@example.com"
+
+
+def test_update_parent_email_transaction_rolls_back_on_forced_failure(ctx):
+    """Requirement 5: force a failure partway through (matching the
+    UniqueViolation-monkeypatch technique from
+    tests/test_apple_link_existing_flow.py's rollback tests) and confirm
+    NEITHER write landed."""
+    c, ids, ka = ctx
+    _add_email_identity(ka, parent_id=ids["mike"], email="mike@y.com")
+
+    real_execute = psycopg.Connection.execute
+
+    def flaky_execute(self, query, *args, **kwargs):
+        text = str(query)
+        if "UPDATE auth_identities" in text:
+            raise psycopg.errors.UniqueViolation("simulated conflict on auth_identities")
+        return real_execute(self, query, *args, **kwargs)
+
+    with patch.object(psycopg.Connection, "execute", flaky_execute):
+        r = c.put(f"/api/admin/parents/{ids['mike']}", json={"email": "mike-new@y.com"})
+
+    assert r.status_code == 409
+
+    mike_row = ka.execute("SELECT email FROM parents WHERE id = %s", (ids["mike"],)).fetchone()
+    assert mike_row["email"] == "mike@y.com"  # parents.email write did NOT land
+    mike_identity = ka.execute(
+        "SELECT provider_subject FROM auth_identities WHERE provider='email' AND parent_id=%s",
+        (ids["mike"],),
+    ).fetchone()
+    assert mike_identity["provider_subject"] == "mike@y.com"  # neither did this one
+
+
+def test_update_parent_email_with_no_existing_identity_row_is_not_an_error(ctx):
+    """Judgment call (see admin.py's update_parent comment): a parent who has
+    never logged in yet has zero auth_identities rows -- Phase 5's backfill
+    only covers parents that existed at migration time, and
+    resolve_identity() creates rows lazily on first login (identity_resolver
+    .py), not at parent-creation time. The admin edit must not fail in that
+    case; the parents.email UPDATE still succeeds and there is nothing to
+    sync."""
+    c, ids, ka = ctx
+    assert _count_email_identities(ka, ids["nora"]) == 0
+
+    r = c.put(f"/api/admin/parents/{ids['nora']}", json={"email": "nora-new@z.com"})
+    assert r.status_code == 200
+    assert r.json()["email"] == "nora-new@z.com"
+    assert _count_email_identities(ka, ids["nora"]) == 0
