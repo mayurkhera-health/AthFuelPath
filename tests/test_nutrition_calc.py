@@ -6,22 +6,28 @@ from api.services import nutrition_calc as nc
 # ---- derive_intensity ----
 
 def test_rest_event_floors_to_low_even_for_elite():
-    assert nc.derive_intensity("Yoga/Flexibility/Recovery", "Elite Club") == "low"
-    assert nc.derive_intensity("rest", "Elite Club") == "low"
+    assert nc.derive_intensity("Yoga/Flexibility/Recovery", "elite_club") == "low"
+    assert nc.derive_intensity("rest", "elite_club") == "low"
 
 def test_elite_club_competitive_event_is_high():
-    assert nc.derive_intensity("game", "Elite Club") == "high"
+    assert nc.derive_intensity("game", "elite_club") == "high"
 
 def test_competitive_club_is_medium():
-    assert nc.derive_intensity("game", "Competitive Club") == "medium"
+    assert nc.derive_intensity("game", "competitive_club") == "medium"
 
 def test_recreational_is_low():
-    assert nc.derive_intensity("game", "Recreational") == "low"
+    assert nc.derive_intensity("game", "recreational") == "low"
 
-def test_legacy_labels_still_map():
-    assert nc.derive_intensity("game", "Elite") == "high"
-    assert nc.derive_intensity("game", "Club") == "medium"
-    assert nc.derive_intensity("game", "Competitive") == "medium"
+def test_non_canonical_values_are_not_inferred_as_a_tier():
+    """MVP stance: no substring/keyword inference. A legacy display-style
+    label or a club/team name is invalid data, not a recognized tier — it
+    must fall back to low, the same as any other unclassified value, never
+    be guessed at."""
+    assert nc.derive_intensity("game", "Elite") == "low"
+    assert nc.derive_intensity("game", "Club") == "low"
+    assert nc.derive_intensity("game", "Competitive") == "low"
+    assert nc.derive_intensity("game", "Elite Club") == "low"
+    assert nc.derive_intensity("game", "Bay Area Surf") == "low"
 
 def test_null_competition_level_defaults_low():
     assert nc.derive_intensity("game", None) == "low"

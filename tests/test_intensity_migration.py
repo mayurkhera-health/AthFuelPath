@@ -32,8 +32,8 @@ def _seed_schema(conn):
 def test_events_intensity_column_created_and_backfilled():
     conn = _mk_conn()
     _seed_schema(conn)
-    conn.execute("INSERT INTO athletes (id, competition_level) VALUES (1, 'Elite Club')")
-    conn.execute("INSERT INTO athletes (id, competition_level) VALUES (2, 'Recreational')")
+    conn.execute("INSERT INTO athletes (id, competition_level) VALUES (1, 'elite_club')")
+    conn.execute("INSERT INTO athletes (id, competition_level) VALUES (2, 'recreational')")
     conn.execute("INSERT INTO events (id, athlete_id, event_name, event_type, event_date) VALUES (10, 1, 'Game', 'game', '2026-06-21')")
     conn.execute("INSERT INTO events (id, athlete_id, event_name, event_type, event_date) VALUES (11, 1, 'Yoga', 'rest', '2026-06-22')")
     conn.execute("INSERT INTO events (id, athlete_id, event_name, event_type, event_date) VALUES (12, 2, 'Game', 'game', '2026-06-21')")
@@ -43,9 +43,9 @@ def test_events_intensity_column_created_and_backfilled():
     cols = {r[1] for r in conn.execute("PRAGMA table_info(events)").fetchall()}
     assert "intensity" in cols
     rows = {r["id"]: r["intensity"] for r in conn.execute("SELECT id, intensity FROM events").fetchall()}
-    assert rows[10] == "high"   # Elite Club game
+    assert rows[10] == "high"   # elite_club game
     assert rows[11] == "low"    # rest floors to low
-    assert rows[12] == "low"    # Recreational game
+    assert rows[12] == "low"    # recreational game
 
 
 def test_events_migration_is_idempotent():

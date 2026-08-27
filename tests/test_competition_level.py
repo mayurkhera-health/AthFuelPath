@@ -55,28 +55,27 @@ def test_validate_rejects_club_name():
         validate_competition_level("Bay Area Surf")
 
 
-@pytest.mark.parametrize("value", ["Elite Club", "elite", "competitive", "Recreational", "", "made up nonsense"])
+@pytest.mark.parametrize("value", [
+    "Elite Club", "elite", "competitive", "Recreational", "", "made up nonsense",
+    "Soccer Club", "Competitive Team",
+])
 def test_validate_rejects_legacy_and_arbitrary_strings(value):
-    """Legacy human-readable labels are tolerated on READ (classify_competition_level)
-    but must never be accepted as a new WRITE — only the exact canonical string."""
+    """No keyword inference anywhere, at write time or read time (MVP stance) —
+    a legacy human-readable label is rejected exactly like a club/team name.
+    Only the exact canonical string is ever accepted."""
     with pytest.raises(ValueError):
         validate_competition_level(value)
 
 
-# ── classify_competition_level (read-time, tolerant, loud on fallback) ──────
+# ── classify_competition_level (read-time, STRICT exact match only) ─────────
+# MVP stance: no substring/keyword inference anywhere, at write time or read
+# time. A legacy display-style label is invalid data, exactly like a club
+# name — it is never classified as a tier, only logged and given the same
+# safe neutral (None) fallback as any other non-canonical value.
 
-@pytest.mark.parametrize("value,expected", [
-    ("recreational", "recreational"),
-    ("competitive_club", "competitive_club"),
-    ("elite_club", "elite_club"),
-    ("Elite Club", "elite_club"),
-    ("Elite", "elite_club"),
-    ("Competitive Club", "competitive_club"),
-    ("Club", "competitive_club"),
-    ("Recreational", "recreational"),
-])
-def test_classify_tolerates_legacy_labels(value, expected):
-    assert classify_competition_level(value) == expected
+@pytest.mark.parametrize("value", ["recreational", "competitive_club", "elite_club"])
+def test_classify_returns_each_canonical_value_unchanged(value):
+    assert classify_competition_level(value) == value
 
 
 def test_classify_returns_none_for_empty_or_missing():
@@ -84,20 +83,18 @@ def test_classify_returns_none_for_empty_or_missing():
     assert classify_competition_level("") is None
 
 
-def test_classify_club_name_falls_back_to_none_and_warns(caplog):
+@pytest.mark.parametrize("value", [
+    "Bay Area Surf", "Soccer Club", "Competitive Team", "Elite Club", "Elite",
+    "Competitive Club", "Club", "Recreational", "made up nonsense",
+])
+def test_classify_rejects_everything_not_exactly_canonical(value, caplog):
+    """No keyword inference: a legacy label is treated identically to a
+    club name — neither is a recognized tier, both fall back to None and
+    both log a warning."""
     with caplog.at_level(logging.WARNING):
-        result = classify_competition_level("Bay Area Surf")
+        result = classify_competition_level(value)
     assert result is None
-    assert any("Bay Area Surf" in r.message for r in caplog.records)
-
-
-def test_classify_legacy_keyword_match_also_warns(caplog):
-    """Even when a legacy label IS classifiable, it should warn — it's still
-    not a canonical value and the profile should be corrected."""
-    with caplog.at_level(logging.WARNING):
-        result = classify_competition_level("Elite Club")
-    assert result == "elite_club"
-    assert any("Elite Club" in r.message for r in caplog.records)
+    assert any(value in r.message for r in caplog.records)
 
 
 def test_classify_empty_value_does_not_warn(caplog):

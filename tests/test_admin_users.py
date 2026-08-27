@@ -219,7 +219,10 @@ def test_admin_update_rejects_club_name(ctx):
     assert r.status_code == 422, r.text
 
 
-@pytest.mark.parametrize("value", ["Elite Club", "competitive", "Recreational", "", "elite_clubbb"])
+@pytest.mark.parametrize("value", [
+    "Elite Club", "competitive", "Recreational", "", "elite_clubbb",
+    "Soccer Club", "Competitive Team",
+])
 def test_admin_update_rejects_arbitrary_and_legacy_strings(ctx, value):
     """Legacy human-readable strings are tolerated on READ (classify_competition_level,
     covered in test_nutrition_calc.py/test_competition_level.py) but must NOT be
