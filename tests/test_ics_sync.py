@@ -437,8 +437,11 @@ def test_two_different_events_same_time_both_preserved_across_sync(monkeypatch, 
         )
     conn.commit()
 
-    # BYGA export matches ONLY "Soccer vs River City" (with a trailing venue tag).
-    _feed(monkeypatch, _cal(_vevent("byga-uid", FUT1, "Soccer vs River City Field 2")))
+    # BYGA export matches ONLY "Soccer vs River City" (with a trailing
+    # allowlisted org-marker word — see _TRAILING_ORG_MARKERS in
+    # event_matching.py; a made-up venue tag like "Field 2" is deliberately
+    # NOT tolerated, so this test uses a real allowlisted word).
+    _feed(monkeypatch, _cal(_vevent("byga-uid", FUT1, "Soccer vs River City SC")))
     counts = ics_sync.sync_platform(conn, 1, "byga", "http://x", "competitive")
 
     rows = conn.execute("SELECT event_name, uid, source FROM events ORDER BY event_name").fetchall()
@@ -446,7 +449,7 @@ def test_two_different_events_same_time_both_preserved_across_sync(monkeypatch, 
     by_name = {r["event_name"]: dict(r) for r in rows}
     assert "Soccer vs Lakeside" in by_name
     assert by_name["Soccer vs Lakeside"]["source"] == "manual", "Untouched event must stay manual"
-    assert by_name["Soccer vs River City Field 2"]["source"] == "byga", "Matched event must be adopted"
+    assert by_name["Soccer vs River City SC"]["source"] == "byga", "Matched event must be adopted"
     assert counts["updated"] == 1
     assert counts["inserted"] == 0
 

@@ -83,6 +83,49 @@ def test_names_equivalent_does_not_truncate_from_the_middle():
     assert not names_equivalent("Practice at Field A", "Practice at Field B Extra")
 
 
+# ─── False-positive protection: the matcher is NOT "one name starts with
+# the other" — reviewed and deliberately rejected as too permissive. Only an
+# exact match, a stripped noise token, or ONE extra trailing word from the
+# explicit _TRAILING_ORG_MARKERS allowlist counts as equivalent. Everything
+# below must stay DIFFERENT. ────────────────────────────────────────────────
+
+def test_names_equivalent_rejects_same_length_game_numbers():
+    assert not names_equivalent("U15 Game 1", "U15 Game 2")
+
+
+def test_names_equivalent_rejects_same_length_team_colors():
+    assert not names_equivalent("San Juan SC Blue", "San Juan SC White")
+
+
+def test_names_equivalent_rejects_same_length_field_numbers():
+    assert not names_equivalent("Training Field 1", "Training Field 2")
+
+
+def test_names_equivalent_rejects_trailing_word_not_on_allowlist():
+    """A REAL prior bug this matcher had: a plain 'one starts with the
+    other' check would wrongly match every one of these — a genuinely
+    different session/team/makeup qualifier is not provider noise."""
+    assert not names_equivalent("Practice", "Practice Advanced")
+    assert not names_equivalent("U15 Game", "U15 Game Makeup")
+    assert not names_equivalent("Team A", "Team A JV")
+    assert not names_equivalent("Practice: Field House", "Practice: Field House B")
+
+
+def test_names_equivalent_rejects_two_extra_trailing_words():
+    """Even when the final word IS on the allowlist, more than one extra
+    trailing word is too much drift to call it noise."""
+    assert not names_equivalent("San Juan", "San Juan Rec SC")
+
+
+def test_names_equivalent_rejects_distinct_events_same_date_time_type():
+    """Two different clubs/events that happen to land on the same
+    athlete/date/time/type must never be merged by name comparison alone —
+    this is exactly what find_equivalent_event's caller-supplied athlete_id
+    + event_date + start_time + event_type filter is for; name comparison
+    on its own must stay conservative on top of that."""
+    assert not names_equivalent("Marin FC Practice", "Davis Legacy Practice")
+
+
 def test_find_equivalent_event_fails_closed_on_ambiguous_matches(monkeypatch):
     """More than one candidate row -> None, never guessed at. Exercised at
     the SQL-integration level in test_ics_sync.py's
