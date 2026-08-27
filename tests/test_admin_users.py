@@ -200,6 +200,45 @@ def test_update_athlete(ctx):
     assert r.json()["position"] == "Goalkeeper" and r.json()["age"] == 13
 
 
+# ─── competition_level write-time validation (admin update) ────────────────
+# Root cause this guards: a 2026-07-22 bulk roster-setup operation wrote a
+# club name ("Bay Area Surf") into 12 athletes' competition_level via this
+# exact endpoint's lack of validation — see api/services/competition_level.py.
+
+@pytest.mark.parametrize("value", ["recreational", "competitive_club", "elite_club"])
+def test_admin_update_accepts_each_canonical_competition_level(ctx, value):
+    c, ids, _ = ctx
+    r = c.put(f"/api/admin/athletes/{ids['leo']}", json={"competition_level": value})
+    assert r.status_code == 200, r.text
+    assert r.json()["competition_level"] == value
+
+
+def test_admin_update_rejects_club_name(ctx):
+    c, ids, _ = ctx
+    r = c.put(f"/api/admin/athletes/{ids['leo']}", json={"competition_level": "Bay Area Surf"})
+    assert r.status_code == 422, r.text
+
+
+@pytest.mark.parametrize("value", ["Elite Club", "competitive", "Recreational", "", "elite_clubbb"])
+def test_admin_update_rejects_arbitrary_and_legacy_strings(ctx, value):
+    """Legacy human-readable strings are tolerated on READ (classify_competition_level,
+    covered in test_nutrition_calc.py/test_competition_level.py) but must NOT be
+    accepted as a new WRITE — only the exact canonical value is ever written going
+    forward, so the DB never grows a new non-canonical value again."""
+    c, ids, _ = ctx
+    r = c.put(f"/api/admin/athletes/{ids['leo']}", json={"competition_level": value})
+    assert r.status_code == 422, r.text
+
+
+def test_admin_partial_update_omitting_competition_level_still_valid(ctx):
+    """A PUT that doesn't touch competition_level at all (e.g. just editing
+    position) must stay valid — omission is not the same as an invalid value."""
+    c, ids, _ = ctx
+    r = c.put(f"/api/admin/athletes/{ids['leo']}", json={"position": "Forward"})
+    assert r.status_code == 200, r.text
+    assert r.json()["position"] == "Forward"
+
+
 def test_delete_athlete_preview_and_cascade(ctx):
     c, ids, ka = ctx
     preview = c.get(f"/api/admin/athletes/{ids['ava']}/delete-preview").json()["counts"]

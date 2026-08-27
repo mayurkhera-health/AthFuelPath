@@ -4,6 +4,7 @@ from typing import Optional
 
 from api.services.activity_engine import get_activity_profile
 from api.services.activity_type_resolver import VALID_ACTIVITY_TYPES
+from api.services.competition_level import classify_competition_level
 
 logger = logging.getLogger(__name__)
 
@@ -176,18 +177,18 @@ def derive_intensity(event_type: str, competition_level: Optional[str]) -> str:
     otherwise-unspecified events. Manual events carry an explicit value.
 
     Rest/recovery events floor to "low" for everyone; all other events map
-    from competition level. Tolerant of both the 3 current labels and the
-    legacy 4-value labels."""
+    from competition level via the shared classifier (api/services/
+    competition_level.py) — the same classification hydration/sweat-profile
+    derivation uses, so both features agree on what a given stored value
+    means. An unclassifiable value (e.g. a club name written into this
+    field by mistake) logs a warning there and falls back to "low" here —
+    loud, not silent."""
     if normalize_event_type(event_type) == "rest":
         return "low"
-    level = (competition_level or "").strip().lower()
-    if level == "":
-        return "low"
-    if "elite" in level:
+    tier = classify_competition_level(competition_level)
+    if tier == "elite_club":
         return "high"
-    if "recreational" in level:
-        return "low"
-    if "competitive" in level or "club" in level:
+    if tier == "competitive_club":
         return "medium"
     return "low"
 

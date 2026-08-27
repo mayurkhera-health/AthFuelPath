@@ -20,11 +20,12 @@ from typing import Optional
 
 import psycopg
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from api.database import get_conn
 from api.services import admin_auth, streak_service
 from api.services.admin_auth import require_admin, write_audit
+from api.services.competition_level import validate_competition_level
 
 router = APIRouter()
 
@@ -72,6 +73,11 @@ class AthleteUpdate(BaseModel):
     date_of_birth: Optional[str] = None
     byga_ics_url: Optional[str] = None
     playmetrics_ics_url: Optional[str] = None
+
+    @field_validator("competition_level")
+    @classmethod
+    def validate_competition_level_field(cls, v):
+        return validate_competition_level(v)
 
 
 class DeleteConfirm(BaseModel):

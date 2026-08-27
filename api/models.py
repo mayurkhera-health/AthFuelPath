@@ -5,6 +5,7 @@ from typing import Literal, Optional, List
 
 from api.services.activity_type_resolver import VALID_ACTIVITY_TYPES
 from api.services.shopping_service import CATEGORY_ORDER as SHOPPING_CATEGORIES
+from api.services.competition_level import validate_competition_level
 
 
 def _normalize_start_time(v: Optional[str]) -> Optional[str]:
@@ -92,6 +93,11 @@ class AthleteCreate(BaseModel):
     def validate_phone(cls, v):
         return _validate_phone(v)
 
+    @field_validator("competition_level")
+    @classmethod
+    def validate_competition_level_field(cls, v):
+        return validate_competition_level(v)
+
 
 class OnboardingAthlete(BaseModel):
     first_name: str
@@ -117,6 +123,11 @@ class OnboardingAthlete(BaseModel):
     @classmethod
     def validate_phone(cls, v):
         return _validate_phone(v)
+
+    @field_validator("competition_level")
+    @classmethod
+    def validate_competition_level_field(cls, v):
+        return validate_competition_level(v)
 
 
 class OnboardingComplete(BaseModel):

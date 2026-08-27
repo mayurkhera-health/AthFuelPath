@@ -47,7 +47,7 @@ def _make_athlete(client):
     parent_id = p.json()["id"]
     a = client.post("/api/athletes/", json={
         "parent_id": parent_id, "first_name": "A", "age": 14, "gender": "girl",
-        "weight_lbs": 110, "height_ft": 5, "height_in": 6, "competition_level": "Recreational",
+        "weight_lbs": 110, "height_ft": 5, "height_in": 6, "competition_level": "recreational",
     }, headers=auth_headers("parent", parent_id=parent_id))
     assert a.status_code == 201, a.text
     return a.json()["id"]

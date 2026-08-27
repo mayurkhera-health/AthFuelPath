@@ -40,7 +40,7 @@ def _make_athlete(client, level):
 
 
 def test_explicit_intensity_is_stored(client):
-    aid = _make_athlete(client, "Recreational")
+    aid = _make_athlete(client, "recreational")
     r = client.post("/api/events/", json={
         "athlete_id": aid, "event_name": "Game", "event_type": "game",
         "event_date": "2026-06-21", "intensity": "High",
@@ -50,7 +50,7 @@ def test_explicit_intensity_is_stored(client):
 
 
 def test_omitted_intensity_is_derived(client):
-    aid = _make_athlete(client, "Elite Club")
+    aid = _make_athlete(client, "elite_club")
     r = client.post("/api/events/", json={
         "athlete_id": aid, "event_name": "Game", "event_type": "game",
         "event_date": "2026-06-21",
@@ -60,7 +60,7 @@ def test_omitted_intensity_is_derived(client):
 
 
 def test_venue_location_round_trips(client):
-    aid = _make_athlete(client, "Recreational")
+    aid = _make_athlete(client, "recreational")
     r = client.post("/api/events/", json={
         "athlete_id": aid, "event_name": "Practice", "event_type": "practice",
         "event_date": "2026-06-23",
@@ -85,7 +85,7 @@ def test_venue_location_round_trips(client):
 
 
 def test_rest_event_derives_low_for_elite(client):
-    aid = _make_athlete(client, "Elite Club")
+    aid = _make_athlete(client, "elite_club")
     r = client.post("/api/events/", json={
         "athlete_id": aid, "event_name": "Yoga", "event_type": "rest",
         "event_date": "2026-06-22",
@@ -108,7 +108,7 @@ def _insert_synced_event(aid, source, uid):
 
 
 def test_cannot_edit_synced_event(client):
-    aid = _make_athlete(client, "Recreational")
+    aid = _make_athlete(client, "recreational")
     eid = _insert_synced_event(aid, "byga", "byga-123")
     headers = auth_headers("athlete", athlete_id=aid)
     r = client.put(f"/api/events/{eid}", json={"event_name": "Hacked"}, headers=headers)
@@ -119,7 +119,7 @@ def test_cannot_edit_synced_event(client):
 
 
 def test_cannot_delete_synced_event(client):
-    aid = _make_athlete(client, "Recreational")
+    aid = _make_athlete(client, "recreational")
     eid = _insert_synced_event(aid, "playmetrics", "pm-456")
     headers = auth_headers("athlete", athlete_id=aid)
     r = client.delete(f"/api/events/{eid}", headers=headers)
@@ -129,7 +129,7 @@ def test_cannot_delete_synced_event(client):
 
 
 def test_can_edit_manual_event(client):
-    aid = _make_athlete(client, "Recreational")
+    aid = _make_athlete(client, "recreational")
     created = client.post("/api/events/", json={
         "athlete_id": aid, "event_name": "Private Coaching", "event_type": "training",
         "event_date": "2026-07-15", "start_time": "19:00",
@@ -145,7 +145,7 @@ def test_can_edit_manual_event(client):
 
 
 def test_can_delete_manual_event(client):
-    aid = _make_athlete(client, "Recreational")
+    aid = _make_athlete(client, "recreational")
     created = client.post("/api/events/", json={
         "athlete_id": aid, "event_name": "One-time Training", "event_type": "training",
         "event_date": "2026-07-14", "start_time": "17:00",
@@ -158,7 +158,7 @@ def test_can_delete_manual_event(client):
 
 
 def test_targets_reflect_event_intensity(client):
-    aid = _make_athlete(client, "Recreational")
+    aid = _make_athlete(client, "recreational")
     headers = auth_headers("athlete", athlete_id=aid)
     # Recreational would derive "low" for a game; send explicit "high" to prove threading
     client.post("/api/events/", json={
@@ -184,7 +184,7 @@ def test_targets_reflect_event_intensity(client):
 def test_repeated_manual_import_no_uid_does_not_duplicate(client):
     """Same event re-submitted with no uid at all (calendar VEVENT had none) —
     must not create a second row."""
-    aid = _make_athlete(client, "Recreational")
+    aid = _make_athlete(client, "recreational")
     headers = auth_headers("athlete", athlete_id=aid)
     payload = {
         "athlete_id": aid, "event_name": "Team Practice", "event_type": "practice",
@@ -204,7 +204,7 @@ def test_repeated_manual_import_no_uid_does_not_duplicate(client):
 def test_repeated_manual_import_rotated_uid_does_not_duplicate(client):
     """Same event re-submitted with a DIFFERENT uid each time (provider rotates
     uids on every export) — must still collapse to one row."""
-    aid = _make_athlete(client, "Recreational")
+    aid = _make_athlete(client, "recreational")
     headers = auth_headers("athlete", athlete_id=aid)
 
     for uid in ("rotated-uid-1", "rotated-uid-2", "rotated-uid-3"):
@@ -224,7 +224,7 @@ def test_manual_create_tolerates_facility_suffix_drift(client):
     """A re-import where the provider appended a facility/court suffix to the
     name (the confirmed production bug: '...Complex' -> '...Complex #10')
     must still be recognized as the same event."""
-    aid = _make_athlete(client, "Recreational")
+    aid = _make_athlete(client, "recreational")
     headers = auth_headers("athlete", athlete_id=aid)
     first = client.post("/api/events/", json={
         "athlete_id": aid, "event_name": "Practice: Twin Creeks Sports Complex",
@@ -245,7 +245,7 @@ def test_manual_create_tolerates_facility_suffix_drift(client):
 def test_manual_create_preserves_genuinely_different_same_time_event(client):
     """Two REAL different events for the same athlete at the same date/time
     (different sport/name) must both survive — never merged."""
-    aid = _make_athlete(client, "Recreational")
+    aid = _make_athlete(client, "recreational")
     headers = auth_headers("athlete", athlete_id=aid)
     a = client.post("/api/events/", json={
         "athlete_id": aid, "event_name": "Soccer vs Team Alpha", "event_type": "game",
@@ -265,7 +265,7 @@ def test_manual_create_preserves_genuinely_different_same_time_event(client):
 def test_repeated_manual_import_5x_stable_count(client):
     """Re-submitting the same event 5 times (rotating uid each time, matching
     real repeated-sync behavior) must never grow past 1 row."""
-    aid = _make_athlete(client, "Recreational")
+    aid = _make_athlete(client, "recreational")
     headers = auth_headers("athlete", athlete_id=aid)
     ids = set()
     for i in range(5):
@@ -290,7 +290,7 @@ def test_ambiguous_existing_duplicates_reject_rather_than_multiply(client):
     existing rows to return either — a 409 conflict is the correct outcome,
     same pattern this route already uses for other "can't safely proceed"
     cases (see test_cannot_edit_synced_event)."""
-    aid = _make_athlete(client, "Recreational")
+    aid = _make_athlete(client, "recreational")
     headers = auth_headers("athlete", athlete_id=aid)
     conn = get_conn()
     for suffix in ("1", "2"):
@@ -319,7 +319,7 @@ def test_ambiguous_existing_duplicates_reject_rather_than_multiply(client):
 def test_reimport_with_missing_venue_still_dedupes(client):
     """A first import has venue info; a second (rotated-uid) import of the
     SAME event omits it — missing data is never a conflict, must dedupe."""
-    aid = _make_athlete(client, "Recreational")
+    aid = _make_athlete(client, "recreational")
     headers = auth_headers("athlete", athlete_id=aid)
     first = client.post("/api/events/", json={
         "athlete_id": aid, "event_name": "Practice", "event_type": "practice",
@@ -339,7 +339,7 @@ def test_reimport_with_missing_venue_still_dedupes(client):
 def test_reimport_with_provider_added_venue_detail_still_dedupes(client):
     """A first import has no venue; a second (rotated-uid) import of the SAME
     event adds one — still not a conflict, must dedupe."""
-    aid = _make_athlete(client, "Recreational")
+    aid = _make_athlete(client, "recreational")
     headers = auth_headers("athlete", athlete_id=aid)
     first = client.post("/api/events/", json={
         "athlete_id": aid, "event_name": "Practice", "event_type": "practice",
@@ -360,7 +360,7 @@ def test_same_name_time_type_but_different_venue_both_exist(client):
     """A multi-sport athlete can genuinely have two different sessions at the
     same date/time/type/name that differ only by venue — both must be
     allowed to exist, not silently merged."""
-    aid = _make_athlete(client, "Recreational")
+    aid = _make_athlete(client, "recreational")
     headers = auth_headers("athlete", athlete_id=aid)
     first = client.post("/api/events/", json={
         "athlete_id": aid, "event_name": "Practice", "event_type": "practice",
@@ -386,7 +386,7 @@ def test_same_name_time_type_but_different_duration_both_exist(client):
     """Same name/date/time/type but a materially different duration (e.g. a
     genuinely different, unrelated session someone typed identically) must
     not be silently merged into the first one."""
-    aid = _make_athlete(client, "Recreational")
+    aid = _make_athlete(client, "recreational")
     headers = auth_headers("athlete", athlete_id=aid)
     first = client.post("/api/events/", json={
         "athlete_id": aid, "event_name": "Practice", "event_type": "practice",
@@ -415,7 +415,7 @@ def test_concurrent_equivalent_submissions_result_in_one_row(client):
     them so exactly one row results, not two."""
     import threading
 
-    aid = _make_athlete(client, "Recreational")
+    aid = _make_athlete(client, "recreational")
     headers = auth_headers("athlete", athlete_id=aid)
     results = []
 
@@ -450,7 +450,7 @@ def test_concurrent_genuinely_different_events_both_permitted(client):
     block them from each other; both must be created."""
     import threading
 
-    aid = _make_athlete(client, "Recreational")
+    aid = _make_athlete(client, "recreational")
     headers = auth_headers("athlete", athlete_id=aid)
     results = []
 

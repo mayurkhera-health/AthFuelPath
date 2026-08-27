@@ -6,6 +6,7 @@ import time
 import requests
 
 from api.services.nutrition_calc import calc_age
+from api.services.competition_level import classify_competition_level
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,11 @@ def derive_sweat_profile(athlete: dict) -> str:
         age_fallback=athlete.get("age") or 13,
     ))
     gender = (athlete.get("gender") or "").lower()
-    level = (athlete.get("competition_level") or athlete.get("level") or "").lower()
+    # Same classifier derive_intensity() uses (api/services/competition_level.py)
+    # — hydration and event-intensity guidance now agree on what a given
+    # stored competition_level value means, instead of each keeping its own
+    # independent keyword match.
+    tier = classify_competition_level(athlete.get("competition_level") or athlete.get("level"))
 
     # Base profile by age (children sweat less efficiently; puberty increases output)
     if age <= 11:
@@ -34,9 +39,7 @@ def derive_sweat_profile(athlete: dict) -> str:
         profile = "very heavy"
 
     # Elite/competitive athletes have higher sweat rates due to training adaptation.
-    # Substring match tolerates both legacy values ("elite", "competitive") and the
-    # current 3-level labels ("elite_club", "competitive_club").
-    if "elite" in level or "competitive" in level:
+    if tier in ("elite_club", "competitive_club"):
         bump = {"light": "moderate", "moderate": "heavy", "heavy": "very heavy", "very heavy": "very heavy"}
         profile = bump.get(profile, profile)
 
