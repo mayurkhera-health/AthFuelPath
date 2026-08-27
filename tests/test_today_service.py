@@ -1,3 +1,5 @@
+import re
+
 from api.database import get_conn
 from api.services.today_service import (
     calculate_performance_forecast,
@@ -284,6 +286,151 @@ def test_tappable_windows_carry_open_close_time_24h():
         # display string is untouched
         assert "–" in w["eat_by_time"] or "AM" in w["eat_by_time"] or "PM" in w["eat_by_time"]
     conn.close()
+
+
+def test_tappable_windows_carry_purpose_load_levels_and_food_ideas():
+    """Every tappable window on an event day returns a non-empty purpose
+    sentence, a load_levels dict with HIGH/MODERATE/LIGHT per macro, and
+    up to 4 deterministic food ideas — the data the redesigned Today
+    fueling-window card renders (spec: redesign/simplify-v2)."""
+    conn = _make_today_conn()
+    conn.execute("INSERT INTO athletes (id, first_name, gender, weight_lbs, height_ft, height_in, age) VALUES (4, 'Sam', 'boy', 130, 5, 6, 15)")
+    conn.execute(
+        "INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, duration_hours) "
+        "VALUES (4, 'Practice', 'practice', '2026-06-22', '16:00', 1.5)"
+    )
+    conn.commit()
+
+    view = build_today_view(4, conn, today="2026-06-22")
+    tappable = [w for w in view["windows"] if w.get("status") not in ("nudge", "event")]
+    assert tappable, "expected tappable windows on an event day"
+    for w in tappable:
+        assert isinstance(w.get("purpose"), str) and w["purpose"], f"{w['slot_name']} missing purpose"
+        levels = w.get("load_levels")
+        assert isinstance(levels, dict)
+        assert set(levels.keys()) == {"carbs", "protein", "fats"}
+        for v in levels.values():
+            assert v in ("HIGH", "MODERATE", "LIGHT")
+        ideas = w.get("food_ideas")
+        assert isinstance(ideas, list)
+        assert len(ideas) <= 4
+    conn.close()
+
+
+def test_food_ideas_are_nonempty_and_sourced_from_the_canonical_catalog():
+    """food_ideas must never be empty for a real tappable window (proves every
+    category/category_key the live engines can emit has an idea_catalog.IDEAS
+    entry — a category with no mapping would silently produce []), and every
+    idea string returned must be a member of idea_catalog.IDEAS — proves Today
+    is reading the same catalog the /meal-plan endpoint uses, not a second,
+    independently-hardcoded list. Covers rest, single-session, and
+    multi-session day types so every category the engine can produce for a
+    tappable window gets exercised."""
+    from api.services.idea_catalog import IDEAS
+
+    all_catalog_ideas = {idea for ideas in IDEAS.values() for idea in ideas}
+
+    scenarios = {
+        "rest":            [],
+        "practice_evening": [("Practice", "practice", "18:00", 1.5)],
+        "practice_morning": [("Practice", "practice", "08:00", 1.5)],
+        "afternoon_game":   [("Game", "game", "14:00", 1.5)],
+        "double_training":  [("AM Practice", "practice", "07:00", 1.0),
+                              ("PM Practice", "practice", "18:00", 1.0)],
+        "tournament":       [("Game 1", "game", "09:00", 1.0),
+                              ("Game 2", "game", "12:30", 1.0)],
+    }
+
+    athlete_id = 500
+    for i, (label, events) in enumerate(scenarios.items()):
+        conn = _make_today_conn()
+        conn.execute(
+            "INSERT INTO athletes (id, first_name, gender, weight_lbs, height_ft, height_in, age) "
+            "VALUES (%s, 'Sam', 'boy', 130, 5, 6, 15)",
+            (athlete_id + i,),
+        )
+        for name, etype, start, dur in events:
+            conn.execute(
+                "INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, duration_hours) "
+                "VALUES (%s, %s, %s, '2026-06-22', %s, %s)",
+                (athlete_id + i, name, etype, start, dur),
+            )
+        conn.commit()
+
+        view = build_today_view(athlete_id + i, conn, today="2026-06-22")
+        tappable = [w for w in view["windows"] if w.get("status") not in ("nudge", "event")]
+        for w in tappable:
+            ideas = w.get("food_ideas")
+            assert ideas, f"[{label}] {w['slot_name']} has empty food_ideas — category not mapped in IDEAS"
+            for idea in ideas:
+                assert idea in all_catalog_ideas, (
+                    f"[{label}] {w['slot_name']} idea {idea!r} not found in idea_catalog.IDEAS — "
+                    "food_ideas must be sourced from the canonical catalog, not fabricated"
+                )
+        conn.close()
+
+
+# Nutrient/unit target tokens the athlete-facing Today card must never expose —
+# NOT ordinary food-quantity words like "2 eggs" or "3 bananas", which are fine.
+_NUTRIENT_UNIT_RE = re.compile(
+    r"\d+\s*(?:%|(?:g|grams?|oz|ounces?|percent|kcal|cal|calories?|mg|ml)\b)", re.IGNORECASE
+)
+
+
+def test_nutrient_unit_regex_rejects_units_but_allows_food_quantities():
+    """Makes the invariant below real, not decorative: the exact regex must
+    reject nutrient/hydration units and must NOT false-positive on an
+    ordinary food quantity like '2 eggs'."""
+    for bad in ("80g", "80 g", "24 oz", "2000ml", "25%", "150 mg", "300 calories", "90 kcal"):
+        assert _NUTRIENT_UNIT_RE.search(bad), f"{bad!r} should have been flagged"
+    for ok in ("2 eggs", "3 bananas", "Toast + 2 eggs + OJ", "PB&J on whole wheat"):
+        assert not _NUTRIENT_UNIT_RE.search(ok), f"{ok!r} should NOT have been flagged"
+
+
+def test_food_ideas_never_contain_nutrient_or_hydration_target_units():
+    """The Today response's food_ideas must never carry a numeric nutrient/unit
+    target (grams, ounces, %, mg, ml, calories) — that's the athlete-facing
+    no-numbers rule extended to this field specifically. Ordinary food
+    quantities ("2 eggs", "3 bananas") are not the issue and must not trip
+    this check — only unit-bearing nutrient/hydration targets are prohibited.
+    This scopes the rule to Today's own projection of idea_catalog.IDEAS, not
+    a global rewrite of the catalog (other surfaces may use it differently)."""
+    scenarios = {
+        "rest":             [],
+        "practice_evening": [("Practice", "practice", "18:00", 1.5)],
+        "practice_morning": [("Practice", "practice", "08:00", 1.5)],
+        "afternoon_game":   [("Game", "game", "14:00", 1.5)],
+        "double_training":  [("AM Practice", "practice", "07:00", 1.0),
+                              ("PM Practice", "practice", "18:00", 1.0)],
+        "tournament":       [("Game 1", "game", "09:00", 1.0),
+                              ("Game 2", "game", "12:30", 1.0)],
+    }
+
+    athlete_id = 600
+    for i, (label, events) in enumerate(scenarios.items()):
+        conn = _make_today_conn()
+        conn.execute(
+            "INSERT INTO athletes (id, first_name, gender, weight_lbs, height_ft, height_in, age) "
+            "VALUES (%s, 'Sam', 'boy', 130, 5, 6, 15)",
+            (athlete_id + i,),
+        )
+        for name, etype, start, dur in events:
+            conn.execute(
+                "INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, duration_hours) "
+                "VALUES (%s, %s, %s, '2026-06-22', %s, %s)",
+                (athlete_id + i, name, etype, start, dur),
+            )
+        conn.commit()
+
+        view = build_today_view(athlete_id + i, conn, today="2026-06-22")
+        tappable = [w for w in view["windows"] if w.get("status") not in ("nudge", "event")]
+        for w in tappable:
+            for idea in w.get("food_ideas") or []:
+                assert not _NUTRIENT_UNIT_RE.search(idea), (
+                    f"[{label}] {w['slot_name']} food_idea {idea!r} contains a nutrient/unit "
+                    "target — not allowed on the athlete-facing Today response"
+                )
+        conn.close()
 
 
 def test_record_window_capture_uses_log_date():

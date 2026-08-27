@@ -314,6 +314,86 @@ def test_dismiss_wind_down_persists_and_suppresses_the_card(monkeypatch, db_conn
                    for w in windows), "wind_down card still present after dismissal"
 
 
+# ── category_key canonical-vocabulary contract (both engines) ─────────────────
+# window_load.load_levels_for() and idea_catalog.IDEAS's fallback section both
+# expect category_key to be one of carb|hydrate|balanced|recovery. Before the
+# day_layout.py fix, cards_to_template_windows() set category_key = category
+# (fuel_before/quick_snack/everyday/...) — an unknown value to both consumers,
+# silently defaulting fat_level_for() to MODERATE regardless of the window's
+# real fueling purpose. These tests prove BOTH engines (DAY_LAYOUT_V2 on and
+# off) emit only the canonical vocabulary, across every day type.
+
+from api.services.window_load import FAT_LEVEL_BY_CATEGORY_KEY
+
+_CANONICAL_CATEGORY_KEYS = {"carb", "hydrate", "balanced", "recovery"}
+
+_DAY_TYPE_SCENARIOS = {
+    "evening_practice": [("Practice", "practice", "18:00", 1.5)],
+    "morning_practice":  [("Practice", "practice", "08:00", 1.5)],
+    "game":              [("Game", "game", "14:00", 1.5)],
+    "double_session":    [("AM Practice", "practice", "07:00", 1.0),
+                           ("PM Practice", "practice", "18:00", 1.0)],
+    "tournament":        [("Game 1", "game", "09:00", 1.0),
+                           ("Game 2", "game", "12:30", 1.0)],
+    "rest_day":          [],
+}
+
+
+def _seed_athlete_and_events(conn, events):
+    _seed_counter["n"] += 1
+    email = f"dl_catkey_{_seed_counter['n']}@example.com"
+    parent_id = conn.execute(
+        "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) "
+        "VALUES (%s, %s, sqlite_now(), TRUE) RETURNING id",
+        ("Test Parent", email),
+    ).fetchone()["id"]
+
+    athlete_id = conn.execute(
+        "INSERT INTO athletes (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id",
+        (parent_id, "Tester", 14, "boy", 120, 5, 4),
+    ).fetchone()["id"]
+
+    for name, etype, start, dur in events:
+        conn.execute(
+            "INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, duration_hours) "
+            "VALUES (%s, %s, %s, %s, %s, %s)",
+            (athlete_id, name, etype, TARGET_DATE, start, dur),
+        )
+    conn.commit()
+    return athlete_id
+
+
+@pytest.mark.parametrize("day_layout_v2", [True, False])
+@pytest.mark.parametrize("scenario", list(_DAY_TYPE_SCENARIOS))
+def test_category_key_is_always_canonical_vocabulary(monkeypatch, db_conn, scenario, day_layout_v2):
+    if day_layout_v2:
+        monkeypatch.setenv("DAY_LAYOUT_V2", "true")
+    else:
+        monkeypatch.delenv("DAY_LAYOUT_V2", raising=False)
+    from api.services.today_service import build_today_view
+
+    athlete_id = _seed_athlete_and_events(db_conn, _DAY_TYPE_SCENARIOS[scenario])
+    result = build_today_view(athlete_id, db_conn, today=TARGET_DATE)
+
+    tappable = [w for w in result["windows"] if w.get("status") not in ("nudge", "event")]
+    for w in tappable:
+        ck = w.get("category_key")
+        assert ck in _CANONICAL_CATEGORY_KEYS, (
+            f"[{scenario}, DAY_LAYOUT_V2={day_layout_v2}] {w['slot_name']} has "
+            f"non-canonical category_key {ck!r} — must be one of {_CANONICAL_CATEGORY_KEYS}"
+        )
+        # load_levels must be derived from the SAME category_key the window carries,
+        # not silently fall back to MODERATE for an unrecognized key.
+        levels = w.get("load_levels")
+        if levels is not None:
+            assert levels["fats"] == FAT_LEVEL_BY_CATEGORY_KEY[ck], (
+                f"[{scenario}, DAY_LAYOUT_V2={day_layout_v2}] {w['slot_name']} fats "
+                f"load_level {levels['fats']!r} doesn't match the fat level for its "
+                f"own category_key {ck!r} — load_levels not derived from the intended key"
+            )
+
+
 def test_dismiss_wind_down_404s_for_a_nonexistent_athlete(monkeypatch, db_conn):
     r_athlete_id = 999999
     with TestClient(app) as client:

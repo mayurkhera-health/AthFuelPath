@@ -12,10 +12,16 @@ bulk/admin-console write that bypasses the API entirely — exactly how the
 database itself, not just by application code that could again be
 skipped or have a gap in it.
 
-The constraint is added NOT VALID (12 real 'Bay Area Surf' rows exist and
-are deliberately left untouched by this migration) — it still rejects
-every NEW violating write immediately; NOT VALID only means Postgres
-doesn't retroactively scan/enforce it against rows already in the table.
+db/postgres/005_competition_level_check_constraint.sql originally added the
+constraint NOT VALID: at that point 12 real 'Bay Area Surf' rows existed and
+were deliberately left untouched, since NOT VALID rejects every NEW
+violating write immediately without retroactively scanning existing rows.
+Those 12 rows were subsequently corrected to canonical values (a separate,
+reviewed data-repair task), and
+db/postgres/006_validate_competition_level_constraint.sql then ran
+VALIDATE CONSTRAINT — the constraint is now fully validated
+(convalidated = true) and enforced against every row in the table, not
+just new writes.
 """
 import os
 os.environ["DB_PATH"] = ":memory:"
@@ -63,12 +69,15 @@ def _insert_athlete(conn, parent_id, competition_level):
     conn.commit()
 
 
-def test_constraint_exists_and_is_not_valid(db):
+def test_constraint_exists_and_is_validated(db):
     row = db.execute(
         "SELECT convalidated FROM pg_constraint WHERE conname = 'athletes_competition_level_canonical'"
     ).fetchone()
     assert row is not None, "athletes_competition_level_canonical constraint must exist"
-    assert row["convalidated"] is False, "constraint must be NOT VALID — 12 pre-existing invalid rows remain"
+    assert row["convalidated"] is True, (
+        "constraint must be VALID — migration 006 validated it once the 12 "
+        "pre-existing invalid rows were corrected"
+    )
 
 
 @pytest.mark.parametrize("value", ["recreational", "competitive_club", "elite_club"])
@@ -96,19 +105,16 @@ def test_non_canonical_values_rejected_directly_by_postgres(db, value):
     db.rollback()
 
 
-def test_existing_invalid_rows_are_not_disturbed_by_not_valid_constraint(db):
-    """NOT VALID must not retroactively enforce against rows already in the
-    table — simulates the 12 real production rows this migration was
-    written around. Inserting one directly (bypassing the constraint via
-    a temporarily-disabled trigger is not needed — NOT VALID lets an
-    already-invalid row exist because it was never a new write) proves
-    the migration doesn't break on data it wasn't meant to touch."""
+def test_new_write_of_the_historical_bad_value_is_still_rejected(db):
+    """Historically (migration 005, before 006 validated the constraint),
+    the 12 real 'Bay Area Surf' rows were tolerated in-place by NOT VALID
+    while any *new* write of that same value was still rejected — NOT
+    VALID only skips retroactively scanning rows already in the table, it
+    never exempts new writes. Now that migration 006 has fully validated
+    the constraint, every row is enforced, so this same write is rejected
+    for the simpler reason too. This test just proves 'Bay Area Surf'
+    can never be written again, under either constraint state."""
     pid = _make_parent(db, "parent-preexisting@example.com")
-    # A row already in this state is exactly what NOT VALID exists to
-    # tolerate — but a *new* insert of it is still a NEW write, so it's
-    # correctly rejected here too. This test documents that distinction:
-    # NOT VALID protects existing rows from retroactive enforcement, not
-    # from ever being written in the first place.
     with pytest.raises(psycopg.errors.CheckViolation):
         _insert_athlete(db, pid, "Bay Area Surf")
     db.rollback()

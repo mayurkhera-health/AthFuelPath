@@ -291,6 +291,7 @@ def cards_to_template_windows(cards: list, date_str: str | None = None) -> list:
     treats empty timing as always-open).
     """
     from datetime import datetime, timedelta
+    from api.services.window_templates import _CAT_DISPLAY
 
     def _to_dt(hhmm: str):
         if not date_str or not hhmm:
@@ -300,6 +301,13 @@ def cards_to_template_windows(cards: list, date_str: str | None = None) -> list:
     out = []
     for c in cards:
         category = _CARD_TO_CATEGORY.get(c["card"], "everyday")
+        # category_key is the semantic carb|hydrate|balanced|recovery vocabulary
+        # window_load.py and idea_catalog.IDEAS's fallback section expect — the
+        # SAME canonical mapping the legacy engine's _make_window() already uses
+        # (window_templates._CAT_DISPLAY), not a second, independently-maintained
+        # one. category itself (fuel_before/quick_snack/...) stays a separate
+        # field — idea_catalog.IDEAS looks that up first, category_key second.
+        category_key = _CAT_DISPLAY.get(category, {}).get("key", category)
         is_nudge = bool(c["is_event"]) or c["card"] == "keep_going"
         macro_focus = (c.get("athlete_label") or "") if c["card"] == "keep_going" \
                       else _CARD_TO_MACRO_FOCUS.get(c["card"], "")
@@ -307,7 +315,7 @@ def cards_to_template_windows(cards: list, date_str: str | None = None) -> list:
             "key": c["key"],
             "label": c["label"],
             "category": category,
-            "category_key": category,
+            "category_key": category_key,
             "macro_focus": macro_focus,
             "sort_time": c["sort_time"],
             "time_display": c.get("time_display", ""),
