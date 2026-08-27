@@ -454,6 +454,96 @@ def test_two_different_events_same_time_both_preserved_across_sync(monkeypatch, 
     assert counts["inserted"] == 0
 
 
+# ─── Issue 2: ambiguous matches must not multiply duplicates ───────────────
+
+def test_ambiguous_manual_duplicates_do_not_multiply_on_sync(monkeypatch, _spy_windows):
+    """Two pre-existing equivalent manual rows (already ambiguous — a stale
+    double-import, unrelated to this sync) + a BYGA export of the same event
+    with a rotated uid: the sync must NOT insert a 3rd row, and must NOT
+    arbitrarily adopt one of the two manual rows either. 2 stays 2."""
+    conn = _fresh_conn()
+    event_date = FUT1.strftime("%Y-%m-%d")
+    start_time = FUT1.strftime("%H:%M")
+
+    for suffix in ("1", "2"):
+        conn.execute(
+            "INSERT INTO events (athlete_id, event_name, event_type, event_date, "
+            "start_time, duration_hours, uid, source) VALUES "
+            "(1,'Team Practice','practice',%s,%s,1.5,%s,'manual')",
+            (event_date, start_time, f"stale-manual-{suffix}"),
+        )
+    conn.commit()
+
+    _feed(monkeypatch, _cal(_vevent("byga-new-uid", FUT1, "Team Practice")))
+    counts = ics_sync.sync_platform(conn, 1, "byga", "http://x", "competitive")
+
+    rows = conn.execute("SELECT id, uid, source FROM events WHERE athlete_id=1").fetchall()
+    assert len(rows) == 2, f"Expected 2 rows (unchanged), got {len(rows)}"
+    assert {r["uid"] for r in rows} == {"stale-manual-1", "stale-manual-2"}, \
+        "Neither existing row may be silently adopted/renamed"
+    assert counts["inserted"] == 0, "Must not insert a 3rd duplicate"
+    assert counts["updated"] == 0, "Must not arbitrarily adopt either existing row"
+    assert counts["ambiguous_skipped"] == 1
+    conn.close()
+
+
+def test_ambiguous_same_platform_duplicates_do_not_multiply_on_resync(monkeypatch, _spy_windows):
+    """Two pre-existing equivalent BYGA rows (a stale same-platform
+    double-sync from before this fix existed) + a fresh resync with yet
+    another rotated uid: must not insert a 3rd row."""
+    conn = _fresh_conn()
+    event_date = FUT1.strftime("%Y-%m-%d")
+    start_time = FUT1.strftime("%H:%M")
+
+    for suffix in ("1", "2"):
+        conn.execute(
+            "INSERT INTO events (athlete_id, event_name, event_type, event_date, "
+            "start_time, duration_hours, uid, source) VALUES "
+            "(1,'Team Practice','practice',%s,%s,1.5,%s,'byga')",
+            (event_date, start_time, f"stale-byga-{suffix}"),
+        )
+    conn.commit()
+
+    _feed(monkeypatch, _cal(_vevent("byga-newest-uid", FUT1, "Team Practice")))
+    counts = ics_sync.sync_platform(conn, 1, "byga", "http://x", "competitive")
+
+    rows = conn.execute("SELECT id, uid FROM events WHERE athlete_id=1").fetchall()
+    assert len(rows) == 2, f"Expected 2 rows (unchanged), got {len(rows)}"
+    assert {r["uid"] for r in rows} == {"stale-byga-1", "stale-byga-2"}
+    assert counts["inserted"] == 0
+    assert counts["updated"] == 0
+    assert counts["ambiguous_skipped"] == 1
+    conn.close()
+
+
+def test_ambiguous_duplicates_stay_stable_across_5_resync_cycles(monkeypatch, _spy_windows):
+    """A pre-existing ambiguous pair must not grow (2 -> 3 -> 4 -> ...) no
+    matter how many times the provider resyncs with a new uid each time —
+    the whole point of failing closed is that repeated syncs don't make an
+    already-bad situation worse."""
+    conn = _fresh_conn()
+    event_date = FUT1.strftime("%Y-%m-%d")
+    start_time = FUT1.strftime("%H:%M")
+
+    for suffix in ("1", "2"):
+        conn.execute(
+            "INSERT INTO events (athlete_id, event_name, event_type, event_date, "
+            "start_time, duration_hours, uid, source) VALUES "
+            "(1,'Team Practice','practice',%s,%s,1.5,%s,'manual')",
+            (event_date, start_time, f"stale-manual-{suffix}"),
+        )
+    conn.commit()
+
+    for i in range(5):
+        _feed(monkeypatch, _cal(_vevent(f"cycle-uid-{i}", FUT1, "Team Practice")))
+        counts = ics_sync.sync_platform(conn, 1, "byga", "http://x", "competitive")
+        assert counts["inserted"] == 0, f"cycle {i}: must not insert"
+        assert counts["ambiguous_skipped"] == 1, f"cycle {i}: must report the ambiguity every cycle"
+        rows = conn.execute("SELECT COUNT(*) AS n FROM events WHERE athlete_id=1").fetchone()
+        assert rows["n"] == 2, f"cycle {i}: row count must stay at 2, got {rows['n']}"
+    conn.close()
+
+
 def test_migrations_idempotent():
     # The columns this used to add at runtime (twice, to prove idempotency)
     # via the retired SQLite-only helpers _add_calendar_sync_to_athletes /

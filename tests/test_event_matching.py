@@ -5,7 +5,9 @@ tests/test_events_route.py for the integration-level coverage of each caller;
 this file is the pure name-comparison logic in isolation.
 """
 
-from api.services.event_matching import normalize_event_name, names_equivalent, find_equivalent_event
+from api.services.event_matching import (
+    normalize_event_name, names_equivalent, find_equivalent_event, MatchStatus,
+)
 
 
 def test_normalize_lowercases_trims_and_collapses_whitespace():
@@ -126,11 +128,14 @@ def test_names_equivalent_rejects_distinct_events_same_date_time_type():
     assert not names_equivalent("Marin FC Practice", "Davis Legacy Practice")
 
 
-def test_find_equivalent_event_fails_closed_on_ambiguous_matches(monkeypatch):
-    """More than one candidate row -> None, never guessed at. Exercised at
-    the SQL-integration level in test_ics_sync.py's
-    test_name_time_fallback_skips_ambiguous_duplicates; this proves the
-    guard is really in find_equivalent_event itself via a stubbed conn."""
+def test_find_equivalent_event_distinguishes_ambiguous_from_no_match():
+    """The core Issue-2 fix: AMBIGUOUS_MATCH and NO_MATCH are different
+    statuses, not both collapsed into a falsy None — a caller MUST be able
+    to tell "duplicates already exist here, don't add another" apart from
+    "genuinely nothing here, safe to insert". Exercised at the
+    SQL-integration level in test_ics_sync.py/test_events_route.py; this
+    proves the distinction is real in find_equivalent_event itself via a
+    stubbed conn."""
 
     class _FakeCursor:
         def __init__(self, rows):
@@ -139,22 +144,61 @@ def test_find_equivalent_event_fails_closed_on_ambiguous_matches(monkeypatch):
         def fetchall(self):
             return self._rows
 
-    class _FakeConn:
+    class _AmbiguousConn:
         def execute(self, *_args, **_kwargs):
             return _FakeCursor([
                 {"id": 1, "event_name": "Team Practice"},
                 {"id": 2, "event_name": "Team Practice"},
             ])
 
-    result = find_equivalent_event(
-        _FakeConn(), athlete_id=1, event_date="2026-08-26", start_time="19:30",
+    ambiguous = find_equivalent_event(
+        _AmbiguousConn(), athlete_id=1, event_date="2026-08-26", start_time="19:30",
         event_type="practice", event_name="Team Practice",
         source_sql="source = 'manual'",
     )
-    assert result is None
+    assert ambiguous.status == MatchStatus.AMBIGUOUS_MATCH
+    assert ambiguous.row is None, "ambiguous must never arbitrarily pick a row"
+    assert ambiguous.candidate_count == 2
+
+    class _EmptyConn:
+        def execute(self, *_args, **_kwargs):
+            return _FakeCursor([])
+
+    no_match = find_equivalent_event(
+        _EmptyConn(), athlete_id=1, event_date="2026-08-26", start_time="19:30",
+        event_type="practice", event_name="Team Practice",
+        source_sql="source = 'manual'",
+    )
+    assert no_match.status == MatchStatus.NO_MATCH
+    assert no_match.row is None
+    assert no_match.candidate_count == 0
+    assert no_match.status != ambiguous.status, \
+        "NO_MATCH and AMBIGUOUS_MATCH must be distinguishable statuses"
 
 
-def test_find_equivalent_event_returns_none_without_start_time():
+def test_find_equivalent_event_exactly_one_match_returns_the_row():
+    class _FakeCursor:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def fetchall(self):
+            return self._rows
+
+    class _OneMatchConn:
+        def execute(self, *_args, **_kwargs):
+            return _FakeCursor([{"id": 7, "event_name": "Team Practice"}])
+
+    result = find_equivalent_event(
+        _OneMatchConn(), athlete_id=1, event_date="2026-08-26", start_time="19:30",
+        event_type="practice", event_name="Team Practice",
+        source_sql="source = 'manual'",
+    )
+    assert result.status == MatchStatus.EXACTLY_ONE_MATCH
+    assert result.row == {"id": 7, "event_name": "Team Practice"}
+    assert result.candidate_count == 1
+
+
+def test_find_equivalent_event_returns_no_match_without_start_time():
     """No start_time -> no match attempt at all (too loose to be safe)."""
     class _FakeConn:
         def execute(self, *_args, **_kwargs):
@@ -165,4 +209,5 @@ def test_find_equivalent_event_returns_none_without_start_time():
         event_type="practice", event_name="Team Practice",
         source_sql="source = 'manual'",
     )
-    assert result is None
+    assert result.status == MatchStatus.NO_MATCH
+    assert result.row is None

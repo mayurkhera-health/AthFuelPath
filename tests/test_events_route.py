@@ -281,3 +281,34 @@ def test_repeated_manual_import_5x_stable_count(client):
     listing = client.get(f"/api/events/athlete/{aid}", headers=headers)
     matching = [e for e in listing.json() if e["event_name"] == "Weekly Conditioning"]
     assert len(matching) == 1
+
+
+def test_ambiguous_existing_duplicates_reject_rather_than_multiply(client):
+    """Issue 2: two pre-existing equivalent manual rows (a stale double-import,
+    already ambiguous before this request) + one more equivalent submission
+    must NOT create a 3rd row, and must NOT arbitrarily pick one of the two
+    existing rows to return either — a 409 conflict is the correct outcome,
+    same pattern this route already uses for other "can't safely proceed"
+    cases (see test_cannot_edit_synced_event)."""
+    aid = _make_athlete(client, "Recreational")
+    headers = auth_headers("athlete", athlete_id=aid)
+    conn = get_conn()
+    for suffix in ("1", "2"):
+        conn.execute(
+            "INSERT INTO events (athlete_id, event_name, event_type, event_date, "
+            "start_time, duration_hours, uid, source) VALUES "
+            "(%s,'Team Practice','practice','2026-09-05','18:00',1.5,%s,'manual')",
+            (aid, f"stale-{suffix}"),
+        )
+    conn.commit()
+    conn.close()
+
+    r = client.post("/api/events/", json={
+        "athlete_id": aid, "event_name": "Team Practice", "event_type": "practice",
+        "event_date": "2026-09-05", "start_time": "18:00", "duration_hours": 1.5,
+    }, headers=headers)
+    assert r.status_code == 409, r.text
+
+    listing = client.get(f"/api/events/athlete/{aid}", headers=headers)
+    matching = [e for e in listing.json() if e["event_name"] == "Team Practice"]
+    assert len(matching) == 2, f"Expected the existing 2 rows unchanged, got {len(matching)}"

@@ -34,7 +34,7 @@ from icalendar import Calendar
 from api.database import get_conn
 from api.services.window_templates import on_event_added_or_changed
 from api.services.nutrition_calc import derive_intensity
-from api.services.event_matching import find_equivalent_event
+from api.services.event_matching import find_equivalent_event, MatchStatus
 
 logger = logging.getLogger(__name__)
 
@@ -254,7 +254,8 @@ def sync_platform(conn, athlete_id: int, platform: str, ics_url: str,
     """Fetch + reconcile one athlete's feed for one platform. Returns a counts dict
     for logging. Never raises — a bad feed is logged and skipped so one athlete's
     broken link can't abort the whole tick."""
-    counts = {"inserted": 0, "updated": 0, "deleted": 0, "feed": 0, "error": None, "inserted_events": [], "source_upgraded": 0}
+    counts = {"inserted": 0, "updated": 0, "deleted": 0, "feed": 0, "error": None, "inserted_events": [],
+              "source_upgraded": 0, "ambiguous_skipped": 0}
     now_utc = datetime.now(timezone.utc)
     cutoff_utc = now_utc - _PAST_BUFFER
     cutoff_date = (now_utc - _PAST_BUFFER).strftime("%Y-%m-%d")
@@ -278,6 +279,16 @@ def sync_platform(conn, athlete_id: int, platform: str, ics_url: str,
     existing = {r["uid"]: dict(r) for r in existing_rows if r["uid"]}
     now_iso = now_utc.isoformat()
     affected_dates: set[str] = set()
+    # uids of same-platform rows left alone this cycle because they were an
+    # AMBIGUOUS match (2+ candidates, none adopted). Phase 4's delete sweep
+    # below removes any `existing` row whose uid isn't in this cycle's feed —
+    # without this guard, an ambiguous row's OLD uid (never claimed under the
+    # feed's new uid, since we deliberately didn't adopt it) would look
+    # "vanished from the feed" and get deleted, turning "left alone for
+    # manual review" into silent data loss. Confirmed by
+    # test_ambiguous_same_platform_duplicates_do_not_multiply_on_resync
+    # failing without this guard.
+    protected_uids: set[str] = set()
 
     # 3. INSERT + UPDATE.
     for uid, ev in desired.items():
@@ -299,18 +310,31 @@ def sync_platform(conn, athlete_id: int, platform: str, ics_url: str,
             #   2. Only if no same-platform row matches, fall back to a manual
             #      import — never a *different* connected platform, to avoid
             #      merging two distinct feeds' events that happen to collide.
-            # Ambiguous (>1 candidate) at either tier fails closed — see
-            # find_equivalent_event's own docstring — and is left for INSERT
-            # to resolve (creates a new row rather than guessing).
-            matched_row = find_equivalent_event(
+            # Ambiguous (>1 candidate) at either tier must NOT fall through to
+            # INSERT — that would turn "2 duplicates already exist" into 3.
+            # It must also not arbitrarily adopt one of them. Skip this event
+            # for this cycle entirely (no insert, no update, existing rows
+            # left exactly as they are) and count/log it for later manual
+            # cleanup — see event_matching.MatchResult's own docstring for
+            # why this is a 3-way outcome, not a bare found/not-found check.
+            tier1 = find_equivalent_event(
                 conn, athlete_id, ev["event_date"], ev["start_time"], ev["event_type"],
                 ev["event_name"], "source = %s", (platform,),
             )
+            if tier1.status == MatchStatus.AMBIGUOUS_MATCH:
+                counts["ambiguous_skipped"] += 1
+                protected_uids.update(r["uid"] for r in tier1.rows if r.get("uid"))
+                continue
+            matched_row = tier1.row
             if matched_row is None:
-                matched_row = find_equivalent_event(
+                tier2 = find_equivalent_event(
                     conn, athlete_id, ev["event_date"], ev["start_time"], ev["event_type"],
                     ev["event_name"], "source = 'manual'",
                 )
+                if tier2.status == MatchStatus.AMBIGUOUS_MATCH:
+                    counts["ambiguous_skipped"] += 1
+                    continue
+                matched_row = tier2.row
             if matched_row:
                 matched = matched_row
                 logger.debug(
@@ -392,6 +416,8 @@ def sync_platform(conn, athlete_id: int, platform: str, ics_url: str,
     #    feed (cancelled / removed) and is dated today-or-later gets removed. Past
     #    events (< cutoff) are preserved as history; manual events are never here.
     for uid, cur in existing.items():
+        if uid in protected_uids:
+            continue
         if uid not in desired and (cur["event_date"] or "") >= cutoff_date:
             conn.execute("DELETE FROM events WHERE id = %s", (cur["id"],))
             counts["deleted"] += 1
@@ -408,9 +434,10 @@ def sync_platform(conn, athlete_id: int, platform: str, ics_url: str,
             logger.warning("Window recompute failed (athlete %s, %s)", athlete_id, d, exc_info=True)
     conn.commit()
 
-    if counts["inserted"] or counts["updated"] or counts["deleted"]:
-        logger.info("Calendar sync %s/%s: +%d ~%d -%d (feed=%d)", athlete_id, platform,
-                    counts["inserted"], counts["updated"], counts["deleted"], counts["feed"])
+    if counts["inserted"] or counts["updated"] or counts["deleted"] or counts["ambiguous_skipped"]:
+        logger.info("Calendar sync %s/%s: +%d ~%d -%d ambiguous_skipped=%d (feed=%d)", athlete_id, platform,
+                    counts["inserted"], counts["updated"], counts["deleted"],
+                    counts["ambiguous_skipped"], counts["feed"])
     return counts
 
 

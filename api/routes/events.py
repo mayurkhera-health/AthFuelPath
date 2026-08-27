@@ -7,7 +7,7 @@ from api.services import ics_sync
 from api.services.window_templates import on_event_added_or_changed
 from api.services.nutrition_calc import derive_intensity
 from api.services.session_auth import require_session, assert_owns_athlete
-from api.services.event_matching import find_equivalent_event
+from api.services.event_matching import find_equivalent_event, MatchStatus
 
 router = APIRouter()
 
@@ -53,12 +53,24 @@ def create_event(data: EventCreate, identity=Depends(require_session)):
         # the connected-calendar sync uses (api/services/event_matching.py);
         # restricted to source='manual' since that's the only source this
         # public endpoint ever writes.
-        existing_equivalent = find_equivalent_event(
+        match = find_equivalent_event(
             conn, data.athlete_id, data.event_date, data.start_time, data.event_type,
             data.event_name, "source = 'manual'",
         )
-        if existing_equivalent:
-            return existing_equivalent
+        if match.status == MatchStatus.EXACTLY_ONE_MATCH:
+            return match.row
+        if match.status == MatchStatus.AMBIGUOUS_MATCH:
+            # Two-or-more existing rows already look like this event — do NOT
+            # arbitrarily pick one to return, and do NOT insert a 3rd/4th
+            # duplicate on top of an already-ambiguous set. Same conflict
+            # status this route already uses for "can't safely proceed"
+            # (see update_event's synced-event guard below).
+            raise HTTPException(
+                409,
+                f"{match.candidate_count} existing events already match this one "
+                "(same athlete/date/time/type/name) — resolve the duplicates "
+                "before adding another.",
+            )
 
         try:
             row = conn.execute(
