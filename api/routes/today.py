@@ -124,7 +124,7 @@ def get_week_windows(
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)
-        if not conn.execute("SELECT id FROM athletes WHERE id = ?", (athlete_id,)).fetchone():
+        if not conn.execute("SELECT id FROM athletes WHERE id = %s", (athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found")
         base = dt_date.fromisoformat(week_start)
         days = {}

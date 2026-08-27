@@ -35,10 +35,16 @@ def _make_athlete(client):
         "full_name": "P", "email": f"weekwindows{_counter['n']}@example.com", "consent_confirmed": True,
     })
     pid = p.json()["id"]
-    a = client.post("/api/athletes/", json={
-        "parent_id": pid, "first_name": "A", "age": 15, "gender": "girl",
-        "weight_lbs": 110, "height_ft": 5, "height_in": 6,
-    })
+    # POST /api/athletes/ requires a session (auth v2.1 BOLA hardening,
+    # landed on main after this route was originally authored).
+    a = client.post(
+        "/api/athletes/",
+        json={
+            "parent_id": pid, "first_name": "A", "age": 15, "gender": "girl",
+            "weight_lbs": 110, "height_ft": 5, "height_in": 6,
+        },
+        headers=auth_headers("parent", parent_id=pid),
+    )
     return a.json()["id"]
 
 
@@ -71,10 +77,14 @@ def test_rest_day_gets_4_everyday_windows(client):
 
 def test_practice_day_gets_real_pre_and_post_windows_not_one_generic_bucket(client):
     aid = _make_athlete(client)
-    client.post("/api/events/", json={
-        "athlete_id": aid, "event_name": "Evening Practice", "event_type": "practice",
-        "event_date": "2026-08-20", "start_time": "19:00", "duration_hours": 1.5,
-    })
+    client.post(
+        "/api/events/",
+        json={
+            "athlete_id": aid, "event_name": "Evening Practice", "event_type": "practice",
+            "event_date": "2026-08-20", "start_time": "19:00", "duration_hours": 1.5,
+        },
+        headers=auth_headers("athlete", athlete_id=aid),
+    )
     r = client.get(
         "/api/athletes/{}/meal-plan/week".format(aid),
         params={"week_start": "2026-08-16"},
