@@ -292,7 +292,7 @@ def test_tappable_windows_carry_purpose_load_levels_and_food_ideas():
     up to 4 deterministic food ideas — the data the redesigned Today
     fueling-window card renders (spec: redesign/simplify-v2)."""
     conn = _make_today_conn()
-    conn.execute("INSERT INTO athletes (id, first_name, sport, gender, weight_lbs, height_ft, height_in, age) VALUES (4, 'Sam', 'soccer', 'boy', 130, 5, 6, 15)")
+    conn.execute("INSERT INTO athletes (id, first_name, gender, weight_lbs, height_ft, height_in, age) VALUES (4, 'Sam', 'boy', 130, 5, 6, 15)")
     conn.execute(
         "INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, duration_hours) "
         "VALUES (4, 'Practice', 'practice', '2026-06-22', '16:00', 1.5)"
