@@ -213,3 +213,157 @@ def test_grocery_sync_unscoped_omits_selection_ids_and_still_succeeds(client):
         "athlete_id": aid, "week_start": "2026-08-23",
     }, headers=hdr)
     assert r.status_code == 200, r.text
+
+
+def test_grocery_sync_empty_selection_ids_list_syncs_nothing(client):
+    """selection_ids=[] (explicitly zero selected) must NOT behave like
+    omitted (which means full-week sync) — truthiness would conflate the two."""
+    aid = _make_athlete(client)
+    hdr = auth_headers("athlete", athlete_id=aid)
+    client.post("/api/recipes/selections", json={
+        "athlete_id": aid, "selection_date": SELECTION_DATE,
+        "fueling_window_key": "everyday_breakfast", "recipe_id": "R001",
+    }, headers=hdr)
+
+    r = client.post("/api/recipes/selections/sync-grocery-list", json={
+        "athlete_id": aid, "week_start": "2026-08-23", "selection_ids": [],
+    }, headers=hdr)
+    assert r.status_code == 200, r.text
+    assert r.json()["items_added"] == 0
+
+
+# ── Cross-day slot identity (Blocker 1 correction) ──────────────────────────
+# Slot identity is (athlete_id, week_start, selection_date, fueling_window_key)
+# — NOT recipe_id. The same window on two different days in one week are
+# independent slots; the same window on the same day is exactly one slot
+# regardless of how many times its resolution changes.
+
+MONDAY = "2026-08-24"
+TUESDAY = "2026-08-25"
+WEEK_START = "2026-08-23"
+
+
+def _week_selections(client, hdr, aid):
+    r = client.get("/api/recipes/selections/week",
+                    params={"athlete_id": aid, "week_start": WEEK_START}, headers=hdr)
+    assert r.status_code == 200, r.text
+    return r.json()["selections"]
+
+
+def test_same_recipe_on_two_different_days_persists_as_two_rows(client):
+    aid = _make_athlete(client)
+    hdr = auth_headers("athlete", athlete_id=aid)
+    for d in (MONDAY, TUESDAY):
+        r = client.post("/api/recipes/selections", json={
+            "athlete_id": aid, "selection_date": d,
+            "fueling_window_key": "everyday_breakfast", "recipe_id": "R001",
+        }, headers=hdr)
+        assert r.status_code == 201, r.text
+
+    sels = _week_selections(client, hdr, aid)
+    by_date = {s["selection_date"]: s for s in sels}
+    assert len(sels) == 2
+    assert by_date[MONDAY]["recipe_id"] == "R001"
+    assert by_date[TUESDAY]["recipe_id"] == "R001"
+
+
+def test_no_recipe_needed_on_two_different_days_persists_as_two_rows(client):
+    aid = _make_athlete(client)
+    hdr = auth_headers("athlete", athlete_id=aid)
+    for d in (MONDAY, TUESDAY):
+        r = client.post("/api/recipes/selections", json={
+            "athlete_id": aid, "selection_date": d,
+            "fueling_window_key": "everyday_lunch", "no_recipe_needed": True,
+        }, headers=hdr)
+        assert r.status_code == 201, r.text
+
+    sels = _week_selections(client, hdr, aid)
+    by_date = {s["selection_date"]: s for s in sels}
+    assert len(sels) == 2
+    assert by_date[MONDAY]["no_recipe_needed"] is True
+    assert by_date[TUESDAY]["no_recipe_needed"] is True
+
+
+def test_custom_text_on_two_different_days_persists_as_two_rows(client):
+    aid = _make_athlete(client)
+    hdr = auth_headers("athlete", athlete_id=aid)
+    for d in (MONDAY, TUESDAY):
+        r = client.post("/api/recipes/selections", json={
+            "athlete_id": aid, "selection_date": d,
+            "fueling_window_key": "everyday_dinner", "custom_text": "Pasta",
+        }, headers=hdr)
+        assert r.status_code == 201, r.text
+
+    sels = _week_selections(client, hdr, aid)
+    by_date = {s["selection_date"]: s for s in sels}
+    assert len(sels) == 2
+    assert by_date[MONDAY]["custom_text"] == "Pasta"
+    assert by_date[TUESDAY]["custom_text"] == "Pasta"
+
+
+def test_same_day_recipe_to_different_recipe_replaces_the_one_row(client):
+    aid = _make_athlete(client)
+    hdr = auth_headers("athlete", athlete_id=aid)
+    client.post("/api/recipes/selections", json={
+        "athlete_id": aid, "selection_date": MONDAY,
+        "fueling_window_key": "everyday_breakfast", "recipe_id": "R001",
+    }, headers=hdr)
+    r2 = client.post("/api/recipes/selections", json={
+        "athlete_id": aid, "selection_date": MONDAY,
+        "fueling_window_key": "everyday_breakfast", "recipe_id": "R002",
+    }, headers=hdr)
+    assert r2.status_code == 201, r2.text
+
+    sels = [s for s in _week_selections(client, hdr, aid) if s["selection_date"] == MONDAY]
+    assert len(sels) == 1, "expected one Monday breakfast row, got a duplicate"
+    assert sels[0]["recipe_id"] == "R002"
+
+
+def test_all_cross_resolution_replacements_stay_one_row_per_date_and_window(client):
+    """recipe -> custom -> covered -> recipe: every step replaces the same
+    (date, window) row in place. The backend must enforce this even without
+    the client pre-deleting the previous selection."""
+    aid = _make_athlete(client)
+    hdr = auth_headers("athlete", athlete_id=aid)
+    window = "everyday_snack"
+
+    steps = [
+        {"recipe_id": "R001"},
+        {"custom_text": "Trail mix"},
+        {"no_recipe_needed": True},
+        {"recipe_id": "R002"},
+    ]
+    for step in steps:
+        r = client.post("/api/recipes/selections", json={
+            "athlete_id": aid, "selection_date": MONDAY,
+            "fueling_window_key": window, **step,
+        }, headers=hdr)
+        assert r.status_code == 201, r.text
+
+        sels = [s for s in _week_selections(client, hdr, aid)
+                if s["selection_date"] == MONDAY and s["fueling_window_key"] == window]
+        assert len(sels) == 1, f"expected exactly one row after {step}, got {len(sels)}"
+
+    final = [s for s in _week_selections(client, hdr, aid)
+             if s["selection_date"] == MONDAY and s["fueling_window_key"] == window][0]
+    assert final["recipe_id"] == "R002"
+    assert final["no_recipe_needed"] is False
+    assert final["custom_text"] is None
+
+
+def test_weekly_reload_returns_each_days_resolution_on_its_actual_date(client):
+    aid = _make_athlete(client)
+    hdr = auth_headers("athlete", athlete_id=aid)
+    client.post("/api/recipes/selections", json={
+        "athlete_id": aid, "selection_date": MONDAY,
+        "fueling_window_key": "everyday_breakfast", "recipe_id": "R001",
+    }, headers=hdr)
+    client.post("/api/recipes/selections", json={
+        "athlete_id": aid, "selection_date": TUESDAY,
+        "fueling_window_key": "everyday_breakfast", "recipe_id": "R002",
+    }, headers=hdr)
+
+    sels = _week_selections(client, hdr, aid)
+    by_date = {s["selection_date"]: s for s in sels}
+    assert by_date[MONDAY]["recipe_id"] == "R001"
+    assert by_date[TUESDAY]["recipe_id"] == "R002"
