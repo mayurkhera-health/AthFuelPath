@@ -1,7 +1,7 @@
 from datetime import date as _date, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from api.models import RecipeSwapRequest, RecipeGenerateRequest
 from api.services import recipe_db, claude_ai, recipe_generator
 from api.services.recipe_db import PROFILE_TO_DB_CATEGORIES
@@ -232,8 +232,21 @@ class _SelectionCreate(BaseModel):
     athlete_id: int
     selection_date: str
     fueling_window_key: str
-    recipe_id: str
+    recipe_id: str | None = None
     servings: int = 1
+    no_recipe_needed: bool = False
+    custom_text: str | None = None
+
+    @model_validator(mode="after")
+    def _check_exactly_one_resolution(self):
+        if self.custom_text is not None:
+            self.custom_text = self.custom_text.strip() or None
+        resolutions = [bool(self.recipe_id), self.no_recipe_needed, bool(self.custom_text)]
+        if sum(resolutions) != 1:
+            raise ValueError(
+                "exactly one of recipe_id, no_recipe_needed, or custom_text is required"
+            )
+        return self
 
 
 @router.post("/selections", status_code=201)
@@ -243,22 +256,43 @@ def create_selection(data: _SelectionCreate, identity=Depends(require_session)):
         assert_owns_athlete(identity, data.athlete_id, conn)
         if not conn.execute("SELECT id FROM athletes WHERE id = %s", (data.athlete_id,)).fetchone():
             raise HTTPException(404, "Athlete not found.")
-        if not recipe_db.get_recipe_by_id(data.recipe_id.upper()):
-            raise HTTPException(404, f"Recipe {data.recipe_id} not found.")
+        if data.recipe_id:
+            recipe_id = data.recipe_id.upper()
+            if not recipe_db.get_recipe_by_id(recipe_id):
+                raise HTTPException(404, f"Recipe {data.recipe_id} not found.")
+        else:
+            # "" is the shared sentinel for both no_recipe_needed and
+            # custom_text — recipe_id stays NOT NULL at the DB layer.
+            recipe_id = ""
         ws = _week_start(data.selection_date)
+        # Slot identity is (athlete_id, week_start, selection_date,
+        # fueling_window_key) — exactly one resolution per athlete per date
+        # per window, matching the product model. recipe_id is NOT part of
+        # slot identity: it must never define uniqueness, so ON CONFLICT DO
+        # UPDATE (not DO NOTHING) always replaces the slot cleanly — recipe A
+        # -> recipe B, recipe -> custom, custom -> covered, covered -> recipe
+        # all update the same row in place, even if a client fails to
+        # pre-delete the previous selection.
         conn.execute(
             """INSERT INTO recipe_selections
-               (athlete_id, week_start, selection_date, fueling_window_key, recipe_id, servings)
-               VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING""",
+               (athlete_id, week_start, selection_date, fueling_window_key, recipe_id,
+                servings, no_recipe_needed, custom_text, updated_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, sqlite_now())
+               ON CONFLICT (athlete_id, week_start, selection_date, fueling_window_key)
+               DO UPDATE SET recipe_id = excluded.recipe_id,
+                              servings = excluded.servings,
+                              no_recipe_needed = excluded.no_recipe_needed,
+                              custom_text = excluded.custom_text,
+                              updated_at = excluded.updated_at""",
             (data.athlete_id, ws, data.selection_date, data.fueling_window_key,
-             data.recipe_id.upper(), data.servings),
+             recipe_id, data.servings, data.no_recipe_needed, data.custom_text),
         )
         conn.commit()
         row = conn.execute(
             """SELECT * FROM recipe_selections
                WHERE athlete_id = %s AND week_start = %s
-               AND fueling_window_key = %s AND recipe_id = %s""",
-            (data.athlete_id, ws, data.fueling_window_key, data.recipe_id.upper()),
+               AND selection_date = %s AND fueling_window_key = %s""",
+            (data.athlete_id, ws, data.selection_date, data.fueling_window_key),
         ).fetchone()
         return {"selection": dict(row)}
     finally:
@@ -286,6 +320,10 @@ def delete_selection(selection_id: int, athlete_id: int = Query(...), identity=D
 class _SyncGroceryList(BaseModel):
     athlete_id: int
     week_start: str
+    # Optional: scope the sync to exactly these selections (the
+    # GrocerySelectionSheet checkbox flow). Omitted = full-week sync
+    # (back-compat with the older, unscoped grocery-list screen).
+    selection_ids: list[int] | None = None
 
 
 @router.post("/selections/sync-grocery-list")
@@ -293,10 +331,25 @@ def sync_grocery_list(data: _SyncGroceryList, identity=Depends(require_session))
     conn = get_conn()
     try:
         assert_owns_athlete(identity, data.athlete_id, conn)
-        rows = conn.execute(
-            "SELECT * FROM recipe_selections WHERE athlete_id = %s AND week_start = %s",
-            (data.athlete_id, data.week_start),
-        ).fetchall()
+        # selection_ids is None -> full-week sync (back-compat with the older,
+        # unscoped grocery-list screen). selection_ids == [] is a DIFFERENT,
+        # explicit "zero selected recipes" — must not fall through to the
+        # unscoped query (truthiness would treat [] the same as omitted).
+        # selection_ids == [...] -> scoped to exactly those rows.
+        if data.selection_ids is None:
+            rows = conn.execute(
+                "SELECT * FROM recipe_selections WHERE athlete_id = %s AND week_start = %s",
+                (data.athlete_id, data.week_start),
+            ).fetchall()
+        elif len(data.selection_ids) == 0:
+            rows = []
+        else:
+            placeholders = ",".join(["%s"] * len(data.selection_ids))
+            rows = conn.execute(
+                f"SELECT * FROM recipe_selections WHERE athlete_id = %s AND week_start = %s"
+                f" AND id IN ({placeholders})",
+                (data.athlete_id, data.week_start, *data.selection_ids),
+            ).fetchall()
         list_id = _get_or_create_recipe_list(data.athlete_id, data.week_start, conn)
         existing_rows = conn.execute(
             "SELECT name, checked FROM recipe_list_items WHERE list_id = %s", (list_id,)
