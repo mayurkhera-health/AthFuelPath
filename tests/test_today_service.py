@@ -315,6 +315,59 @@ def test_tappable_windows_carry_purpose_load_levels_and_food_ideas():
     conn.close()
 
 
+def test_food_ideas_are_nonempty_and_sourced_from_the_canonical_catalog():
+    """food_ideas must never be empty for a real tappable window (proves every
+    category/category_key the live engines can emit has an idea_catalog.IDEAS
+    entry — a category with no mapping would silently produce []), and every
+    idea string returned must be a member of idea_catalog.IDEAS — proves Today
+    is reading the same catalog the /meal-plan endpoint uses, not a second,
+    independently-hardcoded list. Covers rest, single-session, and
+    multi-session day types so every category the engine can produce for a
+    tappable window gets exercised."""
+    from api.services.idea_catalog import IDEAS
+
+    all_catalog_ideas = {idea for ideas in IDEAS.values() for idea in ideas}
+
+    scenarios = {
+        "rest":            [],
+        "practice_evening": [("Practice", "practice", "18:00", 1.5)],
+        "practice_morning": [("Practice", "practice", "08:00", 1.5)],
+        "afternoon_game":   [("Game", "game", "14:00", 1.5)],
+        "double_training":  [("AM Practice", "practice", "07:00", 1.0),
+                              ("PM Practice", "practice", "18:00", 1.0)],
+        "tournament":       [("Game 1", "game", "09:00", 1.0),
+                              ("Game 2", "game", "12:30", 1.0)],
+    }
+
+    athlete_id = 500
+    for i, (label, events) in enumerate(scenarios.items()):
+        conn = _make_today_conn()
+        conn.execute(
+            "INSERT INTO athletes (id, first_name, gender, weight_lbs, height_ft, height_in, age) "
+            "VALUES (%s, 'Sam', 'boy', 130, 5, 6, 15)",
+            (athlete_id + i,),
+        )
+        for name, etype, start, dur in events:
+            conn.execute(
+                "INSERT INTO events (athlete_id, event_name, event_type, event_date, start_time, duration_hours) "
+                "VALUES (%s, %s, %s, '2026-06-22', %s, %s)",
+                (athlete_id + i, name, etype, start, dur),
+            )
+        conn.commit()
+
+        view = build_today_view(athlete_id + i, conn, today="2026-06-22")
+        tappable = [w for w in view["windows"] if w.get("status") not in ("nudge", "event")]
+        for w in tappable:
+            ideas = w.get("food_ideas")
+            assert ideas, f"[{label}] {w['slot_name']} has empty food_ideas — category not mapped in IDEAS"
+            for idea in ideas:
+                assert idea in all_catalog_ideas, (
+                    f"[{label}] {w['slot_name']} idea {idea!r} not found in idea_catalog.IDEAS — "
+                    "food_ideas must be sourced from the canonical catalog, not fabricated"
+                )
+        conn.close()
+
+
 def test_record_window_capture_uses_log_date():
     """record_window_capture respects client-supplied log_date, not server date."""
     conn = _make_test_conn()
