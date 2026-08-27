@@ -173,3 +173,111 @@ def test_targets_reflect_event_intensity(client):
     r2 = client.get(f"/api/nutrition/targets/{aid}?date=2026-07-02", headers=headers)
     assert r2.status_code == 200, r2.text
     assert r2.json().get("intensity") is None
+
+
+# ─── Backend-side duplicate prevention (event_matching.py safety net) ──────────
+# The standalone mobile ICS import (utils/icsImport.ts) posts here with no uid
+# at all when a VEVENT lacks one, and a brand-new uid every time when the
+# source calendar rotates uids on export — client-side pre-checks can't tell
+# either case is a repeat. These prove the backend catches both regardless.
+
+def test_repeated_manual_import_no_uid_does_not_duplicate(client):
+    """Same event re-submitted with no uid at all (calendar VEVENT had none) —
+    must not create a second row."""
+    aid = _make_athlete(client, "Recreational")
+    headers = auth_headers("athlete", athlete_id=aid)
+    payload = {
+        "athlete_id": aid, "event_name": "Team Practice", "event_type": "practice",
+        "event_date": "2026-08-25", "start_time": "19:30", "duration_hours": 1.5,
+    }
+    first = client.post("/api/events/", json=payload, headers=headers)
+    assert first.status_code == 201, first.text
+    second = client.post("/api/events/", json=payload, headers=headers)
+    assert second.status_code == 201, second.text
+    assert second.json()["id"] == first.json()["id"], "Second POST must return the same row, not insert"
+
+    listing = client.get(f"/api/events/athlete/{aid}", headers=headers)
+    matching = [e for e in listing.json() if e["event_name"] == "Team Practice"]
+    assert len(matching) == 1, f"Expected 1 event, found {len(matching)}"
+
+
+def test_repeated_manual_import_rotated_uid_does_not_duplicate(client):
+    """Same event re-submitted with a DIFFERENT uid each time (provider rotates
+    uids on every export) — must still collapse to one row."""
+    aid = _make_athlete(client, "Recreational")
+    headers = auth_headers("athlete", athlete_id=aid)
+
+    for uid in ("rotated-uid-1", "rotated-uid-2", "rotated-uid-3"):
+        r = client.post("/api/events/", json={
+            "athlete_id": aid, "event_name": "Team Practice", "event_type": "practice",
+            "event_date": "2026-08-25", "start_time": "19:30", "duration_hours": 1.5,
+            "uid": uid,
+        }, headers=headers)
+        assert r.status_code == 201, r.text
+
+    listing = client.get(f"/api/events/athlete/{aid}", headers=headers)
+    matching = [e for e in listing.json() if e["event_name"] == "Team Practice"]
+    assert len(matching) == 1, f"Expected 1 event after 3 rotated-uid imports, found {len(matching)}"
+
+
+def test_manual_create_tolerates_facility_suffix_drift(client):
+    """A re-import where the provider appended a facility/court suffix to the
+    name (the confirmed production bug: '...Complex' -> '...Complex #10')
+    must still be recognized as the same event."""
+    aid = _make_athlete(client, "Recreational")
+    headers = auth_headers("athlete", athlete_id=aid)
+    first = client.post("/api/events/", json={
+        "athlete_id": aid, "event_name": "Practice: Twin Creeks Sports Complex",
+        "event_type": "practice", "event_date": "2026-08-25", "start_time": "19:30",
+        "duration_hours": 1.5,
+    }, headers=headers)
+    assert first.status_code == 201, first.text
+
+    second = client.post("/api/events/", json={
+        "athlete_id": aid, "event_name": "Practice: Twin Creeks Sports Complex #10",
+        "event_type": "practice", "event_date": "2026-08-25", "start_time": "19:30",
+        "duration_hours": 1.5,
+    }, headers=headers)
+    assert second.status_code == 201, second.text
+    assert second.json()["id"] == first.json()["id"]
+
+
+def test_manual_create_preserves_genuinely_different_same_time_event(client):
+    """Two REAL different events for the same athlete at the same date/time
+    (different sport/name) must both survive — never merged."""
+    aid = _make_athlete(client, "Recreational")
+    headers = auth_headers("athlete", athlete_id=aid)
+    a = client.post("/api/events/", json={
+        "athlete_id": aid, "event_name": "Soccer vs Team Alpha", "event_type": "game",
+        "event_date": "2026-08-25", "start_time": "19:30", "duration_hours": 1.5,
+    }, headers=headers)
+    b = client.post("/api/events/", json={
+        "athlete_id": aid, "event_name": "Soccer vs Team Beta", "event_type": "game",
+        "event_date": "2026-08-25", "start_time": "19:30", "duration_hours": 1.5,
+    }, headers=headers)
+    assert a.status_code == 201 and b.status_code == 201
+    assert a.json()["id"] != b.json()["id"], "Different opponents must not be merged"
+
+    listing = client.get(f"/api/events/athlete/{aid}", headers=headers)
+    assert len(listing.json()) == 2
+
+
+def test_repeated_manual_import_5x_stable_count(client):
+    """Re-submitting the same event 5 times (rotating uid each time, matching
+    real repeated-sync behavior) must never grow past 1 row."""
+    aid = _make_athlete(client, "Recreational")
+    headers = auth_headers("athlete", athlete_id=aid)
+    ids = set()
+    for i in range(5):
+        r = client.post("/api/events/", json={
+            "athlete_id": aid, "event_name": "Weekly Conditioning", "event_type": "training",
+            "event_date": "2026-09-01", "start_time": "17:00", "duration_hours": 1.0,
+            "uid": f"cycle-{i}",
+        }, headers=headers)
+        assert r.status_code == 201, r.text
+        ids.add(r.json()["id"])
+
+    assert len(ids) == 1, f"Expected all 5 imports to collapse to 1 row, got ids={ids}"
+    listing = client.get(f"/api/events/athlete/{aid}", headers=headers)
+    matching = [e for e in listing.json() if e["event_name"] == "Weekly Conditioning"]
+    assert len(matching) == 1

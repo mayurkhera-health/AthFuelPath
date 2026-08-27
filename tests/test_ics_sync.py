@@ -323,6 +323,134 @@ def test_name_time_fallback_does_not_merge_across_platforms(monkeypatch, _spy_wi
     assert counts["updated"] == 0
 
 
+def test_name_time_fallback_tolerates_facility_suffix_drift(monkeypatch, _spy_windows):
+    """Confirmed production bug (Kabir, athlete 71): a pre-existing manual row
+    named '...Twin Creeks Sports Complex' and a BYGA export of the SAME
+    practice named '...Twin Creeks Sports Complex #10' (BYGA appends a
+    facility/court number the manual import never had) must be recognized as
+    the same event via the shared event_matching tolerance, not inserted as
+    a 3rd row."""
+    conn = _fresh_conn()
+    event_date = FUT1.strftime("%Y-%m-%d")
+    start_time = FUT1.strftime("%H:%M")
+
+    conn.execute(
+        "INSERT INTO events (athlete_id, event_name, event_type, event_date, "
+        "start_time, duration_hours, uid, source) VALUES "
+        "(1,'Practice: Twin Creeks Sports Complex','practice',%s,%s,1.5,'old-manual-uid','manual')",
+        (event_date, start_time),
+    )
+    conn.commit()
+    manual_id = conn.execute("SELECT id FROM events").fetchone()["id"]
+
+    _feed(monkeypatch, _cal(_vevent("byga-uid", FUT1, "Practice: Twin Creeks Sports Complex #10")))
+    counts = ics_sync.sync_platform(conn, 1, "byga", "http://x", "competitive")
+
+    rows = conn.execute("SELECT * FROM events").fetchall()
+    assert len(rows) == 1, f"Expected 1 row (adopted), got {len(rows)}"
+    row = dict(rows[0])
+    assert row["id"] == manual_id
+    assert row["uid"] == "byga-uid"
+    assert row["source"] == "byga"
+    assert counts["updated"] == 1
+    assert counts["inserted"] == 0
+
+
+def test_name_time_fallback_tolerates_same_platform_rename(monkeypatch, _spy_windows):
+    """Confirmed production bug: BYGA itself renamed events mid-season between
+    two sync runs (e.g. 'U19/18 ECNL at Marin FC' -> 'U19/18 ECNL at Marin FC
+    ECNL G2008/09', a division code appended). The same-platform fallback tier
+    must adopt across that rename, not treat the renamed export as a new
+    event and leave the old row orphaned."""
+    conn = _fresh_conn()
+    event_date = FUT1.strftime("%Y-%m-%d")
+    start_time = FUT1.strftime("%H:%M")
+
+    # guess_event_type("...Marin FC ECNL G2008/09") has no "game"/"match"
+    # keyword, so it defaults to "practice" — matching the actual production
+    # row's inferred type at insert time.
+    conn.execute(
+        "INSERT INTO events (athlete_id, event_name, event_type, event_date, "
+        "start_time, duration_hours, uid, source) VALUES "
+        "(1,'U19/18 ECNL at Marin FC','practice',%s,%s,1.5,'byga-uid-old-export','byga')",
+        (event_date, start_time),
+    )
+    conn.commit()
+    prior_id = conn.execute("SELECT id FROM events").fetchone()["id"]
+
+    _feed(monkeypatch, _cal(_vevent(
+        "byga-uid-new-export", FUT1, "U19/18 ECNL at Marin FC ECNL G2008/09",
+    )))
+    counts = ics_sync.sync_platform(conn, 1, "byga", "http://x", "competitive")
+
+    rows = conn.execute("SELECT * FROM events").fetchall()
+    assert len(rows) == 1, f"Expected 1 row (adopted despite rename), got {len(rows)}"
+    row = dict(rows[0])
+    assert row["id"] == prior_id
+    assert row["uid"] == "byga-uid-new-export"
+    assert row["event_name"] == "U19/18 ECNL at Marin FC ECNL G2008/09"
+    assert counts["updated"] == 1
+    assert counts["inserted"] == 0
+
+
+def test_repeated_sync_cycles_keep_count_stable(monkeypatch, _spy_windows):
+    """Re-running sync_platform 5 times in a row (uid rotates + name drifts a
+    little more each cycle, worst-case realistic behavior) must never grow
+    the row count past 1."""
+    conn = _fresh_conn()
+    event_date = FUT1.strftime("%Y-%m-%d")
+    start_time = FUT1.strftime("%H:%M")
+
+    names = [
+        "Practice: Field House",
+        "Practice: Field House #3",
+        "Practice: Field House #3",
+        "Practice: Field House #3 ECNL",
+        "Practice: Field House #3 ECNL G2008/09",
+    ]
+    for i, name in enumerate(names):
+        _feed(monkeypatch, _cal(_vevent(f"cycle-uid-{i}", FUT1, name)))
+        ics_sync.sync_platform(conn, 1, "byga", "http://x", "competitive")
+
+    rows = conn.execute("SELECT * FROM events WHERE athlete_id=1").fetchall()
+    assert len(rows) == 1, f"Expected 1 row after 5 sync cycles, got {len(rows)}: {[dict(r) for r in rows]}"
+    assert dict(rows[0])["uid"] == "cycle-uid-4", "Must be adopted under the LATEST cycle's uid"
+
+
+def test_two_different_events_same_time_both_preserved_across_sync(monkeypatch, _spy_windows):
+    """Two genuinely different pre-existing events (different opponents/names)
+    at the same athlete/date/time/type must never be collapsed by a sync that
+    only matches one of them."""
+    conn = _fresh_conn()
+    event_date = FUT1.strftime("%Y-%m-%d")
+    start_time = FUT1.strftime("%H:%M")
+
+    # guess_event_type("Soccer vs ...") has no "game"/"match" keyword, so it
+    # defaults to "practice" — matching that here keeps event_type consistent
+    # with what the feed side will parse, which is what the matcher requires.
+    for name, uid in (("Soccer vs River City", "manual-uid-a"), ("Soccer vs Lakeside", "manual-uid-b")):
+        conn.execute(
+            "INSERT INTO events (athlete_id, event_name, event_type, event_date, "
+            "start_time, duration_hours, uid, source) VALUES "
+            "(1,%s,'practice',%s,%s,1.5,%s,'manual')",
+            (name, event_date, start_time, uid),
+        )
+    conn.commit()
+
+    # BYGA export matches ONLY "Soccer vs River City" (with a trailing venue tag).
+    _feed(monkeypatch, _cal(_vevent("byga-uid", FUT1, "Soccer vs River City Field 2")))
+    counts = ics_sync.sync_platform(conn, 1, "byga", "http://x", "competitive")
+
+    rows = conn.execute("SELECT event_name, uid, source FROM events ORDER BY event_name").fetchall()
+    assert len(rows) == 2, "Both distinct events must survive"
+    by_name = {r["event_name"]: dict(r) for r in rows}
+    assert "Soccer vs Lakeside" in by_name
+    assert by_name["Soccer vs Lakeside"]["source"] == "manual", "Untouched event must stay manual"
+    assert by_name["Soccer vs River City Field 2"]["source"] == "byga", "Matched event must be adopted"
+    assert counts["updated"] == 1
+    assert counts["inserted"] == 0
+
+
 def test_migrations_idempotent():
     # The columns this used to add at runtime (twice, to prove idempotency)
     # via the retired SQLite-only helpers _add_calendar_sync_to_athletes /

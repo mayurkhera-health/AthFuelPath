@@ -7,6 +7,7 @@ from api.services import ics_sync
 from api.services.window_templates import on_event_added_or_changed
 from api.services.nutrition_calc import derive_intensity
 from api.services.session_auth import require_session, assert_owns_athlete
+from api.services.event_matching import find_equivalent_event
 
 router = APIRouter()
 
@@ -41,6 +42,23 @@ def create_event(data: EventCreate, identity=Depends(require_session)):
             raise HTTPException(404, "Athlete not found.")
 
         intensity = data.intensity or derive_intensity(data.event_type, athlete["competition_level"])
+
+        # Backend safety net: recognize an already-on-schedule event even when
+        # the caller sent no uid, or a uid the source calendar has since
+        # rotated. The standalone mobile ICS import (utils/icsImport.ts) sends
+        # no uid at all when a VEVENT lacks one, and re-importing a
+        # UID-rotating feed sends a brand-new uid every time either way —
+        # client-side pre-checks can't catch what the client itself can't
+        # tell is a repeat. Uses the same conservative event-equivalence rule
+        # the connected-calendar sync uses (api/services/event_matching.py);
+        # restricted to source='manual' since that's the only source this
+        # public endpoint ever writes.
+        existing_equivalent = find_equivalent_event(
+            conn, data.athlete_id, data.event_date, data.start_time, data.event_type,
+            data.event_name, "source = 'manual'",
+        )
+        if existing_equivalent:
+            return existing_equivalent
 
         try:
             row = conn.execute(

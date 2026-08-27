@@ -34,6 +34,7 @@ from icalendar import Calendar
 from api.database import get_conn
 from api.services.window_templates import on_event_added_or_changed
 from api.services.nutrition_calc import derive_intensity
+from api.services.event_matching import find_equivalent_event
 
 logger = logging.getLogger(__name__)
 
@@ -283,42 +284,35 @@ def sync_platform(conn, athlete_id: int, platform: str, ics_url: str,
         intensity = derive_intensity(ev["event_type"], competition_level)
         if uid not in existing:
             # BYGA (and some other providers) rotate their VEVENT UIDs on every
-            # export, so a UID-only lookup never finds a previously-imported copy
-            # of the same event — including one imported by an EARLIER sync of
-            # this same platform (its uid is stale too). Fall back to matching
-            # on (name, date, start_time), checked in two tiers:
+            # export — and may also edit the event NAME between exports (a
+            # trailing division code or facility number appended mid-season,
+            # confirmed in production) — so a UID-only lookup never finds a
+            # previously-imported copy of the same event, including one
+            # imported by an EARLIER sync of this same platform (its uid is
+            # stale too). Fall back to the shared event-equivalence matcher
+            # (api/services/event_matching.py — same rule create_event uses),
+            # checked in two tiers:
             #   1. Same-platform rows first — this is the real steady-state case
-            #      (adopting our OWN prior sync's row under its now-rotated uid),
-            #      and must not be blocked by unrelated leftover manual imports.
-            #   2. Only if no same-platform row exists, fall back to a manual
+            #      (adopting our OWN prior sync's row under its now-rotated uid
+            #      and/or edited name), and must not be blocked by unrelated
+            #      leftover manual imports.
+            #   2. Only if no same-platform row matches, fall back to a manual
             #      import — never a *different* connected platform, to avoid
             #      merging two distinct feeds' events that happen to collide.
-            # Ambiguous (>1 match) at either tier is left for INSERT to resolve.
-            def _match_row(source_filter, params_extra=()):
-                count = conn.execute(
-                    f"SELECT COUNT(*) AS count FROM events WHERE athlete_id=%s AND event_name=%s "
-                    f"AND event_date=%s AND start_time=%s AND {source_filter}",
-                    (athlete_id, ev["event_name"], ev["event_date"], ev["start_time"], *params_extra),
-                ).fetchone()["count"]
-                if count == 1:
-                    return conn.execute(
-                        f"SELECT * FROM events WHERE athlete_id=%s AND event_name=%s "
-                        f"AND event_date=%s AND start_time=%s AND {source_filter}",
-                        (athlete_id, ev["event_name"], ev["event_date"], ev["start_time"], *params_extra),
-                    ).fetchone()
-                if count > 1:
-                    logger.warning(
-                        "Name+time fallback (%s) skipped for uid %s: %d ambiguous rows "
-                        "(athlete %s, event_name=%r, date=%s)",
-                        source_filter, uid, count, athlete_id, ev["event_name"], ev["event_date"],
-                    )
-                return None
-
-            name_time_row = _match_row("source = %s", (platform,))
-            if name_time_row is None:
-                name_time_row = _match_row("source = 'manual'")
-            if name_time_row:
-                matched = dict(name_time_row)
+            # Ambiguous (>1 candidate) at either tier fails closed — see
+            # find_equivalent_event's own docstring — and is left for INSERT
+            # to resolve (creates a new row rather than guessing).
+            matched_row = find_equivalent_event(
+                conn, athlete_id, ev["event_date"], ev["start_time"], ev["event_type"],
+                ev["event_name"], "source = %s", (platform,),
+            )
+            if matched_row is None:
+                matched_row = find_equivalent_event(
+                    conn, athlete_id, ev["event_date"], ev["start_time"], ev["event_type"],
+                    ev["event_name"], "source = 'manual'",
+                )
+            if matched_row:
+                matched = matched_row
                 logger.debug(
                     "Name+time match for uid %s → adopting existing event id=%s (was source=%s)",
                     uid, matched["id"], matched.get("source"),
