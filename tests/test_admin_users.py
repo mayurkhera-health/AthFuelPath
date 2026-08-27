@@ -54,7 +54,7 @@ def _add_athlete(conn, parent_id, first_name, byga=None, playmetrics=None):
     cur = conn.execute(
         "INSERT INTO athletes (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in, "
         "position, competition_level, byga_ics_url, playmetrics_ics_url) "
-        "VALUES (%s, %s, 12, 'M', 90.0, 5, 2.0, 'Midfield', 'Competitive', %s, %s) RETURNING id",
+        "VALUES (%s, %s, 12, 'M', 90.0, 5, 2.0, 'Midfield', 'competitive_club', %s, %s) RETURNING id",
         (parent_id, first_name, byga, playmetrics),
     )
     return cur.fetchone()["id"]

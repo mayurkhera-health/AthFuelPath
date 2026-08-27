@@ -35,7 +35,7 @@ def _fresh_conn():
     conn.execute("DELETE FROM athletes WHERE id = 1")
     conn.execute(
         "INSERT INTO athletes (id, first_name, age, gender, weight_lbs, height_ft, height_in, competition_level) "
-        "VALUES (1, 'Tester', 14, 'boy', 120, 5, 4, 'competitive')"
+        "VALUES (1, 'Tester', 14, 'boy', 120, 5, 4, 'competitive_club')"
     )
     conn.commit()
     return conn
