@@ -6,7 +6,7 @@ this file is the pure name-comparison logic in isolation.
 """
 
 from api.services.event_matching import (
-    normalize_event_name, names_equivalent, find_equivalent_event, MatchStatus,
+    normalize_event_name, names_equivalent, find_equivalent_event, materially_conflicts, MatchStatus,
 )
 
 
@@ -211,3 +211,96 @@ def test_find_equivalent_event_returns_no_match_without_start_time():
     )
     assert result.status == MatchStatus.NO_MATCH
     assert result.row is None
+
+
+# ─── Pair-aware facility-number / division-code conflicts (Issues 1-3) ─────
+# Independently stripping a facility number or division code from BOTH sides
+# before comparing was a real bug this module had: "Complex #10" and
+# "Complex #11" both strip to "Complex" and would wrongly compare equal.
+# The fix compares the extracted VALUES pairwise — two present-and-different
+# values is always a real difference, never tolerated.
+
+def test_conflicting_facility_numbers_stay_distinct():
+    assert not names_equivalent("Practice: Complex #10", "Practice: Complex #11")
+    assert not names_equivalent("Field #1", "Field #2")
+    assert not names_equivalent("Court #1", "Court #2")
+    assert not names_equivalent("Arena #1", "Arena #2")
+
+
+def test_missing_vs_present_facility_number_still_tolerated():
+    """One side with no number, one with a number in the recognized venue
+    context -> still the original provider-noise tolerance."""
+    assert names_equivalent("Practice: Complex", "Practice: Complex #10")
+
+
+def test_same_facility_number_both_sides_matches():
+    assert names_equivalent("Practice: Complex #10", "Practice: Complex #10")
+
+
+def test_conflicting_division_codes_stay_distinct():
+    assert not names_equivalent(
+        "U19/18 ECNL at Marin FC ECNL G2008/09",
+        "U19/18 ECNL at Marin FC ECNL G2009/10",
+    )
+
+
+def test_missing_vs_present_division_code_still_tolerated():
+    assert names_equivalent(
+        "U19/18 ECNL at Marin FC", "U19/18 ECNL at Marin FC ECNL G2008/09",
+    )
+
+
+def test_parenthesized_non_venue_numbers_stay_distinct():
+    """A parenthesized segment is NOT automatically a venue — only an
+    explicit venue keyword immediately before the number counts."""
+    assert not names_equivalent("Tournament (Game #1)", "Tournament (Game #2)")
+    assert not names_equivalent("Session (Group #1)", "Session (Group #2)")
+
+
+def test_real_twin_creeks_parenthesized_venue_case_still_matches():
+    assert names_equivalent(
+        "Practice: U19/18 ECNL & RL Pool (Twin Creeks Sports Complex)",
+        "Practice: U19/18 ECNL & RL Pool (Twin Creeks Sports Complex #10)",
+    )
+
+
+# ─── Material-field conflict guard (Issue 4) ────────────────────────────────
+
+def test_materially_conflicts_missing_venue_on_one_side_dedupes():
+    """An imported duplicate with venue info missing on one side must still
+    dedupe — missing data is never treated as a conflict."""
+    existing = {"duration_hours": 1.5, "venue_name": None, "city": None, "address": None}
+    candidate = {"duration_hours": 1.5, "venue_name": "Twin Creeks Sports Complex",
+                 "city": None, "address": None}
+    assert not materially_conflicts(existing, candidate)
+    assert not materially_conflicts(candidate, existing)
+
+
+def test_materially_conflicts_same_venue_both_sides_dedupes():
+    existing = {"duration_hours": 1.5, "venue_name": "Twin Creeks Sports Complex",
+                "city": "San Jose", "address": None}
+    candidate = {"duration_hours": 1.5, "venue_name": "Twin Creeks Sports Complex",
+                 "city": "San Jose", "address": None}
+    assert not materially_conflicts(existing, candidate)
+
+
+def test_materially_conflicts_clearly_different_venue_blocks_adoption():
+    existing = {"duration_hours": 1.5, "venue_name": "Twin Creeks Sports Complex",
+                "city": None, "address": None}
+    candidate = {"duration_hours": 1.5, "venue_name": "Marin FC Fields",
+                 "city": None, "address": None}
+    assert materially_conflicts(existing, candidate)
+
+
+def test_materially_conflicts_clearly_different_duration_blocks_adoption():
+    existing = {"duration_hours": 1.0, "venue_name": None, "city": None, "address": None}
+    candidate = {"duration_hours": 2.0, "venue_name": None, "city": None, "address": None}
+    assert materially_conflicts(existing, candidate)
+
+
+def test_materially_conflicts_tolerates_small_duration_rounding():
+    """A few minutes' difference from rounding/manual entry isn't a real
+    conflict — only a clear disagreement is."""
+    existing = {"duration_hours": 1.5, "venue_name": None, "city": None, "address": None}
+    candidate = {"duration_hours": 1.6, "venue_name": None, "city": None, "address": None}
+    assert not materially_conflicts(existing, candidate)

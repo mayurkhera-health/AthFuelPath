@@ -34,7 +34,7 @@ from icalendar import Calendar
 from api.database import get_conn
 from api.services.window_templates import on_event_added_or_changed
 from api.services.nutrition_calc import derive_intensity
-from api.services.event_matching import find_equivalent_event, MatchStatus
+from api.services.event_matching import find_equivalent_event, acquire_reconciliation_lock, MatchStatus
 
 logger = logging.getLogger(__name__)
 
@@ -317,6 +317,14 @@ def sync_platform(conn, athlete_id: int, platform: str, ics_url: str,
             # left exactly as they are) and count/log it for later manual
             # cleanup — see event_matching.MatchResult's own docstring for
             # why this is a 3-way outcome, not a bare found/not-found check.
+            #
+            # Concurrency guard (Issue 5): scope the lock to this exact
+            # (athlete, date, time, type) reconciliation decision so a
+            # concurrent create_event call (or another sync tick) for the
+            # SAME logical event can't race past this check-then-write.
+            acquire_reconciliation_lock(
+                conn, athlete_id, ev["event_date"], ev["start_time"], ev["event_type"],
+            )
             tier1 = find_equivalent_event(
                 conn, athlete_id, ev["event_date"], ev["start_time"], ev["event_type"],
                 ev["event_name"], "source = %s", (platform,),

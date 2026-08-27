@@ -312,3 +312,163 @@ def test_ambiguous_existing_duplicates_reject_rather_than_multiply(client):
     listing = client.get(f"/api/events/athlete/{aid}", headers=headers)
     matching = [e for e in listing.json() if e["event_name"] == "Team Practice"]
     assert len(matching) == 2, f"Expected the existing 2 rows unchanged, got {len(matching)}"
+
+
+# ─── Issue 4: material-field conflict guard on create_event ────────────────
+
+def test_reimport_with_missing_venue_still_dedupes(client):
+    """A first import has venue info; a second (rotated-uid) import of the
+    SAME event omits it — missing data is never a conflict, must dedupe."""
+    aid = _make_athlete(client, "Recreational")
+    headers = auth_headers("athlete", athlete_id=aid)
+    first = client.post("/api/events/", json={
+        "athlete_id": aid, "event_name": "Practice", "event_type": "practice",
+        "event_date": "2026-09-10", "start_time": "17:00", "duration_hours": 1.5,
+        "venue_name": "Twin Creeks Sports Complex",
+    }, headers=headers)
+    assert first.status_code == 201, first.text
+
+    second = client.post("/api/events/", json={
+        "athlete_id": aid, "event_name": "Practice", "event_type": "practice",
+        "event_date": "2026-09-10", "start_time": "17:00", "duration_hours": 1.5,
+    }, headers=headers)
+    assert second.status_code == 201, second.text
+    assert second.json()["id"] == first.json()["id"]
+
+
+def test_reimport_with_provider_added_venue_detail_still_dedupes(client):
+    """A first import has no venue; a second (rotated-uid) import of the SAME
+    event adds one — still not a conflict, must dedupe."""
+    aid = _make_athlete(client, "Recreational")
+    headers = auth_headers("athlete", athlete_id=aid)
+    first = client.post("/api/events/", json={
+        "athlete_id": aid, "event_name": "Practice", "event_type": "practice",
+        "event_date": "2026-09-11", "start_time": "17:00", "duration_hours": 1.5,
+    }, headers=headers)
+    assert first.status_code == 201, first.text
+
+    second = client.post("/api/events/", json={
+        "athlete_id": aid, "event_name": "Practice", "event_type": "practice",
+        "event_date": "2026-09-11", "start_time": "17:00", "duration_hours": 1.5,
+        "venue_name": "Twin Creeks Sports Complex",
+    }, headers=headers)
+    assert second.status_code == 201, second.text
+    assert second.json()["id"] == first.json()["id"]
+
+
+def test_same_name_time_type_but_different_venue_both_exist(client):
+    """A multi-sport athlete can genuinely have two different sessions at the
+    same date/time/type/name that differ only by venue — both must be
+    allowed to exist, not silently merged."""
+    aid = _make_athlete(client, "Recreational")
+    headers = auth_headers("athlete", athlete_id=aid)
+    first = client.post("/api/events/", json={
+        "athlete_id": aid, "event_name": "Practice", "event_type": "practice",
+        "event_date": "2026-09-12", "start_time": "17:00", "duration_hours": 1.5,
+        "venue_name": "Twin Creeks Sports Complex",
+    }, headers=headers)
+    assert first.status_code == 201, first.text
+
+    second = client.post("/api/events/", json={
+        "athlete_id": aid, "event_name": "Practice", "event_type": "practice",
+        "event_date": "2026-09-12", "start_time": "17:00", "duration_hours": 1.5,
+        "venue_name": "Marin FC Fields",
+    }, headers=headers)
+    assert second.status_code == 201, second.text
+    assert second.json()["id"] != first.json()["id"]
+
+    listing = client.get(f"/api/events/athlete/{aid}", headers=headers)
+    matching = [e for e in listing.json() if e["event_name"] == "Practice"]
+    assert len(matching) == 2
+
+
+def test_same_name_time_type_but_different_duration_both_exist(client):
+    """Same name/date/time/type but a materially different duration (e.g. a
+    genuinely different, unrelated session someone typed identically) must
+    not be silently merged into the first one."""
+    aid = _make_athlete(client, "Recreational")
+    headers = auth_headers("athlete", athlete_id=aid)
+    first = client.post("/api/events/", json={
+        "athlete_id": aid, "event_name": "Practice", "event_type": "practice",
+        "event_date": "2026-09-13", "start_time": "17:00", "duration_hours": 1.0,
+    }, headers=headers)
+    assert first.status_code == 201, first.text
+
+    second = client.post("/api/events/", json={
+        "athlete_id": aid, "event_name": "Practice", "event_type": "practice",
+        "event_date": "2026-09-13", "start_time": "17:00", "duration_hours": 2.5,
+    }, headers=headers)
+    assert second.status_code == 201, second.text
+    assert second.json()["id"] != first.json()["id"]
+
+    listing = client.get(f"/api/events/athlete/{aid}", headers=headers)
+    matching = [e for e in listing.json() if e["event_name"] == "Practice"]
+    assert len(matching) == 2
+
+
+# ─── Issue 5: concurrency — two simultaneous equivalent submissions ────────
+
+def test_concurrent_equivalent_submissions_result_in_one_row(client):
+    """Two threads submit the SAME logical event (rotated uids, matching
+    the real "double-tapped Sync Calendar" / racing-imports scenario)
+    at the same time — the advisory lock in create_event must serialize
+    them so exactly one row results, not two."""
+    import threading
+
+    aid = _make_athlete(client, "Recreational")
+    headers = auth_headers("athlete", athlete_id=aid)
+    results = []
+
+    def _submit(uid):
+        r = client.post("/api/events/", json={
+            "athlete_id": aid, "event_name": "Concurrent Practice", "event_type": "practice",
+            "event_date": "2026-09-14", "start_time": "17:00", "duration_hours": 1.5,
+            "uid": uid,
+        }, headers=headers)
+        results.append(r)
+
+    t1 = threading.Thread(target=_submit, args=("concurrent-uid-1",))
+    t2 = threading.Thread(target=_submit, args=("concurrent-uid-2",))
+    t1.start()
+    t2.start()
+    t1.join(timeout=10)
+    t2.join(timeout=10)
+
+    assert len(results) == 2
+    assert all(r.status_code == 201 for r in results), [r.text for r in results]
+    ids = {r.json()["id"] for r in results}
+    assert len(ids) == 1, f"Expected both concurrent submissions to resolve to 1 row, got ids={ids}"
+
+    listing = client.get(f"/api/events/athlete/{aid}", headers=headers)
+    matching = [e for e in listing.json() if e["event_name"] == "Concurrent Practice"]
+    assert len(matching) == 1
+
+
+def test_concurrent_genuinely_different_events_both_permitted(client):
+    """Two threads submit genuinely DIFFERENT events (different names) for
+    the same athlete/date/time/type at the same time — the lock must not
+    block them from each other; both must be created."""
+    import threading
+
+    aid = _make_athlete(client, "Recreational")
+    headers = auth_headers("athlete", athlete_id=aid)
+    results = []
+
+    def _submit(name):
+        r = client.post("/api/events/", json={
+            "athlete_id": aid, "event_name": name, "event_type": "practice",
+            "event_date": "2026-09-15", "start_time": "17:00", "duration_hours": 1.5,
+        }, headers=headers)
+        results.append(r)
+
+    t1 = threading.Thread(target=_submit, args=("Soccer vs Team Alpha",))
+    t2 = threading.Thread(target=_submit, args=("Soccer vs Team Beta",))
+    t1.start()
+    t2.start()
+    t1.join(timeout=10)
+    t2.join(timeout=10)
+
+    assert len(results) == 2
+    assert all(r.status_code == 201 for r in results), [r.text for r in results]
+    ids = {r.json()["id"] for r in results}
+    assert len(ids) == 2, "Genuinely different events must not be blocked/merged by the lock"

@@ -7,7 +7,9 @@ from api.services import ics_sync
 from api.services.window_templates import on_event_added_or_changed
 from api.services.nutrition_calc import derive_intensity
 from api.services.session_auth import require_session, assert_owns_athlete
-from api.services.event_matching import find_equivalent_event, MatchStatus
+from api.services.event_matching import (
+    find_equivalent_event, materially_conflicts, acquire_reconciliation_lock, MatchStatus,
+)
 
 router = APIRouter()
 
@@ -43,6 +45,17 @@ def create_event(data: EventCreate, identity=Depends(require_session)):
 
         intensity = data.intensity or derive_intensity(data.event_type, athlete["competition_level"])
 
+        # Concurrency guard (Issue 5): two simultaneous submissions of the
+        # same equivalent event (e.g. a double-tapped "Sync Calendar", or two
+        # rotated-uid imports of the same feed racing each other) must not
+        # both observe NO_MATCH below and both insert. This blocks a second
+        # concurrent caller for the SAME (athlete, date, time, type) scope
+        # until this transaction commits/rolls back — a caller for a
+        # genuinely different scope is never affected.
+        acquire_reconciliation_lock(
+            conn, data.athlete_id, data.event_date, data.start_time, data.event_type,
+        )
+
         # Backend safety net: recognize an already-on-schedule event even when
         # the caller sent no uid, or a uid the source calendar has since
         # rotated. The standalone mobile ICS import (utils/icsImport.ts) sends
@@ -58,8 +71,18 @@ def create_event(data: EventCreate, identity=Depends(require_session)):
             data.event_name, "source = 'manual'",
         )
         if match.status == MatchStatus.EXACTLY_ONE_MATCH:
-            return match.row
-        if match.status == MatchStatus.AMBIGUOUS_MATCH:
+            # Name/date/time/type/athlete matching alone is not enough to
+            # silently adopt — an athlete must still be able to deliberately
+            # create two genuinely different sessions that happen to share
+            # all of those fields (Issue 4). Only a CLEAR conflict on
+            # duration or venue/location blocks the adoption; missing data
+            # on either side is never treated as a conflict.
+            if not materially_conflicts(match.row, {
+                "duration_hours": data.duration_hours, "venue_name": data.venue_name,
+                "city": data.city, "address": data.address,
+            }):
+                return match.row
+        elif match.status == MatchStatus.AMBIGUOUS_MATCH:
             # Two-or-more existing rows already look like this event — do NOT
             # arbitrarily pick one to return, and do NOT insert a 3rd/4th
             # duplicate on top of an already-ambiguous set. Same conflict
