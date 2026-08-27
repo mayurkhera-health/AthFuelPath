@@ -399,7 +399,8 @@ def generate_day_windows(athlete_id: int, plan_date: str, conn, force_v2: bool =
     Returns skeleton dict: { date, day_type, event, windows[] }
     Callers attach items[] and ideas[] before returning to client.
     """
-    from api.services.window_templates import generate_windows_for_day
+    from api.services.window_templates import generate_windows_for_day, _CAT_DISPLAY
+    from api.services.day_layout import day_layout_v2_enabled
 
     event_rows = conn.execute(
         "SELECT * FROM events WHERE athlete_id = %s AND event_date = %s ORDER BY start_time",
@@ -408,10 +409,46 @@ def generate_day_windows(athlete_id: int, plan_date: str, conn, force_v2: bool =
     events = [dict(r) for r in event_rows]
     first_event = events[0] if events else None
 
-    result              = generate_windows_for_day(athlete_id, plan_date, events, force_v2=force_v2)
-    day_type            = result["day_type"]
-    tw_list             = result["windows"]
-    early_morning_msg   = result.get("early_morning_message")
+    # Same canonical engine seam Today uses (today_service.build_today_view):
+    # DAY_LAYOUT_V2 replaces window_templates.generate_windows_for_day() with
+    # day_layout.build_day_layout() + cards_to_template_windows(). Reusing
+    # those functions directly — not a second, independently-maintained
+    # window-generation implementation for this route.
+    if day_layout_v2_enabled():
+        from datetime import datetime as _dt, date as _dt_date
+        from api.services.day_layout import build_day_layout, cards_to_template_windows
+
+        athlete_row = conn.execute("SELECT * FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
+        athlete = dict(athlete_row) if athlete_row else {}
+        # Today's "now" is the live moment; a week-ahead planning view has no
+        # such moment for days other than the actual current date. Every day
+        # is planned as already "settled" (end of that day) so the 2-hour
+        # activity-type auto-default always resolves, instead of staying
+        # ambiguous purely because the plan is being viewed days in advance —
+        # except the real current date, which uses the real live clock so it
+        # matches what Today itself is showing right now.
+        if plan_date == _dt_date.today().isoformat():
+            effective_now = _dt.now()
+        else:
+            effective_now = _dt.strptime(plan_date, "%Y-%m-%d").replace(hour=23, minute=59)
+
+        _layout  = build_day_layout(events, athlete, now=effective_now)
+        day_type = _layout["day_type"]
+        tw_list  = cards_to_template_windows(_layout["cards"], plan_date)
+        # cards_to_template_windows doesn't carry category_label/why (Today's
+        # own DAY_LAYOUT_V2 path doesn't consume them) — this route's response
+        # contract requires both, so backfill from the same canonical table
+        # window_templates._make_window() already uses for the legacy engine.
+        for tw in tw_list:
+            disp = _CAT_DISPLAY.get(tw.get("category"), {})
+            tw.setdefault("category_label", disp.get("label", ""))
+            tw.setdefault("why", disp.get("why", ""))
+        early_morning_msg = None  # no early-morning-message concept in day_layout
+    else:
+        result            = generate_windows_for_day(athlete_id, plan_date, events, force_v2=force_v2)
+        day_type          = result["day_type"]
+        tw_list           = result["windows"]
+        early_morning_msg = result.get("early_morning_message")
 
     def _build_event_info(ev: dict) -> dict | None:
         st = ev.get("start_time")
@@ -427,6 +464,14 @@ def generate_day_windows(athlete_id: int, plan_date: str, conn, force_v2: bool =
 
     events_info = [info for ev in events if (info := _build_event_info(ev))]
     event_info  = events_info[0] if events_info else None
+
+    # Chronological order, matching Today's own build_today_view (which
+    # explicitly re-sorts by sort_time). Engine construction order isn't
+    # guaranteed chronological on every path — day_layout's tournament
+    # template groups cards narratively (game-pair structure), not strictly
+    # by time — so without this, Today and Meal Plan can produce the same
+    # window set in a different order for the same day.
+    tw_list = sorted(tw_list, key=lambda tw: tw.get("sort_time", ""))
 
     windows = []
     for tw in tw_list:

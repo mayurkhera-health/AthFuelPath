@@ -1,8 +1,11 @@
 """Cross-screen consistency: Today (build_today_view) and Meal Plan
 (GET .../meal-plan/week -> generate_day_windows) must agree on day_type and
-actionable window identity/order/category for the same athlete/date, since
-both now derive from the same canonical engine
-(window_templates.generate_windows_for_day / window_engine_v2).
+actionable window identity/order/category for the same athlete/date.
+
+Parametrized across BOTH DAY_LAYOUT_V2 states, since Today and Meal Plan each
+independently branch on that flag (window_templates.generate_windows_for_day
+when off; day_layout.build_day_layout + cards_to_template_windows when on) —
+they must agree under either state, not just the default.
 
 Today's windows[] additionally includes informational nudges and event
 markers (status in ("nudge", "event")) that generate_day_windows
@@ -14,6 +17,8 @@ before comparing.
 import os
 os.environ["DB_PATH"] = ":memory:"
 os.environ["EVENT_RELATIVE_WINDOWS"] = "true"
+
+import pytest
 
 from api.database import get_conn
 from api.services.today_service import build_today_view, _ensure_window_logs_table
@@ -60,7 +65,12 @@ SCENARIOS = {
 }
 
 
-def _run(scenario_events):
+def _run(monkeypatch, day_layout_v2, scenario_events):
+    if day_layout_v2:
+        monkeypatch.setenv("DAY_LAYOUT_V2", "true")
+    else:
+        monkeypatch.delenv("DAY_LAYOUT_V2", raising=False)
+
     conn = _make_conn()
     aid = _seed(conn, scenario_events)
 
@@ -73,25 +83,30 @@ def _run(scenario_events):
     return today, today_actionable, plan
 
 
-def test_day_type_agrees_across_all_day_types():
+@pytest.mark.parametrize("day_layout_v2", [True, False])
+def test_day_type_agrees_across_all_day_types(monkeypatch, day_layout_v2):
     for label, events in SCENARIOS.items():
-        today, _, plan = _run(events)
+        today, _, plan = _run(monkeypatch, day_layout_v2, events)
         assert today["day_type"] == plan["day_type"], (
-            f"[{label}] Today day_type={today['day_type']!r} != Meal Plan day_type={plan['day_type']!r}"
+            f"[{label}, DAY_LAYOUT_V2={day_layout_v2}] Today day_type={today['day_type']!r} "
+            f"!= Meal Plan day_type={plan['day_type']!r}"
         )
 
 
-def test_actionable_window_keys_and_order_agree_across_all_day_types():
+@pytest.mark.parametrize("day_layout_v2", [True, False])
+def test_actionable_window_keys_and_order_agree_across_all_day_types(monkeypatch, day_layout_v2):
     for label, events in SCENARIOS.items():
-        _, today_actionable, plan = _run(events)
+        _, today_actionable, plan = _run(monkeypatch, day_layout_v2, events)
         today_keys = [w["slot_name"] for w in today_actionable]
         plan_keys = [w["window_key"] for w in plan["windows"]]
         assert today_keys == plan_keys, (
-            f"[{label}] Today actionable keys {today_keys} != Meal Plan keys {plan_keys}"
+            f"[{label}, DAY_LAYOUT_V2={day_layout_v2}] Today actionable keys {today_keys} "
+            f"!= Meal Plan keys {plan_keys}"
         )
 
 
-def test_category_key_agrees_per_window_when_today_provides_one():
+@pytest.mark.parametrize("day_layout_v2", [True, False])
+def test_category_key_agrees_per_window_when_today_provides_one(monkeypatch, day_layout_v2):
     """On current backend main, Today only threads category_key onto a window
     conditionally (via the FUEL_GAUGE_ENABLED-gated fuel_targets block) —
     unconditional threading is a separate, already-approved, not-yet-merged
@@ -100,27 +115,33 @@ def test_category_key_agrees_per_window_when_today_provides_one():
     this only asserts agreement where Today actually provides a value today —
     it must never DISAGREE, even though it may be silently absent."""
     for label, events in SCENARIOS.items():
-        _, today_actionable, plan = _run(events)
+        _, today_actionable, plan = _run(monkeypatch, day_layout_v2, events)
         plan_by_key = {w["window_key"]: w for w in plan["windows"]}
         for tw in today_actionable:
             pw = plan_by_key.get(tw["slot_name"])
-            assert pw is not None, f"[{label}] {tw['slot_name']} on Today but missing from Meal Plan"
+            assert pw is not None, (
+                f"[{label}, DAY_LAYOUT_V2={day_layout_v2}] {tw['slot_name']} on Today "
+                "but missing from Meal Plan"
+            )
             if tw.get("category_key") is None:
                 continue
             assert tw["category_key"] == pw["category_key"], (
-                f"[{label}] {tw['slot_name']} category_key mismatch: "
+                f"[{label}, DAY_LAYOUT_V2={day_layout_v2}] {tw['slot_name']} category_key mismatch: "
                 f"Today={tw['category_key']!r} Meal Plan={pw['category_key']!r}"
             )
 
 
-def test_today_only_nudges_and_event_markers_are_the_sole_accounted_for_difference():
+@pytest.mark.parametrize("day_layout_v2", [True, False])
+def test_today_only_nudges_and_event_markers_are_the_sole_accounted_for_difference(monkeypatch, day_layout_v2):
     """Every window generate_day_windows excludes must be exactly a Today-only
     nudge/event marker — never a real actionable window silently dropped."""
     for label, events in SCENARIOS.items():
-        today, today_actionable, plan = _run(events)
+        today, today_actionable, plan = _run(monkeypatch, day_layout_v2, events)
         plan_keys = {w["window_key"] for w in plan["windows"]}
         today_actionable_keys = {w["slot_name"] for w in today_actionable}
-        assert today_actionable_keys == plan_keys, f"[{label}] actionable sets differ"
+        assert today_actionable_keys == plan_keys, (
+            f"[{label}, DAY_LAYOUT_V2={day_layout_v2}] actionable sets differ"
+        )
 
         today_nudge_or_event_keys = {
             w["slot_name"] for w in today["windows"] if w.get("status") in ("nudge", "event")
@@ -128,5 +149,6 @@ def test_today_only_nudges_and_event_markers_are_the_sole_accounted_for_differen
         # Nudge/event keys must never overlap with the real actionable set —
         # confirms the exclusion category is well-defined, not overlapping.
         assert not (today_nudge_or_event_keys & plan_keys), (
-            f"[{label}] a nudge/event window key also appears as an actionable Meal Plan window"
+            f"[{label}, DAY_LAYOUT_V2={day_layout_v2}] a nudge/event window key "
+            "also appears as an actionable Meal Plan window"
         )
