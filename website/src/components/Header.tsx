@@ -42,7 +42,7 @@ export function Header() {
             {nav.links.map((l) => <Link key={l.href} href={l.href}>{l.label}</Link>)}
           </nav>
           <div className="header__right">
-            <Link href={nav.login.href} className="header__login" onClick={() => ctaClick(cta.login, "header")}>{nav.login.label}</Link>
+            {nav.login && <Link href={nav.login.href} className="header__login" onClick={() => ctaClick(cta.login, "header")}>{nav.login.label}</Link>}
             <Button href="/signup" size="sm" section="header">{cta.primary}</Button>
             <button className="burger" aria-label="Open menu" aria-expanded={open} aria-controls="menu-sheet" onClick={() => setOpen(true)}>
               <Menu />
@@ -60,7 +60,7 @@ export function Header() {
           <nav className="sheet__links" aria-label="Mobile">
             {nav.links.map((l) => <Link key={l.href} href={l.href}>{l.label}</Link>)}
             <Link href="/faq">All questions</Link>
-            <Link href={nav.login.href}>{nav.login.label}</Link>
+            {nav.login && <Link href={nav.login.href}>{nav.login.label}</Link>}
           </nav>
           <div className="sheet__foot">
             <Button href="/signup" arrow section="menu">{cta.primary}</Button>

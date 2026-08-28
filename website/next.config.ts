@@ -32,6 +32,9 @@ const nextConfig: NextConfig = {
          committed. TEMPORARY (permanent: false) on purpose — a 308 would be
          cached by browsers and search engines and would outlive the decision. */
       { source: "/pricing", destination: "/", permanent: false },
+      /* Login is hidden until the app is open to families. Temporary for the
+         same reason as /pricing: this comes back, and a cached 308 would not. */
+      { source: "/login", destination: "/", permanent: false },
     ];
   },
 };

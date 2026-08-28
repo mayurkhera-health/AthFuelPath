@@ -102,7 +102,12 @@ export const nav = {
     { label: "For Parents", href: "/#for-parents" },
     { label: "Our Story", href: "/our-story" },
   ],
-  login: { label: cta.login, href: "/login" },
+  /**
+   * null while the app is closed to families (2026-08-28). Nobody has an
+   * account, so a "Log in" link is a door onto an empty room. Header and the
+   * mobile sheet both check for null — restore this line to bring it back.
+   */
+  login: null as { label: string; href: string } | null,
   primary: { label: cta.primary, href: "/signup" },
 };
 
@@ -514,7 +519,6 @@ export const footer = {
     { label: "For parents", href: "/#for-parents" },
     { label: "Our story", href: "/our-story" },
     { label: "All questions", href: "/faq" },
-    { label: "Log in", href: "/login" },
   ],
   legal: [
     { label: "Youth data & privacy", href: "/privacy" },
