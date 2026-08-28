@@ -3,6 +3,8 @@ node_modules
 .git
 _to_delete
 **/_to_delete
+_parked
+**/_parked
 .env*
 !.env.example
 audit.mjs

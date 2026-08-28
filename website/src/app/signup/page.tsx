@@ -1,28 +1,35 @@
-import { SignupForm } from "./SignupForm";
-import { trialLine } from "@/content/site";
+import { WaitlistForm } from "./WaitlistForm";
+import { trialLine, waitlist } from "@/content/site";
 import { routeMetadata } from "@/lib/meta";
 
 export const metadata = routeMetadata({
-  title: "Start free trial",
-  description: "Create your parent account and set up your athlete's fueling path.",
+  title: "Join the waitlist",
+  description:
+    "AthFuelPath is not open to families yet. Leave your email and tell us what is hardest about feeding your soccer player right now.",
   path: "/signup",
   imageAlt: "AthFuelPath — fuel smarter, play stronger.",
 });
 
+/**
+ * Route kept at /signup on purpose. Every CTA on the site already points here,
+ * so switching the content rather than the URL means no redirects to maintain
+ * and no dead links while signup is closed. When real signup returns, this file
+ * swaps back and nothing else on the site has to change.
+ */
 export default function SignupPage() {
   return (
     <div className="form-page">
       <aside className="form-page__aside surface-dark">
-        <span className="eyebrow">Getting started</span>
-        <h2 className="h3">Their schedule is already set. Let&apos;s build the fueling around it.</h2>
+        <span className="eyebrow">{waitlist.eyebrow}</span>
+        <h2 className="h3">Their schedule is already set. We are still building the fueling around it.</h2>
         <ol className="mini-steps">
-          <li><span className="n">1</span><span>Create your parent account here.</span></li>
-          <li><span className="n">2</span><span>Open the app and add your athlete.</span></li>
-          <li><span className="n">3</span><span>They get their own login. You get the weekly report.</span></li>
+          <li><span className="n">1</span><span>Tell us what is hardest right now.</span></li>
+          <li><span className="n">2</span><span>Purvi reads every answer herself.</span></li>
+          <li><span className="n">3</span><span>We email you the day it opens to families.</span></li>
         </ol>
         <p className="notice notice--dark">{trialLine}</p>
       </aside>
-      <div className="form-page__main"><SignupForm /></div>
+      <div className="form-page__main"><WaitlistForm /></div>
     </div>
   );
 }

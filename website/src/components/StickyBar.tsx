@@ -25,7 +25,7 @@ export function StickyBar() {
   }, []);
   return (
     <div className={`sticky-bar${show ? " show" : ""}`} {...(!show ? { inert: true } : {})}>
-      <span className="sticky-bar__label">Fueling plan · {site.price}/mo</span>
+      <span className="sticky-bar__label">Not open yet · Join the waitlist</span>
       <Button href="/signup" size="sm" section="sticky-bar">{cta.primary}</Button>
     </div>
   );

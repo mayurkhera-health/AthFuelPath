@@ -1,5 +1,5 @@
 /** Analytics abstraction (spec §7). Forwards to PostHog when present. */
-export type EventName = "cta_click" | "faq_open" | "trial_start" | "signup_started" | "signup_completed" | "question_select"
+export type EventName = "cta_click" | "faq_open" | "trial_start" | "signup_started" | "signup_completed" | "waitlist_viewed" | "waitlist_joined" | "question_select"
   | "cook_section_view" | "cook_cta_click" | "recipe_faq_open" | "grocery_faq_open"
   | "ai_coach_section_view" | "ai_coach_example_view" | "ai_coach_signup_click" | "ai_coach_faq_open";
 type Props = Record<string, string | number | boolean | undefined>;
@@ -17,5 +17,7 @@ export function track(event: EventName, props?: Props) {
 /** cta_click always carries label + section. */
 export function ctaClick(label: string, section: string) {
   track("cta_click", { label, section });
-  if (/free trial|athlete's plan/i.test(label)) track("trial_start", { section });
+  /* "Start free trial" is gone in waitlist mode; keep trial_start firing on the
+     primary CTA so the funnel stays continuous when signup returns. */
+  if (/free trial|waitlist|athlete's plan/i.test(label)) track("trial_start", { section });
 }

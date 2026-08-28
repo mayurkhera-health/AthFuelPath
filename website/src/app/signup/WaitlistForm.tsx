@@ -1,0 +1,134 @@
+"use client";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Button } from "@/components/ui/Button";
+import { Tick } from "@/components/ui/Icons";
+import { track } from "@/lib/analytics";
+import { site, waitlist } from "@/content/site";
+
+/**
+ * Waitlist form. Replaced the signup form, which promised an account and a
+ * magic link — neither of which the product can deliver yet.
+ *
+ * Field order is the point of the page: the free-text question comes before the
+ * email box. It asks for something before it asks for something.
+ *
+ * Three accessibility fixes carried over from the pre-launch audit and not to be
+ * lost in a future edit:
+ *   1. On a validation failure, focus moves to the first invalid field. Without
+ *      it a keyboard user submits and nothing appears to happen.
+ *   2. Error text carries role="alert" so it is announced, not just rendered.
+ *   3. No interactive element is nested inside a <label>. The old consent row
+ *      wrapped two links in one, which let a tap on "Terms" toggle the checkbox.
+ */
+type Errors = Partial<Record<"email", string>>;
+
+export function WaitlistForm() {
+  const [done, setDone] = useState(false);
+  const [answered, setAnswered] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [errors, setErrors] = useState<Errors>({});
+  const [serverErr, setServerErr] = useState<string | null>(null);
+  const doneRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => { track("waitlist_viewed"); }, []);
+  useEffect(() => { if (done) doneRef.current?.focus(); }, [done]);
+
+  async function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    const email = String(fd.get("email") ?? "").trim();
+    const pain = String(fd.get("pain") ?? "").trim();
+    const age = String(fd.get("age") ?? "").trim();
+    const club = String(fd.get("club") ?? "").trim();
+
+    const errs: Errors = {};
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errs.email = "Please enter a valid email.";
+    setErrors(errs);
+    if (Object.keys(errs).length) {
+      form.querySelector<HTMLElement>('[name="email"]')?.focus();
+      return;
+    }
+
+    setBusy(true);
+    setServerErr(null);
+    try {
+      const r = await fetch("/api/waitlist", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, pain, age, club }),
+      });
+      if (!r.ok) throw new Error(String(r.status));
+      track("waitlist_joined", { answered: pain.length > 0 });
+      setAnswered(pain.length > 0);
+      setDone(true);
+    } catch {
+      setServerErr(waitlist.error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (done) {
+    return (
+      <div className="form confirm">
+        <span className="confirm__ico"><Tick width={30} height={30} /></span>
+        <h1 className="h3" ref={doneRef} tabIndex={-1}>{waitlist.done.h}</h1>
+        <p className="body muted-txt">{waitlist.done.p}</p>
+        {answered && <p className="small muted-txt">{waitlist.done.pAnswered}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <form className="form" onSubmit={onSubmit} noValidate>
+      <div>
+        <h1 className="h3">{waitlist.h1}</h1>
+        <p className="small muted-txt" style={{ marginTop: "var(--s2)" }}>{waitlist.sub}</p>
+      </div>
+
+      {/* First, deliberately. See the file header. */}
+      <div className="field">
+        <label htmlFor="pain">{waitlist.fields.pain.label}</label>
+        <textarea id="pain" name="pain" rows={4} maxLength={1200} placeholder={waitlist.fields.pain.placeholder} />
+        <span className="hint">{waitlist.fields.pain.hint}</span>
+      </div>
+
+      <div className={`field${errors.email ? " field--err" : ""}`}>
+        <label htmlFor="email">{waitlist.fields.email.label}</label>
+        <input
+          id="email" name="email" type="email" autoComplete="email" inputMode="email" required
+          aria-invalid={!!errors.email} aria-describedby={errors.email ? "e-mail" : "h-mail"}
+        />
+        {errors.email
+          ? <span id="e-mail" className="err" role="alert">{errors.email}</span>
+          : <span id="h-mail" className="hint">{waitlist.fields.email.hint}</span>}
+      </div>
+
+      <div className="field">
+        <label htmlFor="age">{waitlist.fields.age.label}</label>
+        <select id="age" name="age" defaultValue="">
+          <option value="">Prefer not to say</option>
+          {waitlist.fields.age.options.map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+      </div>
+
+      <div className="field">
+        <label htmlFor="club">{waitlist.fields.club.label}</label>
+        <input id="club" name="club" maxLength={120} autoComplete="organization" />
+        <span className="hint">{waitlist.fields.club.hint}</span>
+      </div>
+
+      {serverErr && (
+        <p className="err" role="alert">
+          {serverErr}{" "}
+          <a href={`mailto:${site.supportEmail}`} style={{ fontWeight: 700 }}>{site.supportEmail}</a>.
+        </p>
+      )}
+
+      <Button type="submit" arrow disabled={busy} section="waitlist">
+        {busy ? waitlist.sending : waitlist.submit}
+      </Button>
+    </form>
+  );
+}

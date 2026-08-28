@@ -40,7 +40,7 @@ export const site = {
 
 /** One label per action, site-wide (spec §2). */
 export const cta = {
-  primary: "Start free trial",
+  primary: "Join the waitlist",
   secondary: "See how it works",
   founder: "Meet the founder",
   allQuestions: "All questions",
@@ -48,14 +48,58 @@ export const cta = {
   login: "Log in",
 };
 
-/** Required line under every primary CTA pair. */
-export const trialLine = "Free for 7 days · Cancel anytime · Takes about 4 minutes to set up";
+/**
+ * Required line under every primary CTA pair.
+ *
+ * WAITLIST MODE (2026-08-28). Signup is not open: the account-creation flow is
+ * not wired and the app sends a 6-digit code, not the link this site used to
+ * promise. Until that is real, every CTA leads to the waitlist and this line
+ * must describe only what actually happens. No trial length, no price, no
+ * "takes 4 minutes" — none of those are true yet.
+ */
+export const trialLine = "No card. No spam. One email when it opens.";
+
+/* --------------------------------------------------------------- Waitlist
+ * The /signup route in waitlist mode.
+ *
+ * The free-text question comes FIRST, before the email box, on purpose. It
+ * reframes the form from "give us your address" to "tell us the problem", and
+ * the parents who bother to answer are the ones worth hearing from. Email is
+ * the only required field; every extra required field costs sign-ups.
+ *
+ * NEVER: a price, a trial length, a launch date, or any wording that implies
+ * an account is being created. Nothing here may promise a thing that has not
+ * been built — that is the whole reason this page replaced signup.
+ */
+export const waitlist = {
+  eyebrow: "Not open yet",
+  h1: "Tell us what's hard right now.",
+  sub: "AthFuelPath isn't open to families yet. Leave your email and we'll tell you the day it is. If you answer the first question, Purvi reads every one.",
+  fields: {
+    pain: {
+      label: "What's the hardest part of feeding your athlete right now?",
+      hint: "A sentence is plenty. This is the most useful thing you can give us.",
+      placeholder: "Late practices and nobody's hungry at 9pm…",
+    },
+    email: { label: "Email", hint: "The only thing we need." },
+    age: { label: "Your athlete's age", options: ["Under 13", "13", "14", "15", "16", "17", "18 or older"] },
+    club: { label: "Club or team", hint: "Optional. Helps us know where to start." },
+  },
+  submit: "Join the waitlist",
+  sending: "Sending…",
+  /** Says only what actually happens. No account, no link, no timeline. */
+  done: {
+    h: "You're on the list.",
+    p: "We'll email you when AthFuelPath opens to families. Nothing else, and nothing in between.",
+    pAnswered: "Purvi reads every answer to that first question. If yours needs a reply, you'll get one.",
+  },
+  error: "That didn't send. Try again, or email us at",
+};
 
 export const nav = {
   links: [
     { label: "How It Works", href: "/#how-it-works" },
     { label: "For Parents", href: "/#for-parents" },
-    { label: "Pricing", href: "/pricing" },
     { label: "Our Story", href: "/our-story" },
   ],
   login: { label: cta.login, href: "/login" },
@@ -391,7 +435,7 @@ export const dietitian = {
   /** The exception to "one plan, nothing held back" — must appear wherever the
    *  feature is sold, in the same visual weight as the offer itself. */
   billing: "You book and pay for sessions separately from your subscription. Ask for one in the app and we'll email you the time and the cost before anything is charged.",
-  cta: "Start free trial",
+  cta: "Join the waitlist",
 };
 
 /* ------------------------------------------------------------------ S10 */
@@ -457,15 +501,9 @@ export const faqs: Faq[] = [
   { group: "Safety", q: "Is the Fuel Coach medical advice?", a: "No. It is built for everyday sports fueling. Medical, injury, weight-loss and anything outside that scope gets redirected to the right professional.", event: "ai_coach_faq_open" },
   { group: "Safety", q: "Does my athlete ever see numbers?", a: "AthFuelPath is not built around calorie counting. Daily plans, recipes and the weekly report focus on fueling rather than calorie targets. They do see a carb and protein target for the day, shown as a fuel gauge, because that is the guidance itself. It reads as fuel to add, never as a limit. If your athlete explicitly asks the Fuel Coach about a meal they ate, the Coach may give them a nutrition breakdown." },
   { group: "Safety", q: "Do you track weight or body composition?", a: "No. Weight and BMI are never tracked, shown or scored." },
-  { group: "Billing", q: "Is a dietitian session included in the subscription?", a: "No. Your subscription covers the app. A 1:1 session with a registered sports dietitian is booked separately and priced per session. You ask for one in the app, and we email you the time and the cost before anything is charged." },
-  { group: "Billing", q: "What does a dietitian session cover?", a: "Your athlete's profile goes over with the request, so the dietitian already knows them. Thirty minutes suits one specific question. An hour covers the whole week. A three-session pack runs with a season." },
   { group: "Safety", q: "Do you recommend supplements?", a: "No. AthFuelPath is food first, and it makes no supplement recommendations for athletes under 18." },
   { group: "Safety", q: "What can I see as a parent?", a: "You choose. Meals, photos and the weekly report are each a setting. Your athlete is told in the app what you can see." },
   { group: "Safety", q: "Is this medical advice?", a: "No. AthFuelPath gives sports nutrition guidance to learn from. It does not replace care from your own doctor." },
-  { group: "Billing", q: "How much does it cost?", a: "$14.99 per athlete each month, after a 7-day free trial." },
-  { group: "Billing", q: "What happens when the trial ends?", a: "Your plan starts automatically. Cancel any time before then and you pay nothing." },
-  { group: "Billing", q: "Can I add a second athlete?", a: "Yes. Add another athlete from inside the app whenever you like." },
-  { group: "Billing", q: "How do I cancel?", a: "From your account page, in one click. You keep access until the end of the period you've paid for." },
 ];
 
 /* ---------------------------------------------------------------- Footer */
@@ -474,7 +512,6 @@ export const footer = {
   explore: [
     { label: "How it works", href: "/#how-it-works" },
     { label: "For parents", href: "/#for-parents" },
-    { label: "Pricing", href: "/pricing" },
     { label: "Our story", href: "/our-story" },
     { label: "All questions", href: "/faq" },
     { label: "Log in", href: "/login" },

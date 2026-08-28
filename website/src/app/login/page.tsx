@@ -25,7 +25,7 @@ export default function LoginPage() {
           {android && <a className="btn btn--secondary" href={android}>Google Play</a>}
         </div>
         <p className="small muted-txt" style={{ marginTop: "var(--s6)" }}>
-          No account yet? <Link href="/signup" style={{ fontWeight: 700, color: "var(--forest)" }}>Start a free trial</Link>.
+          Not a member yet? <Link href="/signup" style={{ fontWeight: 700, color: "var(--forest)" }}>Join the waitlist</Link>.
         </p>
         <p className="small muted-txt" style={{ marginTop: "var(--s3)" }}>
           Trouble logging in? <a href={`mailto:${site.supportEmail}`} style={{ fontWeight: 700, color: "var(--forest)" }}>{site.supportEmail}</a>
