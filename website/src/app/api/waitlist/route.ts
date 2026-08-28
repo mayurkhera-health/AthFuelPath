@@ -19,7 +19,7 @@ import nodemailer from "nodemailer";
 
 export const runtime = "nodejs";
 
-const MAX = { pain: 1200, email: 254, club: 120, parent: 120, athlete: 80 } as const;
+const MAX = { pain: 1200, email: 254, club: 140, parent: 120, athlete: 80, role: 40 } as const;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const AGES = new Set(["Under 13", "13", "14", "15", "16", "17", "18 or older", ""]);
 
@@ -43,7 +43,11 @@ function rateLimited(ip: string): boolean {
   return false;
 }
 
-type Entry = { email: string; pain: string; age: string; club: string; parent: string; athlete: string; oneToOne: boolean };
+type Entry = {
+  kind: "parent" | "coach";
+  email: string; pain: string; age: string; club: string;
+  parent: string; athlete: string; role: string; oneToOne: boolean;
+};
 
 async function deliver(entry: Entry): Promise<boolean> {
   const user = process.env.GMAIL_USER;
@@ -63,7 +67,27 @@ async function deliver(entry: Entry): Promise<boolean> {
     socketTimeout: 8000,
   });
   const dash = (v: string) => v || "—";
-  const body = [
+
+  /* Coaches come through /coaches; parents through /signup. Same pipe, same
+     rate limit, same log — different letter, because Purvi triages them
+     differently and a coach is a club rather than a family. */
+  const body = entry.kind === "coach" ? [
+    "Hello Purvi,",
+    "",
+    "A coach has asked for early access to the team view.",
+    "Here are the details.",
+    "",
+    `Name:              ${entry.parent}`,
+    `Role:              ${dash(entry.role)}`,
+    `Club or program:   ${dash(entry.club)}`,
+    `Email:             ${entry.email}`,
+    "",
+    "What they want to see:",
+    entry.pain || "(none)",
+    "",
+    "—",
+    "Sent by the AthFuelPath coaches page. Reply to this email to answer them directly.",
+  ].join("\n") : [
     "Hello Purvi,",
     "",
     "You have received interest for AthFuelPath.",
@@ -87,8 +111,11 @@ async function deliver(entry: Entry): Promise<boolean> {
     to,
     // Replying in the mail client answers the parent, not the form.
     replyTo: entry.email,
-    // "[1:1]" first so Purvi can filter her inbox on it.
-    subject: `${entry.oneToOne ? "[1:1] " : ""}AthFuelPath waitlist: ${entry.parent || entry.email}${entry.club ? ` · ${entry.club}` : ""}`,
+    /* Prefix first so Purvi can filter: [COACH] is a club, [1:1] is a family
+       asking her to look at their week. */
+    subject: entry.kind === "coach"
+      ? `[COACH] AthFuelPath: ${entry.parent}${entry.club ? ` · ${entry.club}` : ""}`
+      : `${entry.oneToOne ? "[1:1] " : ""}AthFuelPath waitlist: ${entry.parent || entry.email}${entry.club ? ` · ${entry.club}` : ""}`,
     text: body,
   });
   return true;
@@ -108,12 +135,14 @@ export async function POST(req: Request) {
   const athlete = String(body?.athlete ?? "").trim().slice(0, MAX.athlete);
   const oneToOne = body?.oneToOne === true;
   const age = String(body?.age ?? "").trim();
+  const role = String(body?.role ?? "").trim().slice(0, MAX.role);
+  const kind: Entry["kind"] = body?.kind === "coach" ? "coach" : "parent";
 
-  if (!EMAIL_RE.test(email) || !parent || !AGES.has(age)) {
+  if (!EMAIL_RE.test(email) || !parent || (kind === "parent" && !AGES.has(age))) {
     return NextResponse.json({ ok: false, error: "invalid" }, { status: 400 });
   }
 
-  const entry: Entry = { email: email.toLowerCase(), pain, age, club, parent, athlete, oneToOne };
+  const entry: Entry = { kind, email: email.toLowerCase(), pain, age, club, parent, athlete, role, oneToOne };
 
   // Written before the send so the lead survives an SMTP failure.
   console.log(`[waitlist] ${JSON.stringify(entry)}`);

@@ -135,10 +135,103 @@ export const waitlist = {
 export const faqNotice =
   "AthFuelPath isn't open to families yet. These answers describe how it works, so you know what you're joining the waitlist for.";
 
+/* --------------------------------------------------------------- Coaches
+ * /coaches — the Coaches Corner.
+ *
+ * The team dashboard is a CODED MOCK, not a capture of a shipped screen. Every
+ * other product image on this site is a real screenshot; this one is drawn.
+ * That is defensible only while the page frames it as early access, which it
+ * does. Replace the mock with a real capture before a coach sees both.
+ *
+ * NEVER on this page: anything an individual athlete ate, any weight, any
+ * suggestion a coach can see one athlete's plate. The whole proposition is
+ * squad-level. safety.claims promises parents control what is visible and the
+ * athlete is told what a parent sees — a coach is a third party neither of them
+ * agreed to, so team aggregate is not a nicety, it is the constraint.
+ *
+ * NEVER: "available now", a login for coaches, or a date. Early access with a
+ * first group of clubs is true. A ship date is not.
+ */
+export const coaches = {
+  eyebrow: "Coaches & athletic directors",
+  h1: "The part of the season you can't see.",
+  sub: "You watch every session. You don't see the seven meals between them, and by the second game of a tournament that gap is the difference. AthFuelPath shows you how the team is fueling, without adding anything to your week.",
+  chips: ["Nothing for you to set up", "Team totals only", "Soccer, 13–17"],
+
+  points: {
+    h2: "Three minutes a week. That's the whole ask.",
+    sub: "Parents set it up. Athletes use it. You look when you want to.",
+    items: [
+      {
+        n: "01",
+        h: "You add nothing.",
+        p: "No rosters to maintain, no data to enter, no app for your athletes to be nagged about. Families run it. You get the view.",
+      },
+      {
+        n: "02",
+        h: "Team totals, never a plate.",
+        p: "You see how the squad is fueling as a group. What any one athlete ate stays between them and their parent.",
+      },
+      {
+        n: "03",
+        h: "Built around your fixtures.",
+        p: "Tournament weekends and two-game days are where fueling decides the second half. The week you see is the week you scheduled.",
+      },
+    ],
+  },
+
+  dash: {
+    badge: "Early access · opening to clubs this season",
+    h2: "Your squad, at a glance.",
+    sub: "One screen, team level only. Nothing about any one athlete's plate, and nothing for you to keep updated.",
+    team: "Twin Creeks SC · U15 Boys",
+    week: "Week of 8 Sep",
+    metrics: [
+      { label: "Fueling days followed", value: "78%", pct: 78, note: "Squad average, last 7 days" },
+      { label: "Pre-game meal on time", value: "15", suffix: "/18", pct: 83, note: "Saturday's fixture" },
+      /* The only number a coach can act on, and the only one that is not about
+         eating at all — it is onboarding status. Keep it last and keep it amber. */
+      { label: "Not set up yet", value: "3", pct: 17, note: "Families still to finish onboarding", warn: true },
+    ],
+    days: [
+      { d: "MON", k: "Rest" }, { d: "TUE", k: "Train", train: true }, { d: "WED", k: "Train", train: true },
+      { d: "THU", k: "Rest" }, { d: "FRI", k: "Train", train: true }, { d: "SAT", k: "Game", game: true },
+      { d: "SUN", k: "Game", game: true },
+    ],
+    /** Load-bearing. This sentence is why a coach can forward the app to 18 families. */
+    privacy: {
+      h: "Team numbers only.",
+      p: "Coaches never see an individual athlete's meals, weight or photos. Parents control what is shared, and their athlete is told what a parent can see.",
+    },
+  },
+
+  form: {
+    h2: "Bring it to your club.",
+    sub: "We are opening the coach view to a first group of clubs this season. Tell us what your week looks like and what you would want on it, and we will bring you in early.",
+    name: { label: "Your name" },
+    club: { label: "Club, school or program" },
+    role: { label: "Your role", options: ["Coach", "Athletic director", "Trainer", "Club admin"] },
+    want: {
+      label: "What would you want to see on it?",
+      hint: "One line is plenty. It shapes what your club sees first.",
+      placeholder: "Whether the squad ate before a 10am kickoff…",
+    },
+    email: { label: "Email", hint: "Purvi Shah, MS, RDN reads these herself." },
+    submit: "Request early access",
+    sending: "Sending…",
+    done: {
+      h: "Thanks — that's with us.",
+      p: "Purvi will be in touch about bringing your club into the first group.",
+    },
+    error: "That didn't send. Try again, or email us at",
+  },
+};
+
 export const nav = {
   links: [
     { label: "How It Works", href: "/#how-it-works" },
     { label: "For Parents", href: "/#for-parents" },
+    { label: "Coaches", href: "/coaches" },
     { label: "Our Story", href: "/our-story" },
   ],
   /**
@@ -571,6 +664,7 @@ export const footer = {
   explore: [
     { label: "How it works", href: "/#how-it-works" },
     { label: "For parents", href: "/#for-parents" },
+    { label: "Coaches", href: "/coaches" },
     { label: "Our story", href: "/our-story" },
     { label: "All questions", href: "/faq" },
   ],
