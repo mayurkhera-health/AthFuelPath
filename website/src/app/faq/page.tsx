@@ -8,7 +8,7 @@ import { routeMetadata } from "@/lib/meta";
 
 export const metadata = routeMetadata({
   title: "All questions",
-  description: "Setup and safety questions parents ask about AthFuelPath, the sports nutrition app for soccer players 13-17.",
+  description: "Setup and safety questions parents ask about AthFuelPath, the sports nutrition app for soccer players 13–17.",
   path: "/faq",
   imageAlt: "AthFuelPath — fuel smarter, play stronger.",
 });

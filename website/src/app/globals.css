@@ -1433,8 +1433,18 @@ img.photo--portrait { width: 100%; height: auto; }
 /* ================= /parents =================
    Consideration page. Backgrounds cycle light -> tint -> dark using the same
    three tokens as the rest of the site. */
-.par-hero { display: grid; gap: var(--s6); align-items: center; }
-@media (min-width: 900px) { .par-hero { grid-template-columns: minmax(0, 1fr) 340px; gap: var(--s8); } }
+/* start, NOT center, and a shorter phone.
+   Measured at 1440: the phone column ran 582px against 384px of copy. With
+   align-items: center that 198px difference was split in half and 99px of it
+   sat directly ABOVE the headline — the first thing on the page was a gap.
+   Centring never removes a column mismatch, it only chooses where to put it.
+   Top-aligning puts what is left BESIDE the phone, where the right column is
+   full, and --dw brings the phone down to ~466px so there is less of it. */
+.par-hero { display: grid; gap: var(--s6); align-items: start; }
+@media (min-width: 900px) {
+  .par-hero { grid-template-columns: minmax(0, 1fr) 300px; gap: var(--s8); }
+  .par-hero__shot .device { --dw: 240px; }
+}
 .par-hero__h1 {
   font-size: clamp(34px, 5.2vw, 54px); line-height: 1.05; letter-spacing: -1.4px;
   font-weight: 800; text-wrap: balance; margin-top: var(--s3); max-width: 18ch;
@@ -1487,6 +1497,10 @@ img.photo--portrait { width: 100%; height: auto; }
 /* Copy first in the DOM, so mobile reads the headline before the screenshot —
    never a large product image above the words that explain it. */
 @media (max-width: 1023px) { .par-split--reverse .par-split__shot { order: 2; } }
+/* Same fix as the hero, same reason: a 582px phone beside 418px of copy put
+   82px of nothing above the heading once align-items centred the difference.
+   The phone comes down to ~466px, which leaves about 24px — invisible. */
+@media (min-width: 1024px) { .par-split__shot .device { --dw: 240px; } }
 
 /* ---- 04 independence ---- */
 .par-stages { display: grid; gap: var(--s3); margin-top: var(--s5); }

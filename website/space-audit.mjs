@@ -31,13 +31,37 @@ const PROBE = () => {
     const kids = [...el.children].filter((k) => box(k).height > 8);
     if (kids.length < 2) return;
     const hs = kids.map((k) => box(k).height);
-    const tops = kids.map((k) => Math.round(box(k).top));
-    // same row only: all children start within 24px of each other
-    if (Math.max(...tops) - Math.min(...tops) > 24) return;
+    /* Same row = their vertical ranges OVERLAP, not that their tops match.
+       The old test required every child to start within 24px of the others,
+       which silently excluded the exact case this check exists for: with
+       align-items: center a short column starts LOWER than a tall one — by
+       half the mismatch — so the bigger the void, the more certain the tool
+       was to skip it. It missed the /parents hero (198px) for that reason. */
+    const tops = kids.map((k) => box(k).top);
+    const bots = kids.map((k) => box(k).bottom);
+    const overlap = Math.min(...bots) - Math.max(...tops);
+    if (overlap < Math.min(...hs) * 0.6) return;
     const diff = Math.max(...hs) - Math.min(...hs);
     if (diff >= 120) {
       out.cols.push({ sel: named(el), diff: Math.round(diff), hs: hs.map(Math.round).join(" vs ") });
     }
+  });
+
+  /* 1b — space ABOVE the first heading in a split.
+     The metric that matches what someone actually complains about. A column
+     mismatch beside an image is normal layout; the same mismatch centred so
+     that half of it lands above the headline is the defect, and only this
+     measures the difference. */
+  document.querySelectorAll("[class*='split'], [class*='grid'], [class*='hero']").forEach((g) => {
+    const cs = getComputedStyle(g);
+    if (!/grid|flex/.test(cs.display)) return;
+    const kids = [...g.children].filter((k) => box(k).height > 8);
+    if (kids.length < 2) return;
+    const copy = kids.find((k) => k.querySelector(".eyebrow, h1, h2"));
+    if (!copy) return;
+    const first = copy.querySelector(".eyebrow, h1, h2");
+    const gap = Math.round(box(first).top - box(g).top);
+    if (gap >= 48) out.gaps.push({ sel: named(g), gap, median: 0, after: "TOP OF SPLIT — space above the heading" });
   });
 
   /* 2 — outsized gaps between consecutive siblings */

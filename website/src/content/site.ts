@@ -100,7 +100,24 @@ export const waitlist = {
      * age band below is enough to segment on.
      */
     athlete: { label: "Your athlete's first name", hint: "Optional. First name is plenty." },
-    age: { label: "Your athlete's age", options: ["Under 13", "13", "14", "15", "16", "17", "18 or older"] },
+    /**
+     * The options run wider than the product does, and the hint says so.
+     *
+     * Every other statement of the audience on this site is "13–17". This
+     * select offered "Under 13" and "18 or older" with nothing explaining why,
+     * which reads either as an oversight or as an implied claim that the
+     * product serves them. It serves neither.
+     *
+     * The out-of-range options stay because removing them makes the answers
+     * WORSE, not cleaner: a parent of an 11-year-old would round to "13" or
+     * skip the field, and we would never learn that younger families are
+     * asking. The hint is what makes keeping them honest.
+     */
+    age: {
+      label: "Your athlete's age",
+      hint: "AthFuelPath is built for 13–17. Tell us anyway — it helps us see who is waiting.",
+      options: ["Under 13", "13", "14", "15", "16", "17", "18 or older"],
+    },
     club: { label: "Club or team", hint: "Optional. Helps us know where to start." },
     /**
      * The concierge offer, as one optional checkbox.
@@ -190,7 +207,9 @@ export const coaches = {
        appearance of that list on this page, and the privacy clause is made
        properly in the trust section rather than four times in passing. */
     p2: "AthFuelPath gives you a simple team-level view, so you can spot fueling gaps before they show up on the pitch, without adding work to your week.",
-    chips: ["Parents set it up", "Team-level only", "Nothing new to manage", "Built for youth soccer"],
+    /* The chip states the range. /coaches said only "youth soccer", so a coach
+       with a U12 squad had no way to tell whether the product covered them. */
+    chips: ["Parents set it up", "Team-level only", "Nothing new to manage", "Built for players 13–17"],
     secondary: "See what coaches see",
   },
 

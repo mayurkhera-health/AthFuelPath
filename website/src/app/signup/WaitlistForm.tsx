@@ -153,10 +153,13 @@ export function WaitlistForm() {
 
         <div className="field">
           <label htmlFor="age">{waitlist.fields.age.label}</label>
-          <select id="age" name="age" defaultValue="">
+          <select id="age" name="age" defaultValue="" aria-describedby="h-age">
             <option value="">Prefer not to say</option>
             {waitlist.fields.age.options.map((o) => <option key={o} value={o}>{o}</option>)}
           </select>
+          {/* The list runs wider than 13–17 on purpose. See the note in
+              site.ts — this hint is what keeps that honest. */}
+          <span id="h-age" className="hint">{waitlist.fields.age.hint}</span>
         </div>
       </div>
 

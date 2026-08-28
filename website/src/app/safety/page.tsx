@@ -4,7 +4,7 @@ import { routeMetadata } from "@/lib/meta";
 
 export const metadata = routeMetadata({
   title: "Safety commitments",
-  description: "What AthFuelPath shows a young athlete, what it never does, what we collect, and what you control as a parent.",
+  description: "What AthFuelPath shows a soccer player aged 13–17, what it never does, what we collect, and what you control as a parent.",
   path: "/safety",
   image: "/og/safety.jpg",
   imageAlt: "Safe for a growing kid.",
@@ -32,7 +32,7 @@ export default function Safety() {
           <div className="text-col">
             <span className="eyebrow">Safety &amp; privacy</span>
             <h1 className="h1" style={{ fontSize: "clamp(40px, 6vw, 56px)", marginTop: "var(--s4)" }}>What your athlete never sees.</h1>
-            <p className="body muted-txt">Sports nutrition for kids can do real harm if it is handled carelessly. Here are the lines we hold, and what happens to your athlete&apos;s data. Written plainly, so you can check us on it.</p>
+            <p className="body muted-txt">Sports nutrition for a 13–17 year old can do real harm if it is handled carelessly. Here are the lines we hold, and what happens to your athlete&apos;s data. Written plainly, so you can check us on it.</p>
           </div>
         </div>
       </section>
