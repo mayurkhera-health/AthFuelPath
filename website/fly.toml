@@ -5,7 +5,26 @@ primary_region = "sjc"          # San Jose: the company and most early users are
 [build]
   dockerfile = "Dockerfile"
   [build.args]
-    NEXT_PUBLIC_SITE_URL = "https://athfuelpath.com"
+    # THIS MUST BE THE HOST THIS BUILD IS ACTUALLY SERVED FROM.
+    #
+    # It said https://athfuelpath.com while the app was deployed to
+    # athfuelpath-web.fly.dev, and that one line broke three things at once:
+    #
+    #   1. og:image pointed at https://athfuelpath.com/og/home.jpg. That domain
+    #      serves nothing yet, so every link preview failed to load the share
+    #      card, fell back to scraping the page, and picked the app screenshot
+    #      out of the hero — which is what a pasted link looked like.
+    #   2. Every canonical URL pointed at a domain that does not resolve.
+    #   3. IS_PRODUCTION_SITE compares SITE_URL against the production origin.
+    #      With this set to the production domain it was TRUE on the staging
+    #      host, so robots.txt said "allow: /" and invited crawlers onto a
+    #      preview deploy — the exact thing the check in site-url.ts exists to
+    #      prevent. Lying about the host defeated its own safeguard.
+    #
+    # Change this to "https://athfuelpath.com" on the day that domain points at
+    # this app, and not before. Nothing else needs to change: robots.txt,
+    # sitemap.xml, canonicals and every og:image follow this value.
+    NEXT_PUBLIC_SITE_URL = "https://athfuelpath-web.fly.dev"
 
 [env]
   PORT = "3000"
