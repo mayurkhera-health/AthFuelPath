@@ -153,6 +153,7 @@ export const WEBSITE_PRIVACY: Section[] = [
       ["Whatever you write in the open question", "Optional", "It is the most useful thing you can tell us, and Purvi reads them"],
       ["Whether you ticked the 1:1 box", "Optional", "So Purvi knows to get in touch about it"],
       ["Coaches only: your role and your club", "Optional", "To understand the request"],
+      ["Which page or button you came from", "Automatic", "So we know which part of the site people find useful. It is a short label like “parents_hero”, carried in the web address you can see, and it is recorded only if you submit the form"],
     ],
   },
   {

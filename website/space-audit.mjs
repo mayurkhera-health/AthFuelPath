@@ -16,7 +16,7 @@ import { chromium } from "playwright";
  *  4. SHORT SECTION — a section whose content occupies less than half its
  *     height, which usually means one of the above.
  */
-const PAGES = ["/", "/coaches", "/our-story", "/safety", "/faq", "/signup", "/questions/before-a-530-practice", "/privacy"];
+const PAGES = ["/", "/parents", "/coaches", "/our-story", "/safety", "/faq", "/signup", "/questions/before-a-530-practice", "/privacy"];
 const WIDTHS = [390, 1440];
 
 const PROBE = () => {

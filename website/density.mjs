@@ -13,7 +13,7 @@ import { chromium } from "playwright";
  * It then reports the biggest contiguous dead bands and where they sit, so a
  * tightening pass targets the worst offenders rather than shaving every token.
  */
-const PAGES = ["/", "/coaches", "/our-story", "/safety", "/faq", "/signup", "/questions/before-a-530-practice"];
+const PAGES = ["/", "/parents", "/coaches", "/our-story", "/safety", "/faq", "/signup", "/questions/before-a-530-practice"];
 
 const PROBE = () => {
   const H = Math.ceil(document.documentElement.scrollHeight);

@@ -1393,3 +1393,133 @@ img.photo--portrait { width: 100%; height: auto; }
 .coach__src { margin-top: var(--s2); font-size: 15px; color: var(--muted); }
 
 
+
+/* ================= Core capabilities (homepage S5) =================
+   An index, not a demo. These cards carry no screenshots on purpose: the block
+   they replaced was the largest thing on the homepage, and a product image
+   inside a card is how an index turns back into a demo. Target height 220-280px
+   — if a card outgrows that, cut copy rather than growing the card. */
+.cap-grid { display: grid; gap: var(--grid-gap); align-items: stretch; }
+@media (min-width: 620px) { .cap-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s5); } }
+@media (min-width: 1024px) { .cap-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.cap-card {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--r-card);
+  padding: var(--s5); display: grid; align-content: start; min-width: 0;
+}
+.cap-card__ico {
+  width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--mint); color: var(--mint-ink); margin-bottom: var(--s3);
+}
+.cap-card__label {
+  display: block; font-size: 15px; font-weight: 800; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--forest); margin-bottom: var(--s2);
+}
+.cap-card__h { font-size: 20px; line-height: 1.25; font-weight: 700; text-wrap: pretty; }
+.cap-card__p { margin-top: var(--s2); font-size: 17px; line-height: 1.5; color: var(--muted); }
+.cap-cta { margin-top: var(--s6); text-align: center; }
+.cap-cta .tlink { min-height: 44px; display: inline-flex; align-items: center; gap: var(--s2); }
+
+/* ---- trust strip additions ---- */
+.safety-secondary {
+  max-width: 62ch; margin: var(--s6) auto 0; text-align: center;
+  font-size: 17px; line-height: 1.55; color: var(--on-dark-soft);
+}
+.safety-links {
+  margin-top: var(--s5); display: flex; flex-wrap: wrap; gap: var(--s3) var(--s6);
+  justify-content: center;
+}
+.safety-links .tlink { min-height: 44px; display: inline-flex; align-items: center; gap: var(--s2); }
+
+/* ================= /parents =================
+   Consideration page. Backgrounds cycle light -> tint -> dark using the same
+   three tokens as the rest of the site. */
+.par-hero { display: grid; gap: var(--s6); align-items: center; }
+@media (min-width: 900px) { .par-hero { grid-template-columns: minmax(0, 1fr) 340px; gap: var(--s8); } }
+.par-hero__h1 {
+  font-size: clamp(34px, 5.2vw, 54px); line-height: 1.05; letter-spacing: -1.4px;
+  font-weight: 800; text-wrap: balance; margin-top: var(--s3); max-width: 18ch;
+}
+.par-hero__p { font-size: 18px; line-height: 1.6; color: var(--muted); margin-top: var(--s4); max-width: 60ch; }
+@media (min-width: 768px) { .par-hero__p { font-size: 19px; } }
+.par-hero__cta { margin-top: var(--s5); align-items: center; gap: var(--s4); }
+.par-hero__cta .tlink { min-height: 44px; display: inline-flex; align-items: center; gap: var(--s2); }
+.par-hero__shot { display: none; }
+@media (min-width: 900px) { .par-hero__shot { display: block; } }
+
+/* ---- 02 the four moments ---- */
+.par-moments { display: grid; gap: var(--s4); }
+@media (min-width: 620px) { .par-moments { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .par-moments { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s5); } }
+.par-moments > li {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--r-card);
+  padding: var(--s5); min-width: 0;
+}
+.par-moments__when {
+  display: block; font-size: 15px; font-weight: 800; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--forest); margin-bottom: var(--s2);
+}
+.par-moments__q { font-size: 18px; line-height: 1.35; font-weight: 600; text-wrap: pretty; }
+.par-lead__close {
+  margin: var(--s6) auto 0; max-width: 46ch; text-align: center; text-wrap: balance;
+  font-size: clamp(20px, 2.6vw, 26px); line-height: 1.3; font-weight: 700;
+}
+
+/* ---- 03 the bridge. Under 400px tall at desktop by design. ---- */
+.par-bridge__h { max-width: 22ch; }
+.par-flow {
+  display: flex; flex-wrap: wrap; gap: var(--s3); align-items: center;
+  margin-top: var(--s5); font-size: 15px; font-weight: 800; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--lime);
+}
+.par-flow__arw { margin-left: var(--s3); color: var(--on-dark-mute); }
+.par-steps { display: grid; gap: var(--s5); margin-top: var(--s6); }
+@media (min-width: 820px) { .par-steps { grid-template-columns: repeat(3, 1fr); gap: var(--s6); } }
+.par-steps__n { display: block; font-size: 15px; font-weight: 800; letter-spacing: 1px; color: var(--lime); margin-bottom: var(--s2); }
+.par-steps__h { font-size: 19px; line-height: 1.25; font-weight: 700; color: var(--on-dark); text-wrap: pretty; }
+.par-steps__p { margin-top: 6px; font-size: 17px; line-height: 1.5; color: var(--on-dark-soft); }
+
+/* ---- shared split ---- */
+.par-split { display: grid; gap: var(--s6); align-items: center; }
+@media (min-width: 1024px) {
+  .par-split { grid-template-columns: minmax(0, 1fr) 42%; gap: var(--s8); }
+  .par-split--reverse { grid-template-columns: 42% minmax(0, 1fr); }
+}
+/* Copy first in the DOM, so mobile reads the headline before the screenshot —
+   never a large product image above the words that explain it. */
+@media (max-width: 1023px) { .par-split--reverse .par-split__shot { order: 2; } }
+
+/* ---- 04 independence ---- */
+.par-stages { display: grid; gap: var(--s3); margin-top: var(--s5); }
+.par-stages > li {
+  display: flex; align-items: center; gap: var(--s4);
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--r-card);
+  padding: var(--s4) var(--s5); font-size: 18px; font-weight: 600;
+}
+.par-stages__n { font-size: 15px; font-weight: 800; letter-spacing: 1px; color: var(--forest); flex-shrink: 0; }
+
+/* ---- 05 recipes + grocery ---- */
+.par-points { display: grid; gap: var(--s5); margin-top: var(--s6); }
+.par-points__n { display: block; font-size: 15px; font-weight: 800; letter-spacing: 1px; color: var(--lime); margin-bottom: 4px; }
+.par-points__h { font-size: 19px; line-height: 1.25; font-weight: 700; color: var(--on-dark); text-wrap: pretty; }
+.par-points__p { margin-top: 6px; font-size: 17px; line-height: 1.5; color: var(--on-dark-soft); max-width: 52ch; }
+/* Copy first, then the frames across the full container. The frames are a
+   fixed 300px each; any column narrower than about 640px cannot hold both. */
+.par-stack { display: grid; gap: var(--s6); }
+.par-stack .par-points { max-width: 900px; }
+@media (min-width: 820px) { .par-stack .par-points { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: var(--s7); } }
+.par-shots { display: flex; gap: var(--s5); justify-content: center; flex-wrap: wrap; min-width: 0; }
+@media (max-width: 699px) { .par-shots .device--b { display: none; } }
+
+/* ---- 07 safety ---- */
+.par-safe { display: grid; gap: var(--grid-gap); align-items: stretch; }
+@media (min-width: 620px) { .par-safe { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s5); } }
+@media (min-width: 1024px) { .par-safe { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.par-safe__h { font-size: 19px; line-height: 1.25; font-weight: 700; text-wrap: pretty; }
+.par-safe__p { margin-top: var(--s2); font-size: 17px; line-height: 1.5; color: var(--on-dark-soft); }
+.par-safe__note {
+  margin: var(--s6) auto 0; max-width: 62ch; text-align: center;
+  font-size: 18px; line-height: 1.55; color: var(--on-dark-soft);
+}
+.par-safe__note strong { color: var(--on-dark); }
+.par-safe__link { margin-top: var(--s5); text-align: center; }
+.par-safe__link .tlink { min-height: 44px; display: inline-flex; align-items: center; gap: var(--s2); }

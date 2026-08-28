@@ -33,8 +33,21 @@ export function WaitlistForm() {
   const [errors, setErrors] = useState<Errors>({});
   const [serverErr, setServerErr] = useState<string | null>(null);
   const doneRef = useRef<HTMLHeadingElement>(null);
+  /**
+   * Which CTA sent them here, read from ?s= on the URL (see withSource in
+   * Button.tsx). Read once on mount from window.location rather than
+   * useSearchParams, which would force this page out of static rendering.
+   *
+   * It is submitted with the form and nowhere else — nothing is recorded about
+   * a visitor who does not fill it in, which is what keeps the "no tracking"
+   * claim on /privacy true. The API allow-lists the value.
+   */
+  const source = useRef<string>("unknown");
 
-  useEffect(() => { track("waitlist_viewed"); }, []);
+  useEffect(() => {
+    track("waitlist_viewed");
+    try { source.current = new URLSearchParams(window.location.search).get("s") || "unknown"; } catch { /* no-op */ }
+  }, []);
   useEffect(() => { if (done) doneRef.current?.focus(); }, [done]);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
@@ -65,7 +78,7 @@ export function WaitlistForm() {
       const r = await fetch("/api/waitlist", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, pain, age, club, parent, athlete, oneToOne }),
+        body: JSON.stringify({ email, pain, age, club, parent, athlete, oneToOne, source: source.current }),
       });
       if (!r.ok) throw new Error(String(r.status));
       track("waitlist_joined", { answered: pain.length > 0, oneToOne });

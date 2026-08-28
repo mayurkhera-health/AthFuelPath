@@ -12,7 +12,7 @@ export function Hero() {
           <h1 id="hero-h" className="h1">Fuel smarter.<br />Play stronger.</h1>
           <p className="body muted-txt">{hero.sub}</p>
           <div className="cta-row">
-            <Button href="/signup" hero arrow section="hero">{cta.primary}</Button>
+            <Button href="/signup" hero arrow section="home-hero">{cta.primary}</Button>
             <Button href="/#how-it-works" variant="secondary" section="hero">{cta.secondary}</Button>
           </div>
           <p className="hero__note">{trialLine}</p>

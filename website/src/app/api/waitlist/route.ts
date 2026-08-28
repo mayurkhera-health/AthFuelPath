@@ -19,7 +19,21 @@ import nodemailer from "nodemailer";
 
 export const runtime = "nodejs";
 
-const MAX = { pain: 1200, email: 254, club: 140, parent: 120, athlete: 80, role: 40 } as const;
+const MAX = { pain: 1200, email: 254, club: 140, parent: 120, athlete: 80, role: 40, source: 40 } as const;
+/**
+ * Which form, on which page, produced this entry. Allow-listed rather than
+ * free text: it is written into an email and a log line, so it must not be a
+ * channel for arbitrary strings, and a fixed list is what makes the count
+ * comparable later. Anything unrecognised becomes "unknown" rather than being
+ * rejected — a lead is worth more than a clean label.
+ */
+const SOURCES = new Set([
+  "home_hero", "home_steps", "home_final",   // the three CTAs left on the homepage
+  "parents_hero", "parents_final",
+  "our_story", "safety_closing", "faq", "question", "sticky_bar",
+  "header", "menu",                          // the nav button and the mobile sheet
+  "coaches", "unknown",
+]);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const AGES = new Set(["Under 13", "13", "14", "15", "16", "17", "18 or older", ""]);
 
@@ -46,7 +60,7 @@ function rateLimited(ip: string): boolean {
 type Entry = {
   kind: "parent" | "coach" | "coach_answer";
   email: string; pain: string; age: string; club: string;
-  parent: string; athlete: string; role: string; oneToOne: boolean;
+  parent: string; athlete: string; role: string; oneToOne: boolean; source: string;
 };
 
 async function deliver(entry: Entry): Promise<boolean> {
@@ -94,6 +108,7 @@ async function deliver(entry: Entry): Promise<boolean> {
     `Role:              ${dash(entry.role)}`,
     `Club or program:   ${dash(entry.club)}`,
     `Email:             ${entry.email}`,
+    `Came from:         ${entry.source}`,
     "",
     "What they want to see:",
     entry.pain || "(none)",
@@ -112,6 +127,7 @@ async function deliver(entry: Entry): Promise<boolean> {
     `Age of athlete:    ${dash(entry.age)}`,
     `Club:              ${dash(entry.club)}`,
     `Wants 1:1 review:  ${entry.oneToOne ? "YES" : "no"}`,
+    `Came from:         ${entry.source}`,
     "",
     "Comments:",
     entry.pain || "(none)",
@@ -151,6 +167,8 @@ export async function POST(req: Request) {
   const oneToOne = body?.oneToOne === true;
   const age = String(body?.age ?? "").trim();
   const role = String(body?.role ?? "").trim().slice(0, MAX.role);
+  const rawSource = String(body?.source ?? "").trim().slice(0, MAX.source);
+  const source = SOURCES.has(rawSource) ? rawSource : "unknown";
   const kind: Entry["kind"] =
     body?.kind === "coach" ? "coach" : body?.kind === "coach_answer" ? "coach_answer" : "parent";
 
@@ -177,7 +195,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "invalid" }, { status: 400 });
   }
 
-  const entry: Entry = { kind, email: email.toLowerCase(), pain, age, club, parent, athlete, role, oneToOne };
+  const entry: Entry = { kind, email: email.toLowerCase(), pain, age, club, parent, athlete, role, oneToOne, source };
 
   // Written before the send so the lead survives an SMTP failure.
   console.log(`[waitlist] ${JSON.stringify(entry)}`);

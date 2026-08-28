@@ -15,7 +15,12 @@ export function Questions() {
   const [i, setI] = useState(0);
   const base = useId();
   const btns = useRef<(HTMLButtonElement | null)[]>([]);
-  const items = questions.items;
+  /* Three on the homepage, not four. The fourth ("between two games") overlaps
+     the tournament question — same weekend, narrower slice — and a fourth
+     near-identical option costs recognition rather than adding it. It still
+     exists in the array because it has its own /questions/[slug] page linked
+     from /faq. See questions.homeCount in site.ts. */
+  const items = questions.items.slice(0, questions.homeCount);
   const active = items[i];
 
   function select(next: number) {

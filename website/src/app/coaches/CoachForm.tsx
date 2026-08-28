@@ -100,7 +100,7 @@ export function CoachForm() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          kind: "coach", parent: name, email, club, role,
+          kind: "coach", parent: name, email, club, role, source: "coaches",
           company: hp, elapsed: Date.now() - openedAt.current,
         }),
       });

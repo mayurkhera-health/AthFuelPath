@@ -4,7 +4,7 @@ const b = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" })
    /login were in this list long after they were folded away or parked — and a
    404 page passes every check here, so a stale list reports ALL PASS on pages
    nobody is testing. Add a route here the same commit you add the page. */
-const PAGES = ["/", "/safety", "/our-story", "/coaches", "/faq", "/signup", "/questions/before-a-530-practice", "/privacy", "/terms", "/disclaimer"];
+const PAGES = ["/", "/safety", "/our-story", "/coaches", "/faq", "/signup", "/parents", "/questions/before-a-530-practice", "/privacy", "/terms", "/disclaimer"];
 const WIDTHS = [320, 390, 768, 1024, 1440];
 const fails = [];
 for (const w of WIDTHS) {

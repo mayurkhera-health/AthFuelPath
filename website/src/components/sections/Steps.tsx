@@ -27,7 +27,7 @@ export function Steps() {
           ))}
         </ol>
         <div className="cta-row cta-row--center" style={{ marginTop: "var(--s6)" }}>
-          <Button href="/signup" arrow section="steps">{cta.primary}</Button>
+          <Button href="/signup" arrow section="home-steps">{cta.primary}</Button>
         </div>
       </div>
     </section>

@@ -9,7 +9,7 @@ import { chromium } from "playwright";
  *   B. repeated 3-word phrases across the site, ranked
  *   C. repeated CLAIMS — how many times each core promise is asserted
  */
-const PAGES = ["/", "/coaches", "/our-story", "/safety", "/faq", "/signup", "/questions/before-a-530-practice"];
+const PAGES = ["/", "/parents", "/coaches", "/our-story", "/safety", "/faq", "/signup", "/questions/before-a-530-practice"];
 
 const PROBE = () =>
   [...document.querySelectorAll("p,li,h1,h2,h3,h4,dd,span.coach-trust__p,figcaption")]

@@ -17,14 +17,24 @@ import { dietitian } from "@/content/site";
  * body, a --page billing card), so the flip also fixed contrast that was wrong
  * on dark rather than introducing anything new.
  */
-export function Dietitian() {
+/**
+ * `head` overrides only the eyebrow, heading and opening paragraph.
+ *
+ * This section moved off the homepage to /parents, where it is headlined
+ * differently so the two pages do not render the same module twice. The three
+ * proof points, the billing line and the screenshot are NOT overridable and
+ * must stay identical wherever this renders: they are the substance of a paid
+ * offer, and two versions of them is two things to keep true.
+ */
+export function Dietitian({ head }: { head?: { eyebrow: string; h2: string; p: string } }) {
+  const h = head ?? { eyebrow: dietitian.eyebrow, h2: dietitian.h2, p: dietitian.body };
   return (
     <section id="dietitian" className="section surface-light diet" aria-labelledby="dt-h">
       <div className="container diet__grid">
         <div className="diet__copy">
-          <span className="eyebrow">{dietitian.eyebrow}</span>
-          <h2 id="dt-h" className="h2 balance" style={{ marginTop: "var(--s3)" }}>{dietitian.h2}</h2>
-          <p className="body muted-txt" style={{ marginTop: "var(--s4)" }}>{dietitian.body}</p>
+          <span className="eyebrow">{h.eyebrow}</span>
+          <h2 id="dt-h" className="h2 balance" style={{ marginTop: "var(--s3)" }}>{h.h2}</h2>
+          <p className="body muted-txt" style={{ marginTop: "var(--s4)" }}>{h.p}</p>
 
           <ul className="diet__points">
             {dietitian.points.map((p) => (

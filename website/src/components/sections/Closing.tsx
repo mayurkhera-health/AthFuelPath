@@ -8,7 +8,7 @@ export function Closing() {
         <h2 id="cl-h" className="h2 balance">{closing.h2}</h2>
         <p className="body muted-txt">{closing.sub}</p>
         <div className="cta-row cta-row--center">
-          <Button href="/signup" hero arrow section="closing">{cta.primary}</Button>
+          <Button href="/signup" hero arrow section="home-final">{cta.primary}</Button>
         </div>
         <p className="trust-row">{closing.trust}</p>
       </div>

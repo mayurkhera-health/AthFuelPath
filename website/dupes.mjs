@@ -10,7 +10,7 @@ import { chromium } from "playwright";
  * Text is taken from leaf elements only, so a wrapper's concatenated text is
  * not counted as a separate string.
  */
-const PAGES = ["/", "/coaches", "/our-story", "/safety", "/faq", "/signup", "/questions/before-a-530-practice"];
+const PAGES = ["/", "/parents", "/coaches", "/our-story", "/safety", "/faq", "/signup", "/questions/before-a-530-practice"];
 
 const PROBE = () => {
   const blocks = [];

@@ -511,23 +511,24 @@ export const ourStory = {
 export const nav = {
   links: [
     /**
-     * "For Parents" was removed here on 2026-08-28.
+     * "For Parents" now points at a real route.
      *
-     * It was an anchor, not a page — it scrolled a visitor two thirds down the
-     * homepage and landed them on the safety commitments, which is one specific
-     * reassurance rather than "everything for parents". The label promised a
-     * destination the site does not have.
+     * It was briefly removed on 2026-08-28 on the reasoning that the homepage
+     * IS the parents page, so a nav item promising a parents page was promising
+     * a destination that did not exist. That reasoning was right about the
+     * problem and wrong about the fix.
      *
-     * It does not have one because it does not need one: the homepage IS the
-     * parents page. Every section of it is addressed to a parent. /coaches
-     * exists because coaches are a different audience with a different ask;
-     * parents are the default audience, so there is nothing left over to put on
-     * a separate page. Building /for-parents would restate the homepage on a
-     * second URL.
+     * The split is by FUNNEL STAGE, not audience. The homepage stays
+     * parent-voiced and does recognition: the problem, the mechanism, and that
+     * it is safe for a kid, in under a minute. /parents does consideration —
+     * it answers the five objections that stop an interested parent from
+     * signing up. /coaches is a different buyer entirely.
      *
-     * The safety section keeps its id so any link already shared still lands.
+     * Consequence worth stating: do NOT neuter the homepage into
+     * audience-neutral product copy to justify the split.
      */
     { label: "How It Works", href: "/#how-it-works" },
+    { label: "For Parents", href: "/parents" },
     { label: "Coaches", href: "/coaches" },
     { label: "Our Story", href: "/our-story" },
   ],
@@ -573,6 +574,17 @@ export const questions = {
    */
   h2: "The questions you Google at 4pm.",
   listNote: "Every answer is built from the schedule you already keep.",
+  /**
+   * The homepage shows the first THREE. All four stay in this array because
+   * /parents runs the full set and each one also has its own /questions/[slug]
+   * page linked from /faq — deleting the fourth here would break both.
+   *
+   * The fourth ("between two games") is the one that goes, because it overlaps
+   * the tournament question directly: same weekend, same problem, a narrower
+   * slice. Keep the homepage set at three; this section is the hook, and a
+   * fourth near-identical option costs recognition rather than adding it.
+   */
+  homeCount: 3,
   /** Times and food categories only — never a calorie, macro, gram or portion figure. */
   items: [
     {
@@ -833,10 +845,54 @@ export const proof = {
   quotes: [] as { text: string; name: string; club: string }[],
 };
 
-/* ------------------------------------------------------------------ S9 */
+/* ------------------------------------------------------------------ S5
+ * Core capabilities — an INDEX of what is inside, not a demo.
+ *
+ * Replaces the "What should I cook this week?" block, which was the largest
+ * thing on the homepage: four numbered sub-sections, two phone frames, chip
+ * rows and a closing strip. That block now lives on /parents, where a reader
+ * has already decided they are interested and will read it.
+ *
+ * GUARDRAIL: these are not feature cards with screenshots inside. If a card
+ * grows past roughly 280px tall, cut copy — do not grow the card.
+ */
+export const capabilities = {
+  eyebrow: "Built around their week",
+  h2: "Everything their soccer week needs.",
+  items: [
+    { icon: "sun", label: "Today's Fuel Plan", h: "Know what fits the day.", p: "Simple guidance before, between and after soccer." },
+    { icon: "bowl", label: "Recipes That Fit", h: "Food that works with the schedule.", p: "Meals and snacks matched to the moment and their preferences." },
+    /* The Fuel Coach section was hidden from this page in August. It returns
+       here as a one-line card only — a much smaller claim than the section —
+       on Mayur's explicit call. The four parked Coach FAQs stay parked. */
+    { icon: "chat", label: "Fuel Coach", h: "Ask when real life gets complicated.", p: "Practical guidance when the plan doesn't quite fit the day." },
+    { icon: "cart", label: "Grocery Planning", h: "Turn the plan into food at home.", p: "Know what needs to be bought, and what's already in the kitchen." },
+  ],
+  cta: { label: "Explore AthFuelPath for parents", href: "/parents" },
+};
+
+/* ------------------------------------------------------------------ S9
+ * Trust strip — compressed.
+ *
+ * This was a six-claim section, then three. It is three short points now, and
+ * it stays on the HOMEPAGE on purpose: for a nutrition product aimed at minors,
+ * "is this a diet app" is a first-thirty-seconds objection, not a
+ * consideration-stage one. The fuller version is /parents#safety and the full
+ * account is /safety — three depths of one promise, each linked to the next.
+ *
+ * The Fuel Coach nutrition-breakdown disclosure is NOT in this compressed
+ * version. It lives on /parents#safety, on /safety, and in the FAQ. If those
+ * three ever lose it, it has to come back here.
+ */
 export const safety = {
   eyebrow: "Safety & privacy",
-  h2: "Safe for a growing kid.",
+  h2: "Built for growing athletes.",
+  sub: "AthFuelPath is about fueling, growth and recovery — not dieting or changing an athlete's body.",
+  secondary: "Practical sports nutrition guidance, with access to a registered dietitian when your family needs more support.",
+  links: [
+    { label: "Our approach for parents", href: "/parents#safety" },
+    { label: "Youth data & safety", href: "/safety" },
+  ],
   /**
    * THREE claims, not six. Cut on 2026-08-28.
    *
@@ -857,9 +913,9 @@ export const safety = {
      * dated, deliberate exception in the app (CLAUDE.md §14 rule 3, 2026-07-29).
      * An absolute "no calories anywhere" claim would be false. Do not restore it.
      */
-    { t: "Not built around calorie counting", d: "Daily plans, recipes and reports are about fueling, never a calorie target. If your athlete asks the Fuel Coach about a meal they ate, it may show a nutrition breakdown." },
-    { t: "No weight. No BMI. No body tracking.", d: "We don't collect it, show it or score it." },
-    { t: "Never a diet. Never less food.", d: "Every step is about adding fuel, not taking it away." },
+    { t: "No calorie counting", d: "Plans and recipes are about fueling, not hitting a number." },
+    { t: "No weight or BMI tracking", d: "We don't collect it, show it, or score it." },
+    { t: "Never a diet", d: "Every step is about adding fuel, not taking it away." },
   ],
 };
 
@@ -998,14 +1054,150 @@ export const faqsParked: Faq[] = [
   { group: "Safety", q: "Is the Fuel Coach medical advice?", a: "No. It is built for everyday sports fueling. Medical, injury, weight-loss and anything outside that scope gets redirected to the right professional.", event: "ai_coach_faq_open" },
 ];
 
+/* --------------------------------------------------------------- Parents
+ * /parents — the consideration page.
+ *
+ * WHAT THIS PAGE IS FOR. The homepage does recognition: a parent who has never
+ * heard of AthFuelPath learns the problem, the mechanism and that it is safe
+ * for a kid. This page is for the parent who is already interested and is now
+ * looking for a reason to say no:
+ *   1. Is this another app I have to run?
+ *   2. Will my athlete use it, or will I be nagging?
+ *   3. Is the guidance right for a 14-year-old?
+ *   4. What about her allergy?
+ *   5. Can I trust this?
+ * Benefit-led and objection-led. Not a nutrition-science page.
+ *
+ * THE RULE THAT KEEPS THIS PAGE HONEST: nothing here may be a second copy of a
+ * homepage module. Where a concept appears on both, the version here is
+ * shorter or deeper, differently headlined, and linked. `schedule` is the
+ * clearest case — the homepage owns the full schedule module, and this page
+ * gets three lines and no schedule UI.
+ */
+export const parents = {
+  hero: {
+    eyebrow: "For parents of youth athletes",
+    h1: "You manage the schedule. We'll help with the fuel.",
+    p: "Practice after school. Games on weekends. Tournaments that start at 8am. AthFuelPath turns your athlete's real schedule into simple guidance for what to eat, when to eat, and what to have ready.",
+    secondary: { label: "See how it works", href: "/#how-it-works" },
+  },
+
+  /** Leads the page, so /parents opens on something the homepage does not have. */
+  lead: {
+    eyebrow: "One less thing",
+    h2: "One less thing to figure out.",
+    p: "Soccer already comes with enough logistics. Food shouldn't become another daily planning exercise.",
+    moments: [
+      { when: "Before school", q: "What breakfast makes sense today?" },
+      { when: "After school", q: "What can they eat before practice?" },
+      { when: "After practice", q: "What if dinner isn't ready yet?" },
+      { when: "Tournament day", q: "What do we pack for six hours at the field?" },
+    ],
+    close: "AthFuelPath works around the schedule you already have.",
+  },
+
+  /** A bridge, not a section. The homepage owns the schedule module in full. */
+  schedule: {
+    h2: "Add the schedule once. Let AthFuelPath work around it.",
+    flow: ["Schedule", "AthFuelPath", "Today's plan"],
+    steps: [
+      { h: "Add the schedule", p: "Practices, games, tournaments and other training." },
+      { h: "AthFuelPath works out the timing", p: "Fueling guidance adjusts around what's happening that day." },
+      { h: "Your athlete sees what to do", p: "Simple, age-appropriate guidance through their day." },
+    ],
+  },
+
+  /**
+   * The section the homepage cannot carry, and the answer to "will I have to
+   * run this?". Reads as growing independence, never as a curriculum: no
+   * progress bars, no levels, no education framing.
+   */
+  independence: {
+    eyebrow: "Building better habits",
+    h2: "They can start owning it.",
+    p: "You shouldn't have to remind your athlete what to eat before every practice. AthFuelPath gives them a plan they can follow themselves, while keeping you in the picture.",
+    stages: [
+      { n: "01", t: "They see today's plan." },
+      { n: "02", t: "They understand why it matters." },
+      { n: "03", t: "They build the habit." },
+    ],
+  },
+
+  /** Migrated off the homepage. Six long explanations restructured into four. */
+  table: {
+    eyebrow: "From the plan to the table",
+    h2: "Dinner shouldn't require another decision.",
+    p: "AthFuelPath recommends meals and snacks that fit their schedule, food preferences and what's happening that day.",
+    points: [
+      { n: "01", h: "Recipes fit the moment", p: "Pre-practice, game-day, recovery and everyday meals." },
+      /* The allergy caveat is carried over verbatim from the homepage block and
+         must not be softened. It is a safety line, not marketing. */
+      { n: "02", h: "Their food limits are already there", p: "Allergies and food preferences saved on the profile are applied automatically. Always read the labels yourself." },
+      { n: "03", h: "Your own food counts", p: "Add the meals your family already makes instead of changing everything." },
+      { n: "04", h: "Turn it into a grocery list", p: "Take the week's plan from screen to shopping list — and tick off what's already in the kitchen." },
+    ],
+  },
+
+  /**
+   * Migrated off the homepage. AthFuelPath and the Fuel Coach are never
+   * positioned as medical care, diagnosis, treatment, or a replacement for a
+   * dietitian or physician. `dietitian.billing` and `dietitian.points` are
+   * reused verbatim from the homepage block — do not reword them here.
+   */
+  person: {
+    eyebrow: "When the app isn't enough",
+    h2: "Sometimes you need a person, not another app.",
+    p: "Most weeks the plan handles it. Sometimes it doesn't — a growth spurt, a rough tournament, a kid who won't eat before a 7am kickoff.",
+  },
+
+  /** The fuller version of the homepage trust strip. /safety is fuller still. */
+  safe: {
+    eyebrow: "Designed for growing athletes",
+    h2: "Fueling their sport. Not changing their body.",
+    cards: [
+      { h: "No calorie counting", p: "Daily plans, recipes and reports are about fueling, not hitting a calorie target. If your athlete asks the Fuel Coach about a meal, it may show a nutrition breakdown." },
+      { h: "No weight or BMI tracking", p: "We don't collect it, show it, or score it." },
+      { h: "Never a diet", p: "Food isn't sorted into good and bad, and athletes are never encouraged to eat less." },
+      { h: "Age-appropriate guidance", p: "Built around what a growing athlete needs, not scaled-down adult advice." },
+    ],
+    note: { h: "Parents stay connected.", p: "AthFuelPath helps athletes build independence without cutting parents out." },
+    link: { label: "Read our youth data policy", href: "/privacy" },
+  },
+
+  /**
+   * SIX questions, not seven. "What does it cost?" is deliberately absent:
+   * nothing on this site states or implies a price until pricing is settled,
+   * which is the same call that removed the pricing line from /coaches. If that
+   * changes, this is where the answer goes.
+   */
+  faq: {
+    eyebrow: "Parents ask",
+    h2: "A few things you may be wondering.",
+    items: [
+      { q: "What age is AthFuelPath designed for?", a: "Soccer players aged 13 to 17. A parent or guardian creates the account and controls it." },
+      { q: "Does my athlete use the app, or do I?", a: "Both of you, with separate logins. You set it up and see the weekly report. Your athlete sees their own day." },
+      { q: "Does AthFuelPath count calories or track weight?", a: "No. Weight and BMI are never collected, shown or scored, and plans are built around fueling rather than a calorie target. Food isn't sorted into good and bad, and an athlete is never encouraged to eat less." },
+      { q: "Can it handle allergies and food preferences?", a: "Yes. Allergies and food limits are saved on your athlete's profile during setup, and recipe suggestions are filtered against them automatically. Always read the labels yourself." },
+      /* Answers strictly to what ships. Soccer only, said plainly. */
+      { q: "What if my athlete plays more than one sport?", a: "AthFuelPath is built for soccer today — practices, games, tournaments and conditioning. Other sports may come later, and the guidance is not tuned for them yet." },
+      { q: "Is this a replacement for a dietitian?", a: "No. AthFuelPath gives everyday sports nutrition guidance to learn from. When your family needs more, you can book time with a registered dietitian, and anything medical goes to a person rather than software." },
+    ],
+  },
+
+  /** Same component as the homepage close, different headline on purpose. */
+  close: {
+    h2: "You've got the schedule handled. Let us take the food.",
+    sub: "Join the waitlist and we'll email you when it opens.",
+    trust: "Built for soccer players 13–17 and the parents helping them get there.",
+  },
+};
+
 /* ---------------------------------------------------------------- Footer */
 export const footer = {
   blurb: "Straightforward sports nutrition for young soccer players and the families behind them.",
   explore: [
-    /* "For parents" removed with the nav entry — see the note on nav.links.
-       Safety commitments already have their own footer link under Legal &
-       safety, which is a truer home for what that anchor pointed at. */
     { label: "How it works", href: "/#how-it-works" },
+    { label: "For parents", href: "/parents" },
     { label: "Coaches", href: "/coaches" },
     { label: "Our story", href: "/our-story" },
     { label: "All questions", href: "/faq" },
