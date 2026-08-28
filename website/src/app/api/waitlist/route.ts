@@ -154,6 +154,25 @@ export async function POST(req: Request) {
   const kind: Entry["kind"] =
     body?.kind === "coach" ? "coach" : body?.kind === "coach_answer" ? "coach_answer" : "parent";
 
+  /**
+   * Spam defence, no CAPTCHA.
+   *
+   * `company` is a honeypot: positioned off-screen, never focusable, invisible
+   * to anyone using the form. Anything in it came from a script.
+   *
+   * `elapsed` is how long the form was open. A person cannot read four labels,
+   * type a name, a club and an email in under two seconds.
+   *
+   * Both return 200 with ok:true. A bot that gets a 400 retries with the field
+   * removed; one that gets a success page stops. Nothing is logged or sent.
+   */
+  const honeypot = String(body?.company ?? "").trim();
+  const elapsed = Number(body?.elapsed ?? Number.POSITIVE_INFINITY);
+  if (honeypot || (Number.isFinite(elapsed) && elapsed < 2000)) {
+    console.log(`[waitlist] discarded (${honeypot ? "honeypot" : `${elapsed}ms`})`);
+    return NextResponse.json({ ok: true });
+  }
+
   if (!EMAIL_RE.test(email) || !parent || (kind === "parent" && !AGES.has(age))) {
     return NextResponse.json({ ok: false, error: "invalid" }, { status: 400 });
   }

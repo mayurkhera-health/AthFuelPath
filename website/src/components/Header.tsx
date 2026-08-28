@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { Logo } from "./ui/Logo";
 import { Button } from "./ui/Button";
 import { Menu, Close } from "./ui/Icons";
-import { nav, cta, coaches } from "@/content/site";
+import { nav, cta } from "@/content/site";
 import { ctaClick } from "@/lib/analytics";
 
 export function Header() {
@@ -13,14 +13,15 @@ export function Header() {
   const sheetRef = useRef<HTMLDivElement>(null);
   const path = usePathname();
   /**
-   * On /coaches the whole page converts on "Request Coach Access", so the nav
-   * button matches rather than offering a parent waitlist beside it. Scoped to
-   * this one route on purpose — every other page keeps the site-wide CTA.
+   * The nav CTA is "Join the waitlist" on every route, /coaches included.
+   *
+   * It used to swap to "Request Coach Access" on /coaches. That was reverted:
+   * the nav is site navigation, and a button that changes label depending on
+   * the page teaches a visitor that the header is unreliable. Coach Access is
+   * offered three times inside /coaches — hero, sticky bar, form — which is
+   * where a page-specific ask belongs.
    */
-  const onCoaches = path === "/coaches";
-  const primary = onCoaches
-    ? { label: coaches.ctaLabel, href: "/coaches#coach-access" }
-    : { label: cta.primary, href: "/signup" };
+  const primary = { label: cta.primary, href: "/signup" };
 
   useEffect(() => { setOpen(false); }, [path]);
 

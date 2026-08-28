@@ -34,6 +34,11 @@ for (const w of WIDTHS) {
              Measure that instead of the 1px input, but do NOT simply skip it:
              if the label is small the control is still unreachable. */
           const rc = el.getBoundingClientRect();
+          /* Not a target for anyone: hidden from assistive tech AND out of the
+             tab order. Both conditions, deliberately — a control that is only
+             aria-hidden is still reachable by keyboard and must still pass.
+             This is what lets the spam honeypot through. */
+          if (el.closest('[aria-hidden="true"]') && el.getAttribute("tabindex") === "-1") return;
           const lab = el.closest("label");
           const hidden = (el.tagName === "INPUT" && lab && (rc.width <= 2 || rc.height <= 2));
           const box = hidden ? lab.getBoundingClientRect() : rc;

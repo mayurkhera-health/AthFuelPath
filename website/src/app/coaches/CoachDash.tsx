@@ -58,24 +58,33 @@ export function CoachDash() {
                 {st.metrics.map((m) => (
                   <li key={m.label}>
                     <span className="dash__label">{m.label}</span>
-                    <b className="dash__value">
-                      {m.value}{"suffix" in m && m.suffix && <span className="dash__suffix">{m.suffix}</span>}
-                    </b>
-                    <span className="dash__bar" aria-hidden>
-                      <i className={"warn" in m && m.warn ? "is-warn" : undefined} style={{ width: `${m.pct}%` }} />
-                    </span>
+                    {/* A percentage gets the big numeral; a phrase like "Most of
+                        the squad" gets a smaller size so it does not wrap to
+                        three lines in a half-width tile. */}
+                    <b className={`dash__value${/%$/.test(m.value) ? "" : " dash__value--phrase"}`}>{m.value}</b>
+                    <span className="dash__bar" aria-hidden><i style={{ width: `${m.pct}%` }} /></span>
                     <span className="dash__note">{m.note}</span>
                   </li>
                 ))}
               </ul>
 
-              <ol className="dash__week" aria-label="The week as scheduled">
-                {dash.days.map((d) => (
-                  <li key={d.d} className={"game" in d && d.game ? "is-game" : "train" in d && d.train ? "is-train" : undefined}>
-                    <b>{d.d}</b>{d.k}
-                  </li>
-                ))}
-              </ol>
+              {/* Scrolls horizontally under 620px rather than crushing seven
+                  columns into 350px. data-today marks the column the mobile
+                  layout snaps to, so a coach opening this on a phone lands on
+                  the day the panel is talking about. */}
+              <div className="dash__week-scroll">
+                <ol className="dash__week" aria-label="The week as scheduled">
+                  {dash.days.map((d) => (
+                    <li
+                      key={d.d}
+                      data-today={d.d === st.today ? "" : undefined}
+                      className={"game" in d && d.game ? "is-game" : "train" in d && d.train ? "is-train" : undefined}
+                    >
+                      <b>{d.d}</b>{d.k}
+                    </li>
+                  ))}
+                </ol>
+              </div>
             </div>
           </div>
 
@@ -85,6 +94,16 @@ export function CoachDash() {
             <span className="eyebrow">{dash.readTitle}</span>
             <h3 className="dash__read-h">{st.read.h}</h3>
             <p className="dash__read-p">{st.read.p}</p>
+
+            {/* Drawn, not wired — see dash.action in site.ts. A <span>, not a
+                <button>: this is part of the illustration, and a control that
+                looks live and does nothing when a coach presses it is worse
+                than a picture of one. Swap it for a real button the day the
+                product can send the reminder. */}
+            <span className="dash__action" aria-hidden>
+              <span className="dash__action-arrow">→</span>{dash.action}
+            </span>
+
             <p className="dash__read-foot">{dash.readFoot}</p>
           </aside>
         </Reveal>

@@ -172,7 +172,9 @@ export const coaches = {
     sub: "Parents set it up. Athletes use it. You look when you want to.",
     items: [
       { n: "01", h: "Nothing new to manage.", p: "No roster maintenance. No meal logging. No chasing athletes. Families set up their own accounts." },
-      { n: "02", h: "See the squad, not the individual.", p: "Understand how the team is fueling as a group, without seeing an athlete's meals, weight or photos." },
+      /* The privacy clause was cut from this card. Section 5 makes the same
+         promise at length; saying it twice here read as defensive. */
+      { n: "02", h: "See the squad, not the individual.", p: "Understand how the team is fueling as a group, week to week." },
       { n: "03", h: "Built around your schedule.", p: "Training Tuesday. Game Saturday. Tournament weekend. Fueling guidance adjusts around the week you have already planned." },
     ],
   },
@@ -180,16 +182,16 @@ export const coaches = {
   why: {
     h2: "You coach the game. We help with what happens between sessions.",
     sub: "AthFuelPath gives families the guidance to fuel around the schedule you have already created, and gives you just enough visibility to understand how the squad is doing.",
+    /* All three headings are verb-led and address the coach. The previous set
+       mixed an outcome ("Better prepared athletes"), an action ("Spot team-wide
+       gaps") and a state ("You stay the coach"), so the three did not read as
+       one list. Keep the parallelism if these are ever rewritten. */
     items: [
-      { icon: "calendar", h: "Better prepared athletes", p: "Families understand how to fuel around practices, games and tournament weekends." },
-      { icon: "trend", h: "Spot team-wide gaps", p: "See when fueling habits across the squad need attention, without singling out a player." },
-      { icon: "whistle", h: "You stay the coach", p: "AthFuelPath handles the nutrition guidance. You keep your attention on coaching." },
+      { icon: "calendar", h: "Fuel the week you planned", p: "Families get guidance built around your actual training and match schedule — practices, fixtures, tournament weekends." },
+      { icon: "trend", h: "See where the squad slips", p: "Spot the moments the group tends to miss — pre-game timing, tournament days, the drive home — as a team pattern, not a player list." },
+      { icon: "whistle", h: "Nudge the whole team at once", p: "Send the squad a fueling reminder for Saturday in one tap. No follow-up, no chasing, no individual conversations." },
     ],
   },
-
-  /** The bridge into the product. Kept to two lines — any longer and it repeats
-   *  the section above it rather than handing over to the dashboard. */
-  bridge: { a: "You plan the workload.", b: "AthFuelPath helps families fuel for it." },
 
   dash: {
     badge: "Early access · opening to clubs this season",
@@ -199,34 +201,46 @@ export const coaches = {
     /**
      * Two states, switched by tabs. The point is to show the dashboard is worth
      * looking at twice in a week, not to build a demo. Keep it to two.
+     *
+     * DISPLAY RULES for anything a coach can see. These are not style choices:
+     *   - No raw counts and no denominators. "Most of the squad", never 15/18.
+     *     A denominator invites a coach to work out which three.
+     *   - No individual names, no leaderboard, no ranking between athletes.
+     *   - Nothing that frames non-participating families as a gap or a to-do.
+     *     The "Not set up yet · 3 families" tile was removed for this reason and
+     *     must not come back, as a count or as a percentage.
+     *   - Anything families reported themselves is labelled as self-reported.
+     *     Never present it as measured.
+     * The tabs are named for the moment, not the weekday, so the two states read
+     * as one week seen twice rather than two different weeks.
      */
     states: [
       {
         id: "tue",
-        tab: "Tuesday",
+        tab: "Early week",
         week: "Week of 8 Sep",
+        today: "TUE",
         metrics: [
-          { label: "Fueling days followed", value: "78%", pct: 78, note: "Squad average, last 7 days" },
-          { label: "Pre-game meal on time", value: "15", suffix: "/18", pct: 83, note: "Last Saturday's fixture" },
-          { label: "Not set up yet", value: "3", pct: 17, note: "Families still to finish onboarding", warn: true },
+          { label: "Fueling days followed", value: "78%", pct: 78, note: "Self-reported by families, last 7 days" },
+          { label: "Pre-game meal on time", value: "Most of the squad", pct: 83, note: "Last Saturday's fixture" },
         ],
         read: {
           h: "Week looks on track",
-          p: "Most of the squad is following their fueling days ahead of Saturday's fixture. Three families still have not finished setting up.",
+          p: "Most of the squad is following their fueling days ahead of Saturday's fixture.",
         },
       },
       {
         id: "fri",
-        tab: "Friday",
+        tab: "Pre-game",
         week: "Week of 8 Sep",
+        today: "FRI",
         metrics: [
-          { label: "Fueling days followed", value: "81%", pct: 81, note: "Squad average, last 7 days" },
-          { label: "Pre-game prep done", value: "9", suffix: "/18", pct: 50, note: "For tomorrow's 10am kickoff", warn: true },
-          { label: "Not set up yet", value: "2", pct: 11, note: "Families still to finish onboarding", warn: true },
+          { label: "Fueling days followed", value: "81%", pct: 81, note: "Self-reported by families, last 7 days" },
+          { label: "Pre-game prep done", value: "About half the squad", pct: 50, note: "For tomorrow's 10am kickoff" },
         ],
         read: {
           h: "Pre-game fueling needs attention",
-          p: "Half the squad has not completed tomorrow's pre-game preparation. A reminder at tonight's session would land.",
+          p: "About half the squad has not completed tomorrow's pre-game preparation. A reminder at tonight's session would land.",
         },
       },
     ],
@@ -240,6 +254,17 @@ export const coaches = {
      *  guidance back to the app, which is exactly the division of labour the
      *  whole page is selling. */
     readFoot: "You see the pattern. AthFuelPath handles the individual guidance.",
+    /**
+     * The one thing a coach does with what they just read, so the panel ends in
+     * an action rather than an observation.
+     *
+     * This is drawn, not wired — the whole dashboard is. It renders as part of
+     * the mock and is deliberately NOT a real button: a control that looks live
+     * and does nothing when a coach presses it is worse than a picture of one.
+     * When the product ships this, make it a real button here and delete this
+     * paragraph.
+     */
+    action: "Send the squad this week's pre-game reminder",
   },
 
   trust: {
@@ -264,15 +289,46 @@ export const coaches = {
     h2: "Bring AthFuelPath to your squad.",
     sub: "We are opening Coach Access to a small group of youth soccer clubs this season. Early clubs help shape the coach experience and get direct access to our team as it rolls out.",
     note: "No commitment. Tell us about your club and we will follow up personally.",
+    /**
+     * COMMERCIAL CLAIM — do not edit without Mayur's say-so. This states a price
+     * (none, for clubs, during early access) and a boundary (families subscribe
+     * separately). If either changes, this line changes first.
+     */
+    pricing: "Free for clubs during early access. Families choose whether to subscribe.",
+    /** Answers the question every coach asks next: what do I actually have to
+     *  do, and what am I signing my families up for. */
+    how: {
+      h: "How it works for your club",
+      p: "We send you a club invite link and a short parent explainer. Families decide for themselves whether to join — participation is always optional.",
+    },
     name: { label: "Your name" },
     club: { label: "Club, school or program" },
+    /** No default selection. A pre-ticked "Coach" meant every athletic director
+     *  and trainer who did not look closely came through as a coach. */
     role: { label: "Your role", options: ["Coach", "Athletic Director", "Trainer", "Club Admin"] },
     email: { label: "Email" },
     submit: "Request Coach Access",
     sending: "Sending…",
+    /** Errors name the fix, not the failure. "Invalid input" tells a coach
+     *  nothing they can act on. */
+    errors: {
+      name: "Enter the name we should use when we reply",
+      email: "Enter an email we can reply to",
+      role: "Choose the closest match to your role",
+    },
+    privacyNote: {
+      a: "We'll only use this to contact you about Coach Access. See our",
+      link: "privacy notice",
+      href: "/privacy",
+    },
     done: {
-      h: "Thanks — that's with us.",
-      p: "Purvi will be in touch about bringing your club into the first group.",
+      /**
+       * "Two business days" is a promise a person has to keep. It is here
+       * because the spec asked for it; if Purvi cannot answer that fast, change
+       * this line rather than letting a club wait on it.
+       */
+      h: "Request received.",
+      p: "We'll email you within two business days with early-access details for your club.",
     },
     /**
      * Asked AFTER the request is recorded, never before. The answer is the most

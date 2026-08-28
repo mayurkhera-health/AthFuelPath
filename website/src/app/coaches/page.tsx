@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { Reveal } from "@/components/ui/Reveal";
 import { CoachHeroCta } from "./CoachHeroCta";
 import { CoachDash } from "./CoachDash";
@@ -29,7 +30,7 @@ export const metadata = routeMetadata({
  * The dashboard is coded, not captured. See the note on `coaches` in site.ts.
  */
 export default function CoachesPage() {
-  const { hero, effort, why, bridge, trust, form } = coaches;
+  const { hero, effort, why, dash, trust, form } = coaches;
 
   const icons: Record<string, React.ReactNode> = {
     calendar: (<><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></>),
@@ -41,7 +42,7 @@ export default function CoachesPage() {
     <div className="coachpg">
       {/* 1 — hero: the problem a coach cannot see */}
       <section className="section surface-dark coach-hero">
-        <div className="container">
+        <div className="container coach-hero__grid">
           <div className="coach-hero__col">
             <span className="eyebrow">{hero.eyebrow}</span>
             <h1 className="coach-hero__h1">{hero.h1}</h1>
@@ -51,6 +52,27 @@ export default function CoachesPage() {
               {hero.chips.map((c) => <li key={c} className="chip">{c}</li>)}
             </ul>
             <CoachHeroCta />
+          </div>
+
+          {/* A cropped corner of the dashboard, so the hero shows the thing
+              instead of only describing it. Decorative: the real dashboard is
+              two sections down and this repeats its numbers, so it is hidden
+              from assistive tech rather than read twice. Hidden below 768px,
+              where it would push the CTA out of the first viewport. */}
+          <div className="coach-hero__peek" aria-hidden>
+            <ol className="peek__week">
+              {dash.days.map((d) => (
+                <li key={d.d} className={"game" in d && d.game ? "is-game" : "train" in d && d.train ? "is-train" : undefined}>
+                  <b>{d.d}</b>{d.k}
+                </li>
+              ))}
+            </ol>
+            <div className="peek__stat">
+              <span className="peek__label">{dash.states[0].metrics[0].label}</span>
+              <b className="peek__value">{dash.states[0].metrics[0].value}</b>
+              <span className="peek__bar"><i style={{ width: `${dash.states[0].metrics[0].pct}%` }} /></span>
+              <span className="peek__note">{dash.states[0].metrics[0].note}</span>
+            </div>
           </div>
         </div>
       </section>
@@ -94,11 +116,9 @@ export default function CoachesPage() {
               </li>
             ))}
           </ul>
-
-          <p className="coach-bridge">
-            <span>{bridge.a}</span>
-            <span>{bridge.b}</span>
-          </p>
+          {/* The centred bridge line that sat here ("You plan the workload.
+              AthFuelPath helps families fuel for it.") was cut: it restated the
+              section heading directly above it. */}
         </div>
       </section>
 
@@ -124,13 +144,25 @@ export default function CoachesPage() {
             ))}
           </ul>
 
+          {/* Widened and given her face. As a narrow column of text it read as
+              a disclaimer; the person is the credential. */}
           <Reveal className="coach-cred" i={1}>
             <span className="eyebrow">{trust.credibility.label}</span>
             <p className="coach-cred__p">{trust.credibility.p}</p>
-            <p className="coach-cred__who">
-              <strong>{trust.credibility.name}</strong>
-              <span>{trust.credibility.role}</span>
-            </p>
+            <div className="coach-cred__who">
+              <Image
+                src="/img/purvi-avatar.webp"
+                alt=""
+                width={192}
+                height={192}
+                className="coach-cred__ico"
+                aria-hidden
+              />
+              <span>
+                <strong>{trust.credibility.name}</strong>
+                <span>{trust.credibility.role}</span>
+              </span>
+            </div>
           </Reveal>
         </div>
       </section>
@@ -141,7 +173,16 @@ export default function CoachesPage() {
           <div>
             <h2 id="cf-h" className="h2 balance">{form.h2}</h2>
             <p className="body muted-txt" style={{ marginTop: "var(--s4)" }}>{form.sub}</p>
+            <p className="coach-price">{form.pricing}</p>
             <p className="small muted-txt" style={{ marginTop: "var(--s4)" }}>{form.note}</p>
+
+            {/* What the club is actually agreeing to, before they ask. The last
+                clause is the one that matters to a coach who does not want to
+                be seen pushing an app onto families. */}
+            <div className="coach-how">
+              <h3 className="coach-how__h">{form.how.h}</h3>
+              <p className="coach-how__p">{form.how.p}</p>
+            </div>
           </div>
           <CoachForm />
         </div>
