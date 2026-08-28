@@ -19,7 +19,7 @@ import nodemailer from "nodemailer";
 
 export const runtime = "nodejs";
 
-const MAX = { pain: 1200, email: 254, club: 120 } as const;
+const MAX = { pain: 1200, email: 254, club: 120, parent: 120, athlete: 80 } as const;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const AGES = new Set(["Under 13", "13", "14", "15", "16", "17", "18 or older", ""]);
 
@@ -43,7 +43,7 @@ function rateLimited(ip: string): boolean {
   return false;
 }
 
-type Entry = { email: string; pain: string; age: string; club: string };
+type Entry = { email: string; pain: string; age: string; club: string; parent: string; athlete: string; oneToOne: boolean };
 
 async function deliver(entry: Entry): Promise<boolean> {
   const user = process.env.GMAIL_USER;
@@ -62,20 +62,34 @@ async function deliver(entry: Entry): Promise<boolean> {
     greetingTimeout: 8000,
     socketTimeout: 8000,
   });
-  const lines = [
-    `Email:  ${entry.email}`,
-    `Age:    ${entry.age || "—"}`,
-    `Club:   ${entry.club || "—"}`,
+  const dash = (v: string) => v || "—";
+  const body = [
+    "Hello Purvi,",
     "",
-    "Hardest part right now:",
-    entry.pain || "(no answer)",
+    "You have received interest for AthFuelPath.",
+    "Here are the details.",
+    "",
+    `Name of parent:    ${entry.parent}`,
+    `Name of athlete:   ${dash(entry.athlete)}`,
+    `Parent email:      ${entry.email}`,
+    `Age of athlete:    ${dash(entry.age)}`,
+    `Club:              ${dash(entry.club)}`,
+    `Wants 1:1 review:  ${entry.oneToOne ? "YES" : "no"}`,
+    "",
+    "Comments:",
+    entry.pain || "(none)",
+    "",
+    "—",
+    "Sent by the AthFuelPath waitlist form. Reply to this email to answer them directly.",
   ].join("\n");
   await t.sendMail({
     from: `"AthFuelPath waitlist" <${user}>`,
     to,
+    // Replying in the mail client answers the parent, not the form.
     replyTo: entry.email,
-    subject: `Waitlist: ${entry.email}${entry.club ? ` (${entry.club})` : ""}`,
-    text: lines,
+    // "[1:1]" first so Purvi can filter her inbox on it.
+    subject: `${entry.oneToOne ? "[1:1] " : ""}AthFuelPath waitlist: ${entry.parent || entry.email}${entry.club ? ` · ${entry.club}` : ""}`,
+    text: body,
   });
   return true;
 }
@@ -90,13 +104,16 @@ export async function POST(req: Request) {
   const email = String(body?.email ?? "").trim().slice(0, MAX.email);
   const pain = String(body?.pain ?? "").trim().slice(0, MAX.pain);
   const club = String(body?.club ?? "").trim().slice(0, MAX.club);
+  const parent = String(body?.parent ?? "").trim().slice(0, MAX.parent);
+  const athlete = String(body?.athlete ?? "").trim().slice(0, MAX.athlete);
+  const oneToOne = body?.oneToOne === true;
   const age = String(body?.age ?? "").trim();
 
-  if (!EMAIL_RE.test(email) || !AGES.has(age)) {
+  if (!EMAIL_RE.test(email) || !parent || !AGES.has(age)) {
     return NextResponse.json({ ok: false, error: "invalid" }, { status: 400 });
   }
 
-  const entry: Entry = { email: email.toLowerCase(), pain, age, club };
+  const entry: Entry = { email: email.toLowerCase(), pain, age, club, parent, athlete, oneToOne };
 
   // Written before the send so the lead survives an SMTP failure.
   console.log(`[waitlist] ${JSON.stringify(entry)}`);

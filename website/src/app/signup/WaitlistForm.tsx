@@ -20,7 +20,10 @@ import { site, waitlist } from "@/content/site";
  *   3. No interactive element is nested inside a <label>. The old consent row
  *      wrapped two links in one, which let a tap on "Terms" toggle the checkbox.
  */
-type Errors = Partial<Record<"email", string>>;
+type Errors = Partial<Record<"email" | "parent", string>>;
+
+/** DOM order, so focus lands on the first invalid field a person would reach. */
+const FIELD_ORDER = ["email", "parent"] as const;
 
 export function WaitlistForm() {
   const [done, setDone] = useState(false);
@@ -41,12 +44,17 @@ export function WaitlistForm() {
     const pain = String(fd.get("pain") ?? "").trim();
     const age = String(fd.get("age") ?? "").trim();
     const club = String(fd.get("club") ?? "").trim();
+    const parent = String(fd.get("parent") ?? "").trim();
+    const athlete = String(fd.get("athlete") ?? "").trim();
+    const oneToOne = fd.get("oneToOne") === "on";
 
     const errs: Errors = {};
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errs.email = "Please enter a valid email.";
+    if (!parent) errs.parent = "Please tell us your name.";
     setErrors(errs);
     if (Object.keys(errs).length) {
-      form.querySelector<HTMLElement>('[name="email"]')?.focus();
+      const first = FIELD_ORDER.find((f) => errs[f]);
+      if (first) form.querySelector<HTMLElement>(`[name="${first}"]`)?.focus();
       return;
     }
 
@@ -56,10 +64,10 @@ export function WaitlistForm() {
       const r = await fetch("/api/waitlist", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, pain, age, club }),
+        body: JSON.stringify({ email, pain, age, club, parent, athlete, oneToOne }),
       });
       if (!r.ok) throw new Error(String(r.status));
-      track("waitlist_joined", { answered: pain.length > 0 });
+      track("waitlist_joined", { answered: pain.length > 0, oneToOne });
       setAnswered(pain.length > 0);
       setDone(true);
     } catch {
@@ -105,6 +113,23 @@ export function WaitlistForm() {
           : <span id="h-mail" className="hint">{waitlist.fields.email.hint}</span>}
       </div>
 
+      <div className={`field${errors.parent ? " field--err" : ""}`}>
+        <label htmlFor="parent">{waitlist.fields.parent.label}</label>
+        <input
+          id="parent" name="parent" maxLength={120} autoComplete="name" required
+          aria-invalid={!!errors.parent} aria-describedby={errors.parent ? "e-parent" : "h-parent"}
+        />
+        {errors.parent
+          ? <span id="e-parent" className="err" role="alert">{errors.parent}</span>
+          : <span id="h-parent" className="hint">{waitlist.fields.parent.hint}</span>}
+      </div>
+
+      <div className="field">
+        <label htmlFor="athlete">{waitlist.fields.athlete.label}</label>
+        <input id="athlete" name="athlete" maxLength={80} autoComplete="off" />
+        <span className="hint">{waitlist.fields.athlete.hint}</span>
+      </div>
+
       <div className="field">
         <label htmlFor="age">{waitlist.fields.age.label}</label>
         <select id="age" name="age" defaultValue="">
@@ -117,6 +142,17 @@ export function WaitlistForm() {
         <label htmlFor="club">{waitlist.fields.club.label}</label>
         <input id="club" name="club" maxLength={120} autoComplete="organization" />
         <span className="hint">{waitlist.fields.club.hint}</span>
+      </div>
+
+      {/* Checkbox and label are siblings, associated by id. Never wrap a label
+          around interactive content — the old consent row did, and a tap on the
+          links inside it toggled the box. */}
+      <div className="check">
+        <input id="oneToOne" name="oneToOne" type="checkbox" />
+        <label htmlFor="oneToOne">
+          <strong>{waitlist.fields.oneToOne.label}</strong>
+          <span className="hint" style={{ display: "block", marginTop: 4 }}>{waitlist.fields.oneToOne.hint}</span>
+        </label>
       </div>
 
       {serverErr && (

@@ -3,17 +3,20 @@ import { Button } from "@/components/ui/Button";
 import Link from "next/link";
 import { Arrow } from "@/components/ui/Icons";
 import { questionPages } from "@/content/questions";
-import { faqs, cta, trialLine } from "@/content/site";
+import { faqs, cta, trialLine, faqNotice } from "@/content/site";
 import { routeMetadata } from "@/lib/meta";
 
 export const metadata = routeMetadata({
   title: "All questions",
-  description: "Setup, safety and billing questions parents ask about AthFuelPath.",
+  description: "Setup and safety questions parents ask about AthFuelPath, the sports nutrition app for soccer players 13-17.",
   path: "/faq",
   imageAlt: "AthFuelPath — fuel smarter, play stronger.",
 });
 
-const groups = ["Setup", "Safety", "Billing"] as const;
+/* Billing was dropped when pricing was hidden. Groups are filtered to those
+   that actually have questions, so removing a group's last FAQ can never leave
+   an empty heading on the page again. */
+const GROUPS = ["Setup", "Safety", "Billing"] as const;
 
 export default function FaqPage() {
   const schema = {
@@ -29,7 +32,8 @@ export default function FaqPage() {
           <div className="text-col">
             <span className="eyebrow">All questions</span>
             <h1 className="h1" style={{ fontSize: "clamp(30px, 5vw, 44px)", marginTop: "var(--s4)" }}>Questions parents ask.</h1>
-            {groups.map((g) => (
+            <p className="notice" style={{ marginTop: "var(--s4)" }}>{faqNotice}</p>
+            {GROUPS.filter((g) => faqs.some((f) => f.group === g)).map((g) => (
               <section key={g} style={{ marginTop: "var(--s6)" }}>
                 <h2 className="h4" style={{ marginBottom: "var(--s4)" }}>{g}</h2>
                 <Accordion items={faqs.filter((f) => f.group === g)} openFirst={g === "Setup"} />

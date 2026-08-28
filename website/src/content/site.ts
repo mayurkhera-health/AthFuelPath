@@ -81,9 +81,38 @@ export const waitlist = {
       hint: "A sentence is plenty. This is the most useful thing you can give us.",
       placeholder: "Late practices and nobody's hungry at 9pm…",
     },
-    email: { label: "Email", hint: "The only thing we need." },
+    email: { label: "Your email", hint: "Where we send the one email." },
+    parent: { label: "Your name", hint: "So Purvi knows who she is writing back to." },
+    /**
+     * A child's first name, on a public form, before any consent flow exists.
+     * Deliberately optional, deliberately first-name-only, and deliberately
+     * labelled so a parent can see it is not required. Do not make this
+     * required, do not ask for a surname, and do not add date of birth — the
+     * age band below is enough to segment on.
+     */
+    athlete: { label: "Your athlete's first name", hint: "Optional. First name is plenty." },
     age: { label: "Your athlete's age", options: ["Under 13", "13", "14", "15", "16", "17", "18 or older"] },
     club: { label: "Club or team", hint: "Optional. Helps us know where to start." },
+    /**
+     * The concierge offer, as one optional checkbox.
+     *
+     * NOT called a consultation, a session, or counselling: site.disclaimer
+     * draws the line at "sports nutrition guidance, not medical nutrition
+     * therapy", and those words cross it.
+     *
+     * Says NOTHING about price, on purpose. That is only safe because the box
+     * is an expression of interest and the copy says so — "she'll be in touch"
+     * means terms get settled in that conversation, not here. If this ever
+     * becomes a booking rather than an enquiry, a price or an explicit "no
+     * charge" has to appear with it, per the rule dietitian.billing follows.
+     *
+     * "A few each week" is load-bearing: this is one person working by hand,
+     * and it caps expectations before twenty people tick the box.
+     */
+    oneToOne: {
+      label: "I'd like Purvi to look at my athlete's week",
+      hint: "Purvi Shah, MS, RDN does a few of these each week while we build. Tick this and she'll be in touch.",
+    },
   },
   submit: "Join the waitlist",
   sending: "Sending…",
@@ -95,6 +124,16 @@ export const waitlist = {
   },
   error: "That didn't send. Try again, or email us at",
 };
+
+/**
+ * Sits above every FAQ on /faq. The Setup answers are written in the present
+ * tense ("setup takes about four minutes") because they describe the product as
+ * built — but nobody can reach it yet, so without this line a parent reads them
+ * as an invitation and wonders why they cannot sign up. Remove this the day the
+ * app opens, not before.
+ */
+export const faqNotice =
+  "AthFuelPath isn't open to families yet. These answers describe how it works, so you know what you're joining the waitlist for.";
 
 export const nav = {
   links: [
@@ -500,15 +539,30 @@ export const faqs: Faq[] = [
     a: "No. Pick the recipes you want for the week and AthFuelPath gathers the ingredients into one list, grouped the way you shop. You can also tick off what you already have at home.",
     event: "grocery_faq_open",
   },
-  { group: "Setup", q: "What can I ask the Fuel Coach?", a: "Practical fueling questions. What to eat before practice, how to recover after a game, what to pick while you're eating out, or how to handle food across a tournament weekend.", event: "ai_coach_faq_open" },
-  { group: "Setup", q: "Can the Fuel Coach help while we're traveling?", a: "Yes. If you share your location for a nearby-food question, it can find restaurants around you and help you think through the options for the day your athlete is having.", event: "ai_coach_faq_open" },
-  { group: "Setup", q: "Can both parents and athletes use it?", a: "Yes. Both can use it, and answers are worded differently depending on who is asking.", event: "ai_coach_faq_open" },
-  { group: "Safety", q: "Is the Fuel Coach medical advice?", a: "No. It is built for everyday sports fueling. Medical, injury, weight-loss and anything outside that scope gets redirected to the right professional.", event: "ai_coach_faq_open" },
   { group: "Safety", q: "Does my athlete ever see numbers?", a: "AthFuelPath is not built around calorie counting. Daily plans, recipes and the weekly report focus on fueling rather than calorie targets. They do see a carb and protein target for the day, shown as a fuel gauge, because that is the guidance itself. It reads as fuel to add, never as a limit. If your athlete explicitly asks the Fuel Coach about a meal they ate, the Coach may give them a nutrition breakdown." },
   { group: "Safety", q: "Do you track weight or body composition?", a: "No. Weight and BMI are never tracked, shown or scored." },
   { group: "Safety", q: "Do you recommend supplements?", a: "No. AthFuelPath is food first, and it makes no supplement recommendations for athletes under 18." },
   { group: "Safety", q: "What can I see as a parent?", a: "You choose. Meals, photos and the weekly report are each a setting. Your athlete is told in the app what you can see." },
   { group: "Safety", q: "Is this medical advice?", a: "No. AthFuelPath gives sports nutrition guidance to learn from. It does not replace care from your own doctor." },
+];
+
+/**
+ * Parked with the Fuel Coach section (2026-08-28). The section came off the
+ * homepage, so these four were the only place on the site that explained a
+ * feature nothing else mentioned. Restore them to `faqs` on the same day the
+ * Coach section goes back up — not before, and not separately.
+ *
+ * NOTE: two Coach references deliberately remain live and must NOT be removed
+ * with these. `safety.claims[0]` and the "Does my athlete ever see numbers?"
+ * answer both name the Coach as the one place a nutrition breakdown can appear.
+ * That is a disclosure, not marketing: deleting it would make the surrounding
+ * no-calorie claim false.
+ */
+export const faqsParked: Faq[] = [
+  { group: "Setup", q: "What can I ask the Fuel Coach?", a: "Practical fueling questions. What to eat before practice, how to recover after a game, what to pick while you're eating out, or how to handle food across a tournament weekend.", event: "ai_coach_faq_open" },
+  { group: "Setup", q: "Can the Fuel Coach help while we're traveling?", a: "Yes. If you share your location for a nearby-food question, it can find restaurants around you and help you think through the options for the day your athlete is having.", event: "ai_coach_faq_open" },
+  { group: "Setup", q: "Can both parents and athletes use it?", a: "Yes. Both can use it, and answers are worded differently depending on who is asking.", event: "ai_coach_faq_open" },
+  { group: "Safety", q: "Is the Fuel Coach medical advice?", a: "No. It is built for everyday sports fueling. Medical, injury, weight-loss and anything outside that scope gets redirected to the right professional.", event: "ai_coach_faq_open" },
 ];
 
 /* ---------------------------------------------------------------- Footer */
