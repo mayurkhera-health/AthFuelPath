@@ -376,14 +376,29 @@ def sync_platform(conn, athlete_id: int, platform: str, ics_url: str,
                         affected_dates.add(matched["event_date"])
             else:
                 try:
-                    conn.execute(
-                        "INSERT INTO events (athlete_id, event_name, event_type, event_date, "
-                        "start_time, duration_hours, city, venue_name, intensity, uid, source, synced_at) "
-                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                        (athlete_id, ev["event_name"], ev["event_type"], ev["event_date"],
-                         ev["start_time"], ev["duration_hours"], ev["city"], ev["venue_name"],
-                         intensity, uid, platform, now_iso),
-                    )
+                    # SAVEPOINT-scoped: a UniqueViolation here must only undo
+                    # THIS insert attempt, never the whole sync_platform()
+                    # transaction. conn.transaction() nests as a real SQL
+                    # SAVEPOINT when called inside an already-open transaction
+                    # (which we always are here — conn.commit() only happens
+                    # once, at the end of the full reconcile loop) — so on
+                    # exception it rolls back to the savepoint and re-raises,
+                    # leaving every earlier INSERT/UPDATE from this same call
+                    # intact and still uncommitted, ready for the final
+                    # conn.commit(). The old code called the OUTER
+                    # conn.rollback() here, which discarded ALL of that prior
+                    # work — confirmed in production (Nora/athlete 62,
+                    # 2026-08-29 Marin FC duplicate) and reproduced locally
+                    # (test_uid_collision_rollback_does_not_discard_earlier_rename).
+                    with conn.transaction():
+                        conn.execute(
+                            "INSERT INTO events (athlete_id, event_name, event_type, event_date, "
+                            "start_time, duration_hours, city, venue_name, intensity, uid, source, synced_at) "
+                            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                            (athlete_id, ev["event_name"], ev["event_type"], ev["event_date"],
+                             ev["start_time"], ev["duration_hours"], ev["city"], ev["venue_name"],
+                             intensity, uid, platform, now_iso),
+                        )
                     counts["inserted"] += 1
                     counts["inserted_events"].append({
                         "event_name": ev["event_name"],
@@ -396,7 +411,10 @@ def sync_platform(conn, athlete_id: int, platform: str, ics_url: str,
                     # If the existing row is source='manual' (user previously
                     # uploaded a file), upgrade it to the platform source so the
                     # 6-hour job owns it going forward. Otherwise leave as-is.
-                    conn.rollback()
+                    # The failed INSERT was already rolled back to its own
+                    # savepoint above (not the outer transaction) — no
+                    # conn.rollback() here, or every earlier mutation in this
+                    # same sync_platform() call would be discarded with it.
                     logger.debug("Insert skipped for uid %s", uid, exc_info=True)
                     upgraded = conn.execute(
                         "UPDATE events SET source = %s, synced_at = %s "

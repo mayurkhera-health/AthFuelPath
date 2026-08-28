@@ -577,3 +577,246 @@ def test_migrations_idempotent():
     conn.commit()
     assert conn.execute("SELECT source FROM events WHERE athlete_id = 1").fetchone()["source"] == "manual"  # default
     conn.close()
+
+
+# ─── Transaction isolation: a UniqueViolation must not roll back earlier
+#     successful work from the SAME sync_platform() call ────────────────────
+#
+# sync_platform() reconciles a whole feed inside one open transaction —
+# conn.commit() only happens once, after the full INSERT/UPDATE/DELETE loop.
+# The INSERT path's UniqueViolation handler used to call conn.rollback() on
+# that SAME outer transaction, which discards every uncommitted mutation
+# from events processed earlier in the same call — while the Python
+# `existing`/`counts` state is plain in-memory state, untouched by the DB
+# rollback. That divergence is real and reproduced below.
+
+def test_uid_collision_rollback_does_not_discard_earlier_rename(monkeypatch, _spy_windows):
+    """The exact production failure class: one logical game, an exact-UID
+    rename that succeeds first, an unrelated UID collision later in the SAME
+    feed pull, then a rotated-UID re-export of the SAME game. Before the fix,
+    the collision's rollback silently discards the earlier rename, so the
+    rotated-UID event no longer finds an equivalent row and gets inserted as
+    a second, duplicate logical row for the same game."""
+    conn = _fresh_conn()
+    event_date = FUT1.strftime("%Y-%m-%d")
+    start_time = FUT1.strftime("%H:%M")
+
+    # Existing row, deliberately NOT names_equivalent to the Marin FC name —
+    # only the exact-UID update path (not the matcher) should touch it first.
+    conn.execute(
+        "INSERT INTO events (athlete_id, event_name, event_type, event_date, "
+        "start_time, duration_hours, uid, source) VALUES "
+        "(1,'Legacy Marin Fixture','practice',%s,%s,1.5,'stable-existing-uid','byga')",
+        (event_date, start_time),
+    )
+    # Unrelated manual row whose uid the second feed VEVENT will collide with.
+    conn.execute(
+        "INSERT INTO events (athlete_id, event_name, event_type, event_date, "
+        "start_time, duration_hours, uid, source) VALUES "
+        "(1,'Totally Unrelated Manual Event','game','2099-01-01','09:00',"
+        "1.5,'colliding-uid','manual')",
+    )
+    conn.commit()
+    original_id = conn.execute(
+        "SELECT id FROM events WHERE uid = 'stable-existing-uid'"
+    ).fetchone()["id"]
+
+    _feed(monkeypatch, _cal(
+        # 1. Exact-UID rename — normal UPDATE path, not the matcher.
+        _vevent("stable-existing-uid", FUT1, "U19/18 ECNL at Marin FC ECNL G2008/09"),
+        # 2. Forces a UniqueViolation on INSERT (colliding uid, non-matching
+        #    name/date/time so neither matcher tier adopts it first).
+        _vevent("colliding-uid", NOW + timedelta(days=30), "Some Other Practice Entirely"),
+        # 3. Rotated UID re-export of the SAME logical Marin FC game.
+        _vevent("rotated-marin-uid", FUT1, "U19/18 ECNL at Marin FC"),
+    ))
+    counts = ics_sync.sync_platform(conn, 1, "byga", "http://x", "competitive_club")
+
+    marin_rows = conn.execute(
+        "SELECT id, event_name, uid FROM events WHERE id = %s "
+        "OR (event_date = %s AND start_time = %s AND event_type = 'practice' AND source = 'byga')",
+        (original_id, event_date, start_time),
+    ).fetchall()
+    assert len(marin_rows) == 1, (
+        f"Expected exactly 1 logical Marin FC row after the rename+collision+rotation "
+        f"sequence, got {len(marin_rows)}: {[dict(r) for r in marin_rows]}"
+    )
+    row = dict(marin_rows[0])
+    assert row["id"] == original_id, (
+        "The original row must be the one still standing (no duplicate row for "
+        "the same logical game) — id must survive the whole rename+collision+"
+        "rotation sequence unchanged"
+    )
+    # VEVENT 3 (rotated uid, short name) is the LAST event reconciled for this
+    # slot — since the fix makes VEVENT 1's rename actually persist, VEVENT 3's
+    # matcher lookup correctly finds `original_id` as EXACTLY_ONE_MATCH (long
+    # vs short name, already proven names_equivalent()==True) and adopts it,
+    # updating uid + name to VEVENT 3's version. That's the correct, intended
+    # end state — one row, tracking the latest export.
+    assert row["uid"] == "rotated-marin-uid"
+    assert row["event_name"] == "U19/18 ECNL at Marin FC"
+    assert counts["inserted"] == 0, (
+        "The rotated-UID re-export of the SAME game must never be reported as a new event"
+    )
+
+
+def test_uid_collision_does_not_revert_earlier_successful_update(monkeypatch, _spy_windows):
+    """Simpler form of the same defect (the A2 lost-update repro): a
+    successful match+update, followed by an unrelated UID collision later in
+    the same feed. The earlier update must remain persisted, and counts must
+    never claim a persisted update that was actually rolled back."""
+    conn = _fresh_conn()
+    event_date = FUT1.strftime("%Y-%m-%d")
+    start_time = FUT1.strftime("%H:%M")
+
+    conn.execute(
+        "INSERT INTO events (athlete_id, event_name, event_type, event_date, "
+        "start_time, duration_hours, uid, source) VALUES "
+        "(1,'U19/18 ECNL at Marin FC ECNL G2008/09','practice',%s,%s,1.5,'old-uid-14991','byga')",
+        (event_date, start_time),
+    )
+    conn.execute(
+        "INSERT INTO events (athlete_id, event_name, event_type, event_date, "
+        "start_time, duration_hours, uid, source) VALUES "
+        "(1,'Totally Unrelated Manual Event','game','2099-01-01','09:00',"
+        "1.5,'colliding-uid','manual')",
+    )
+    conn.commit()
+    marin_id = conn.execute(
+        "SELECT id FROM events WHERE uid = 'old-uid-14991'"
+    ).fetchone()["id"]
+
+    _feed(monkeypatch, _cal(
+        # Rotated-UID re-export, adopted via the matcher (name+date+time+type).
+        _vevent("new-rotated-uid", FUT1, "U19/18 ECNL at Marin FC"),
+        # Later, unrelated collision forces a UniqueViolation.
+        _vevent("colliding-uid", NOW + timedelta(days=30), "Some Other Practice Entirely"),
+    ))
+    counts = ics_sync.sync_platform(conn, 1, "byga", "http://x", "competitive_club")
+
+    row = dict(conn.execute("SELECT * FROM events WHERE id = %s", (marin_id,)).fetchone())
+    assert row["uid"] == "new-rotated-uid", (
+        "The earlier successful adoption/update must survive the later UniqueViolation"
+    )
+    assert row["event_name"] == "U19/18 ECNL at Marin FC"
+    if counts["updated"] >= 1:
+        # If counts claim an update happened, it must actually be persisted —
+        # never a case of "counts say updated=1 but Postgres reverted it."
+        assert row["uid"] == "new-rotated-uid"
+
+
+def test_uid_collision_upgrade_and_neighbors_all_persist(monkeypatch, _spy_windows):
+    """The core transaction-safety contract: event A updates successfully,
+    event B triggers a UID collision (handled via the existing
+    source-upgrade fallback), event C reconciles afterward. After the sync
+    finishes, all three outcomes must be persisted and the connection must
+    remain usable."""
+    conn = _fresh_conn()
+    event_date = FUT1.strftime("%Y-%m-%d")
+    start_time = FUT1.strftime("%H:%M")
+
+    # A: existing byga row that will be renamed via exact-UID update.
+    conn.execute(
+        "INSERT INTO events (athlete_id, event_name, event_type, event_date, "
+        "start_time, duration_hours, uid, source) VALUES "
+        "(1,'Practice A (old name)','practice',%s,%s,1.5,'uid-a','byga')",
+        (event_date, start_time),
+    )
+    # B: manual row whose uid the feed will collide with.
+    conn.execute(
+        "INSERT INTO events (athlete_id, event_name, event_type, event_date, "
+        "start_time, duration_hours, uid, source) VALUES "
+        "(1,'Practice B (manual entry)','practice','2099-02-02','11:00',"
+        "1.5,'uid-b','manual')",
+    )
+    conn.commit()
+    a_id = conn.execute("SELECT id FROM events WHERE uid = 'uid-a'").fetchone()["id"]
+    b_id = conn.execute("SELECT id FROM events WHERE uid = 'uid-b'").fetchone()["id"]
+
+    _feed(monkeypatch, _cal(
+        _vevent("uid-a", FUT1, "Practice A (renamed)"),                     # A: exact-uid update
+        _vevent("uid-b", NOW + timedelta(days=40), "Practice B (renamed)"), # B: forces UniqueViolation
+        _vevent("uid-c", FUT2, "Practice C (brand new)"),                   # C: plain new insert
+    ))
+    counts = ics_sync.sync_platform(conn, 1, "byga", "http://x", "competitive_club")
+
+    a = dict(conn.execute("SELECT * FROM events WHERE id = %s", (a_id,)).fetchone())
+    assert a["event_name"] == "Practice A (renamed)", "A's update must persist"
+
+    b = dict(conn.execute("SELECT * FROM events WHERE id = %s", (b_id,)).fetchone())
+    assert b["source"] == "byga", "B must be upgraded to the platform source"
+    assert counts["source_upgraded"] == 1
+
+    c_rows = conn.execute(
+        "SELECT * FROM events WHERE uid = 'uid-c' AND event_name = 'Practice C (brand new)'"
+    ).fetchall()
+    assert len(c_rows) == 1, "C must be inserted exactly once"
+    assert counts["inserted"] == 1
+    assert counts["inserted_events"] == [
+        {"event_name": "Practice C (brand new)", "event_date": FUT2.strftime("%Y-%m-%d"),
+         "event_type": "practice"},
+    ], "inserted_events must list only the genuinely-inserted event, never the collided one"
+
+    # Connection must remain usable after the caught UniqueViolation.
+    assert conn.execute("SELECT 1 AS ok").fetchone()["ok"] == 1
+
+
+# ─── Same-feed multiplicity: two UIDs for the same logical game in ONE pull ──
+
+def test_same_feed_two_uids_for_one_logical_game_dedupes_to_one_row(monkeypatch, _spy_windows):
+    """A single feed pull that (as BYGA has been observed to do) carries TWO
+    separate VEVENTs — different UIDs, equivalent names — for the same
+    logical game. Starting from an empty DB, this must converge to exactly
+    one row: the first VEVENT inserts, the second is adopted by the matcher
+    (which queries the live DB, not the start-of-call `existing` snapshot),
+    not inserted as a second row."""
+    conn = _fresh_conn()
+    event_date = FUT1.strftime("%Y-%m-%d")
+    start_time = FUT1.strftime("%H:%M")
+
+    _feed(monkeypatch, _cal(
+        _vevent("uid-long-form", FUT1, "U19/18 ECNL at Marin FC ECNL G2008/09"),
+        _vevent("uid-short-form", FUT1, "U19/18 ECNL at Marin FC"),
+    ))
+    counts = ics_sync.sync_platform(conn, 1, "byga", "http://x", "competitive_club")
+
+    rows = conn.execute(
+        "SELECT id, event_name, uid FROM events WHERE athlete_id = 1 "
+        "AND event_date = %s AND start_time = %s", (event_date, start_time),
+    ).fetchall()
+    assert len(rows) == 1, f"Expected 1 logical row, got {len(rows)}: {[dict(r) for r in rows]}"
+    assert counts["inserted"] == 1
+    assert counts["updated"] == 1
+
+
+def test_same_feed_two_uids_stable_across_5_resync_cycles(monkeypatch, _spy_windows):
+    """The same two-VEVENT-per-game feed, resynced 5 times with rotating
+    order/uids. After the first genuine insertion, later cycles must never
+    grow the row count or re-report the game as newly inserted."""
+    conn = _fresh_conn()
+    event_date = FUT1.strftime("%Y-%m-%d")
+    start_time = FUT1.strftime("%H:%M")
+
+    cycles = [
+        (("uid-long-1", "U19/18 ECNL at Marin FC ECNL G2008/09"),
+         ("uid-short-1", "U19/18 ECNL at Marin FC")),
+        (("uid-short-2", "U19/18 ECNL at Marin FC"),
+         ("uid-long-2", "U19/18 ECNL at Marin FC ECNL G2008/09")),
+        (("uid-long-3", "U19/18 ECNL at Marin FC ECNL G2008/09"),
+         ("uid-short-3", "U19/18 ECNL at Marin FC")),
+        (("uid-short-4", "U19/18 ECNL at Marin FC"),
+         ("uid-long-4", "U19/18 ECNL at Marin FC ECNL G2008/09")),
+        (("uid-long-5", "U19/18 ECNL at Marin FC ECNL G2008/09"),
+         ("uid-short-5", "U19/18 ECNL at Marin FC")),
+    ]
+    for i, (first, second) in enumerate(cycles):
+        _feed(monkeypatch, _cal(_vevent(first[0], FUT1, first[1]), _vevent(second[0], FUT1, second[1])))
+        counts = ics_sync.sync_platform(conn, 1, "byga", "http://x", "competitive_club")
+        rows = conn.execute(
+            "SELECT COUNT(*) AS n FROM events WHERE athlete_id = 1 "
+            "AND event_date = %s AND start_time = %s", (event_date, start_time),
+        ).fetchone()
+        assert rows["n"] == 1, f"cycle {i}: row count must stay at 1, got {rows['n']}"
+        if i > 0:
+            assert counts["inserted"] == 0, f"cycle {i}: must not re-report the logical game as new"
+    conn.close()
