@@ -820,71 +820,175 @@ img.photo--portrait { width: 100%; height: auto; }
 
 
 /* ================= Coaches Corner (/coaches) =================
-   The dashboard here is a coded mock, not a capture. Every value below comes
-   from the token set in §1 — nothing new is invented. */
-.coach-badge {
-  display: inline-block; font-family: inherit; font-size: 12px; font-weight: 700;
-  letter-spacing: 0.08em; text-transform: uppercase; color: var(--lime);
-  border: 1px solid rgba(125, 227, 56, 0.4); border-radius: var(--r-badge);
-  padding: 6px 12px;
+   Every value inherits from the token set in §1. The one new colour is a very
+   light green tint used as a third band, so the page can pace itself across six
+   sections without introducing a second brand hue. */
+.coachpg { --tint: #eef4ec; --section-y-coach: 88px; }
+@media (max-width: 767px) { .coachpg { --section-y-coach: 60px; } }
+/* Section spacing is tightened ~18% on this page only. --section-y is a global
+   token; changing it here would tighten the homepage too. */
+.coachpg .section { padding-block: var(--section-y-coach); }
+.surface-tint { background: var(--tint, #eef4ec); color: var(--ink); }
+
+/* ---- hero ---- */
+.coach-hero__col { max-width: 760px; }
+.coach-hero__h1 {
+  font-size: clamp(34px, 5.4vw, 60px); line-height: 1.06; letter-spacing: -1.4px;
+  font-weight: 800; text-wrap: balance; max-width: 700px; margin-top: var(--s3);
 }
+.coach-hero__lead {
+  font-size: 19px; line-height: 1.5; color: var(--on-dark); font-weight: 500;
+  max-width: 62ch; margin-top: var(--s5);
+}
+.coach-hero__sub {
+  font-size: 18px; line-height: 1.55; color: var(--on-dark-soft);
+  max-width: 68ch; margin-top: var(--s3);
+}
+@media (min-width: 768px) { .coach-hero__lead { font-size: 20px; } .coach-hero__sub { font-size: 19px; } }
+.coach-hero__chips { margin-top: var(--s5); }
+.coach-hero__cta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s4) var(--s5); margin-top: var(--s6); }
+.coach-hero__see { color: var(--lime); font-weight: 700; min-height: 44px; display: inline-flex; align-items: center; }
 
-.coach-points { display: grid; gap: var(--s5); }
-@media (min-width: 820px) { .coach-points { grid-template-columns: repeat(3, 1fr); gap: var(--s6); } }
-.coach-points > li { display: grid; align-content: start; }
-.coach-points__n { font-size: 15px; font-weight: 800; letter-spacing: 1px; color: var(--forest); margin-bottom: var(--s1); }
-.coach-points h3 { margin-bottom: 6px; }
-.coach-points p { max-width: 42ch; }
+/* ---- effort cards ---- */
+.coach-cards { display: grid; gap: var(--s4); }
+@media (min-width: 820px) { .coach-cards { grid-template-columns: repeat(3, 1fr); gap: var(--s5); } }
+.coach-card {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--r-card);
+  padding: var(--s5); display: grid; align-content: start;
+}
+.coach-card__n { font-size: 15px; font-weight: 800; letter-spacing: 1px; color: var(--forest); margin-bottom: var(--s2); }
+.coach-card__h { font-size: 21px; line-height: 1.22; font-weight: 700; text-wrap: pretty; }
+@media (min-width: 768px) { .coach-card__h { font-size: 23px; } }
+.coach-card__p { margin-top: var(--s2); font-size: 17px; line-height: 1.5; color: var(--muted); }
 
-/* ---- the team dashboard ---- */
+/* ---- why coaches care ---- */
+.coach-why { display: grid; gap: var(--s5); }
+@media (min-width: 820px) { .coach-why { grid-template-columns: repeat(3, 1fr); gap: var(--s6); } }
+.coach-why > li { display: grid; align-content: start; }
+.coach-why__ico {
+  width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--mint); color: var(--mint-ink); margin-bottom: var(--s3);
+}
+.coach-why h3 { margin-bottom: 6px; }
+.coach-why p { max-width: 40ch; }
+
+.coach-bridge {
+  display: grid; gap: 2px; text-align: center; text-wrap: balance;
+  margin: var(--s8) auto 0; max-width: 22ch;
+  font-size: clamp(24px, 3.6vw, 40px); line-height: 1.12; letter-spacing: -0.8px; font-weight: 800;
+}
+.coach-bridge span:last-child { color: var(--forest); }
+
+/* ---- dashboard ---- */
+.coach-badge {
+  display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--lime);
+  border: 1px solid rgba(125, 227, 56, 0.4); border-radius: var(--r-badge); padding: 6px 12px;
+}
+/* The dashboard is the product proof, so it gets the width. 1fr + a fixed
+   reading column keeps the numbers large enough to read without zooming. */
+/* Stacked, not side by side. A reading column beside the dashboard held it to
+   820px and competed with the thing it was explaining; full width puts the
+   numbers comfortably above the 900px the spec asks for, and the interpretation
+   reads better underneath as a caption than beside it as a sidebar. */
+.dashwrap { display: grid; gap: var(--s5); align-items: start; }
+
 .dash {
   background: var(--card); color: var(--ink); border-radius: var(--r-panel);
-  padding: var(--s5); max-width: 680px; box-shadow: var(--sh-device);
+  padding: var(--s5); box-shadow: var(--sh-device); min-width: 0;
 }
+@media (min-width: 768px) { .dash { padding: var(--s6); } }
 .dash__top {
-  display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); align-items: baseline;
+  display: flex; flex-wrap: wrap; gap: var(--s3) var(--s4); align-items: center;
   justify-content: space-between; border-bottom: 1px solid var(--line);
-  padding-bottom: var(--s3); margin-bottom: var(--s4);
+  padding-bottom: var(--s4); margin-bottom: var(--s4);
 }
-.dash__top b { font-size: 18px; font-weight: 800; }
-.dash__top span { font-size: 15px; color: var(--muted); }
+.dash__top b { font-size: 19px; font-weight: 800; }
+.dash__tabs { display: flex; gap: var(--s1); background: var(--input); border-radius: var(--r-pill); padding: 4px; }
+.dash__tabs button {
+  min-height: 40px; padding-inline: var(--s4); border-radius: var(--r-pill);
+  font-size: 16px; font-weight: 700; color: var(--muted);
+  transition: background-color 160ms, color 160ms;
+}
+.dash__tabs button.is-on { background: var(--forest); color: #fff; }
+.dash__week-label { font-size: 16px; color: var(--muted); margin-bottom: var(--s4); }
 
-.dash__metrics { display: grid; gap: var(--s4); }
+.dash__metrics { display: grid; gap: var(--s5); }
 @media (min-width: 620px) { .dash__metrics { grid-template-columns: repeat(3, 1fr); } }
 .dash__metrics > li { min-width: 0; }
 .dash__label {
   display: block; font-size: 15px; font-weight: 700; letter-spacing: 0.04em;
-  text-transform: uppercase; color: var(--muted); margin-bottom: 6px;
+  text-transform: uppercase; color: var(--muted); margin-bottom: var(--s2);
 }
-.dash__value { display: block; font-size: 30px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
-.dash__suffix { font-size: 17px; font-weight: 600; color: var(--muted); }
-.dash__bar { display: block; height: 7px; border-radius: 4px; background: #e2e8e0; margin-top: 9px; overflow: hidden; }
+.dash__value { display: block; font-size: 38px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+@media (min-width: 768px) { .dash__value { font-size: 44px; } }
+.dash__suffix { font-size: 20px; font-weight: 600; color: var(--muted); }
+.dash__bar { display: block; height: 8px; border-radius: 4px; background: #e2e8e0; margin-top: var(--s3); overflow: hidden; }
 .dash__bar i { display: block; height: 100%; border-radius: 4px; background: var(--forest); }
 .dash__bar i.is-warn { background: var(--amber); }
-.dash__note { display: block; margin-top: 7px; font-size: 15px; color: var(--muted); }
+.dash__note { display: block; margin-top: var(--s2); font-size: 15px; color: var(--muted); }
 
-/* Seven fixed columns; each cell can shrink, so the row never forces the page
-   to scroll sideways on a 320px screen. */
+/* Seven columns that can each shrink, so the row never scrolls the page. */
 .dash__week {
   display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px;
   margin-top: var(--s5); padding-top: var(--s4); border-top: 1px solid var(--line);
 }
 .dash__week li {
   text-align: center; border: 1px solid var(--line); border-radius: var(--r-input);
-  padding: 8px 2px; font-size: 15px; min-width: 0;
+  padding: 9px 2px; font-size: 15px; min-width: 0;
 }
 .dash__week b { display: block; font-size: 15px; font-weight: 700; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 3px; }
 .dash__week li.is-train { background: #eef3ec; }
 .dash__week li.is-game { background: var(--mint); border-color: transparent; color: var(--mint-ink); font-weight: 700; }
 .dash__week li.is-game b { color: var(--mint-ink); }
 
-.dash__privacy {
-  display: flex; gap: var(--s3); align-items: flex-start;
-  margin-top: var(--s4); padding-top: var(--s4); border-top: 1px solid var(--line);
-  font-size: 16px; line-height: 1.45; color: var(--muted);
+.dash__read {
+  background: var(--dark-card); border: 1px solid var(--rule-dark); border-radius: var(--r-panel);
+  padding: var(--s5); color: var(--on-dark-soft);
+  display: grid; gap: var(--s3) var(--s6); align-items: start;
 }
-.dash__privacy svg { flex-shrink: 0; margin-top: 3px; }
-.dash__privacy strong { color: var(--ink); }
+@media (min-width: 900px) {
+  .dash__read { grid-template-columns: 300px minmax(0, 1fr); padding: var(--s5) var(--s6); }
+  .dash__read .eyebrow { grid-column: 1; }
+  .dash__read-h { grid-column: 1; grid-row: 2; margin-top: 0; }
+  .dash__read-p { grid-column: 2; grid-row: 1 / span 2; margin-top: 0; align-self: center; font-size: 18px; }
+  .dash__read-foot { grid-column: 1 / -1; margin-top: var(--s2); }
+}
+.dash__read-h { font-size: 21px; line-height: 1.2; font-weight: 800; color: var(--on-dark); margin-top: var(--s3); text-wrap: pretty; }
+.dash__read-p { font-size: 17px; line-height: 1.5; margin-top: var(--s3); }
+.dash__read-foot {
+  font-size: 16px; line-height: 1.45; color: var(--on-dark-mute);
+  margin-top: var(--s4); padding-top: var(--s4); border-top: 1px solid var(--rule-dark);
+}
+
+/* ---- trust ---- */
+.coach-trust { display: grid; gap: var(--s5); }
+@media (min-width: 820px) { .coach-trust { grid-template-columns: repeat(3, 1fr); gap: var(--s6); } }
+.coach-trust > li { display: flex; gap: var(--s3); align-items: flex-start; }
+.coach-trust .tick { color: var(--forest); flex-shrink: 0; margin-top: 4px; }
+.coach-trust strong { display: block; font-size: 19px; line-height: 1.25; }
+.coach-trust__p { display: block; margin-top: 6px; font-size: 17px; line-height: 1.5; color: var(--muted); }
+
+.coach-cred {
+  margin-top: var(--s7); padding: var(--s5); background: var(--card);
+  border: 1px solid var(--line); border-left: 3px solid var(--forest); border-radius: var(--r-card);
+  max-width: 620px;
+}
+.coach-cred__p { font-size: 17px; line-height: 1.5; margin-top: var(--s2); }
+.coach-cred__who { margin-top: var(--s4); font-size: 16px; }
+.coach-cred__who strong { display: block; font-size: 17px; }
+.coach-cred__who span { color: var(--muted); }
+
+/* ---- conversion ---- */
+.coach-access { display: grid; gap: var(--s6); align-items: start; }
+@media (min-width: 1024px) { .coach-access { grid-template-columns: 40fr 55fr; gap: var(--s8); } }
+.coach-form { max-width: 560px; margin-inline: 0; }
+.coach-form__ok { display: flex; gap: var(--s4); align-items: flex-start; }
+.coach-form__ask { display: grid; gap: var(--s3); border-top: 1px solid var(--line); padding-top: var(--s5); }
+.coach-form__ask-q { font-size: 17px; font-weight: 700; }
+.coach-form__ask-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s4); margin-top: var(--s2); }
+.coach-form__ask-row .btn { width: auto; }
+.coach-form__ask-row .tlink { min-height: 44px; display: inline-flex; align-items: center; color: var(--muted); }
 
 /* ---- role radios ---- */
 .roleset { border: 0; padding: 0; margin: 0; }

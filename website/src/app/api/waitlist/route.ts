@@ -44,7 +44,7 @@ function rateLimited(ip: string): boolean {
 }
 
 type Entry = {
-  kind: "parent" | "coach";
+  kind: "parent" | "coach" | "coach_answer";
   email: string; pain: string; age: string; club: string;
   parent: string; athlete: string; role: string; oneToOne: boolean;
 };
@@ -71,7 +71,20 @@ async function deliver(entry: Entry): Promise<boolean> {
   /* Coaches come through /coaches; parents through /signup. Same pipe, same
      rate limit, same log — different letter, because Purvi triages them
      differently and a coach is a club rather than a family. */
-  const body = entry.kind === "coach" ? [
+  const body = entry.kind === "coach_answer" ? [
+    "Hello Purvi,",
+    "",
+    "A coach who requested access has answered the follow-up question.",
+    "",
+    `Name:   ${entry.parent}`,
+    `Email:  ${entry.email}`,
+    "",
+    "Biggest fueling challenge they see:",
+    entry.pain || "(none)",
+    "",
+    "—",
+    "Sent by the AthFuelPath coaches page. Reply to this email to answer them directly.",
+  ].join("\n") : entry.kind === "coach" ? [
     "Hello Purvi,",
     "",
     "A coach has asked for early access to the team view.",
@@ -113,7 +126,9 @@ async function deliver(entry: Entry): Promise<boolean> {
     replyTo: entry.email,
     /* Prefix first so Purvi can filter: [COACH] is a club, [1:1] is a family
        asking her to look at their week. */
-    subject: entry.kind === "coach"
+    subject: entry.kind === "coach_answer"
+      ? `[COACH · answer] AthFuelPath: ${entry.parent}`
+      : entry.kind === "coach"
       ? `[COACH] AthFuelPath: ${entry.parent}${entry.club ? ` · ${entry.club}` : ""}`
       : `${entry.oneToOne ? "[1:1] " : ""}AthFuelPath waitlist: ${entry.parent || entry.email}${entry.club ? ` · ${entry.club}` : ""}`,
     text: body,
@@ -136,7 +151,8 @@ export async function POST(req: Request) {
   const oneToOne = body?.oneToOne === true;
   const age = String(body?.age ?? "").trim();
   const role = String(body?.role ?? "").trim().slice(0, MAX.role);
-  const kind: Entry["kind"] = body?.kind === "coach" ? "coach" : "parent";
+  const kind: Entry["kind"] =
+    body?.kind === "coach" ? "coach" : body?.kind === "coach_answer" ? "coach_answer" : "parent";
 
   if (!EMAIL_RE.test(email) || !parent || (kind === "parent" && !AGES.has(age))) {
     return NextResponse.json({ ok: false, error: "invalid" }, { status: 400 });

@@ -5,13 +5,22 @@ import { usePathname } from "next/navigation";
 import { Logo } from "./ui/Logo";
 import { Button } from "./ui/Button";
 import { Menu, Close } from "./ui/Icons";
-import { nav, cta } from "@/content/site";
+import { nav, cta, coaches } from "@/content/site";
 import { ctaClick } from "@/lib/analytics";
 
 export function Header() {
   const [open, setOpen] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
   const path = usePathname();
+  /**
+   * On /coaches the whole page converts on "Request Coach Access", so the nav
+   * button matches rather than offering a parent waitlist beside it. Scoped to
+   * this one route on purpose — every other page keeps the site-wide CTA.
+   */
+  const onCoaches = path === "/coaches";
+  const primary = onCoaches
+    ? { label: coaches.ctaLabel, href: "/coaches#coach-access" }
+    : { label: cta.primary, href: "/signup" };
 
   useEffect(() => { setOpen(false); }, [path]);
 
@@ -43,7 +52,7 @@ export function Header() {
           </nav>
           <div className="header__right">
             {nav.login && <Link href={nav.login.href} className="header__login" onClick={() => ctaClick(cta.login, "header")}>{nav.login.label}</Link>}
-            <Button href="/signup" size="sm" section="header">{cta.primary}</Button>
+            <Button href={primary.href} size="sm" section="header">{primary.label}</Button>
             <button className="burger" aria-label="Open menu" aria-expanded={open} aria-controls="menu-sheet" onClick={() => setOpen(true)}>
               <Menu />
             </button>
@@ -63,7 +72,7 @@ export function Header() {
             {nav.login && <Link href={nav.login.href}>{nav.login.label}</Link>}
           </nav>
           <div className="sheet__foot">
-            <Button href="/signup" arrow section="menu">{cta.primary}</Button>
+            <Button href={primary.href} arrow section="menu">{primary.label}</Button>
           </div>
         </div>
       )}

@@ -6,29 +6,38 @@ import { track } from "@/lib/analytics";
 import { site, coaches } from "@/content/site";
 
 /**
- * Coach early-access enquiry. Posts to /api/waitlist with kind: "coach" rather
- * than getting its own endpoint — that route already has the rate limiting,
- * the stdout log that survives an SMTP failure, and the honest 503. A second
- * endpoint would be a second place to get those wrong.
+ * Coach Access request, in two steps.
  *
- * Accessibility rules carried from the pre-launch audit: focus moves to the
- * first invalid field, errors carry role="alert", and no interactive element is
- * nested inside a <label>.
+ * Step one is four fields and nothing else. The research question that used to
+ * sit in the form now runs AFTER the request is recorded, because it is at once
+ * the most useful thing on the page and the field most likely to make a coach
+ * abandon it. Post-submission it can cost nothing: the lead is already saved.
+ *
+ * That ordering is the whole design. Do not move the question back above the
+ * button to "save a round trip" — the round trip is the point.
+ *
+ * Posts to /api/waitlist with kind: "coach" rather than taking its own endpoint.
+ * That route already has the rate limiting, the stdout log that survives an SMTP
+ * failure, and the honest 503; a second endpoint is a second place to get all
+ * three wrong. The follow-up answer posts again with the same email so Purvi can
+ * match it to the request.
  */
 const f = coaches.form;
 type Errors = Partial<Record<"name" | "email", string>>;
 const FIELD_ORDER = ["name", "email"] as const;
+type Stage = "form" | "ask" | "thanks";
 
 export function CoachForm() {
-  const [done, setDone] = useState(false);
+  const [stage, setStage] = useState<Stage>("form");
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Errors>({});
   const [serverErr, setServerErr] = useState<string | null>(null);
   const [role, setRole] = useState<string>(f.role.options[0]);
-  const doneRef = useRef<HTMLParagraphElement>(null);
+  const [saved, setSaved] = useState<{ email: string; name: string } | null>(null);
+  const headRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => { track("coach_viewed"); }, []);
-  useEffect(() => { if (done) doneRef.current?.focus(); }, [done]);
+  useEffect(() => { if (stage !== "form") headRef.current?.focus(); }, [stage]);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -37,7 +46,6 @@ export function CoachForm() {
     const name = String(fd.get("name") ?? "").trim();
     const email = String(fd.get("email") ?? "").trim();
     const club = String(fd.get("club") ?? "").trim();
-    const want = String(fd.get("want") ?? "").trim();
 
     const errs: Errors = {};
     if (!name) errs.name = "Please tell us your name.";
@@ -55,11 +63,12 @@ export function CoachForm() {
       const r = await fetch("/api/waitlist", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ kind: "coach", parent: name, email, club, role, pain: want }),
+        body: JSON.stringify({ kind: "coach", parent: name, email, club, role }),
       });
       if (!r.ok) throw new Error(String(r.status));
       track("coach_requested", { role });
-      setDone(true);
+      setSaved({ email, name });
+      setStage("ask");
     } catch {
       setServerErr(f.error);
     } finally {
@@ -67,18 +76,57 @@ export function CoachForm() {
     }
   }
 
-  if (done) {
+  /** Fire-and-forget: the request is already recorded, so a failure here must
+   *  never be shown as if the coach's access request failed. */
+  async function sendAnswer(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const answer = String(new FormData(e.currentTarget).get("answer") ?? "").trim();
+    setStage("thanks");
+    if (!answer || !saved) return;
+    track("coach_answered");
+    fetch("/api/waitlist", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kind: "coach_answer", parent: saved.name, email: saved.email, pain: answer }),
+    }).catch(() => {});
+  }
+
+  if (stage === "ask") {
     return (
-      <div className="form confirm">
+      <div className="form coach-form">
+        <div className="coach-form__ok">
+          <span className="confirm__ico"><Tick width={26} height={26} /></span>
+          <div>
+            <h3 className="h4" ref={headRef} tabIndex={-1}>{f.done.h}</h3>
+            <p className="small muted-txt">{f.done.p}</p>
+          </div>
+        </div>
+
+        <form onSubmit={sendAnswer} className="coach-form__ask">
+          <span className="eyebrow">{f.research.h}</span>
+          <label htmlFor="answer" className="coach-form__ask-q">{f.research.p}</label>
+          <textarea id="answer" name="answer" rows={3} maxLength={1200} placeholder={f.research.placeholder} />
+          <div className="coach-form__ask-row">
+            <Button type="submit" arrow section="coaches-research">{f.research.submit}</Button>
+            <button type="button" className="tlink" onClick={() => setStage("thanks")}>{f.research.skip}</button>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
+  if (stage === "thanks") {
+    return (
+      <div className="form confirm coach-form">
         <span className="confirm__ico"><Tick width={30} height={30} /></span>
-        <h3 className="h3">{f.done.h}</h3>
-        <p className="body muted-txt" ref={doneRef} tabIndex={-1}>{f.done.p}</p>
+        <h3 className="h3" ref={headRef} tabIndex={-1}>{f.done.h}</h3>
+        <p className="body muted-txt">{f.done.p}</p>
       </div>
     );
   }
 
   return (
-    <form className="form" onSubmit={onSubmit} noValidate>
+    <form className="form coach-form" onSubmit={onSubmit} noValidate>
       <div className={`field${errors.name ? " field--err" : ""}`}>
         <label htmlFor="c-name">{f.name.label}</label>
         <input id="c-name" name="name" autoComplete="name" required
@@ -91,8 +139,8 @@ export function CoachForm() {
         <input id="c-club" name="club" maxLength={140} autoComplete="organization" />
       </div>
 
-      {/* Radios, not a select: four short options a coach can see at once, and
-          each one is its own 44px target. */}
+      {/* Radios, not a select: four short options visible at once, each its own
+          44px target. */}
       <fieldset className="field roleset">
         <legend>{f.role.label}</legend>
         <div className="roleset__opts">
@@ -105,19 +153,11 @@ export function CoachForm() {
         </div>
       </fieldset>
 
-      <div className="field">
-        <label htmlFor="c-want">{f.want.label}</label>
-        <textarea id="c-want" name="want" rows={3} maxLength={1200} placeholder={f.want.placeholder} />
-        <span className="hint">{f.want.hint}</span>
-      </div>
-
       <div className={`field${errors.email ? " field--err" : ""}`}>
         <label htmlFor="c-email">{f.email.label}</label>
         <input id="c-email" name="email" type="email" inputMode="email" autoComplete="email" required
-          aria-invalid={!!errors.email} aria-describedby={errors.email ? "e-cmail" : "h-cmail"} />
-        {errors.email
-          ? <span id="e-cmail" className="err" role="alert">{errors.email}</span>
-          : <span id="h-cmail" className="hint">{f.email.hint}</span>}
+          aria-invalid={!!errors.email} aria-describedby={errors.email ? "e-cmail" : undefined} />
+        {errors.email && <span id="e-cmail" className="err" role="alert">{errors.email}</span>}
       </div>
 
       {serverErr && (

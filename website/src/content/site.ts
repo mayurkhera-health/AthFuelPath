@@ -136,92 +136,156 @@ export const faqNotice =
   "AthFuelPath isn't open to families yet. These answers describe how it works, so you know what you're joining the waitlist for.";
 
 /* --------------------------------------------------------------- Coaches
- * /coaches — the Coaches Corner.
+ * /coaches — for coaches and athletic directors.
  *
- * The team dashboard is a CODED MOCK, not a capture of a shipped screen. Every
- * other product image on this site is a real screenshot; this one is drawn.
- * That is defensible only while the page frames it as early access, which it
- * does. Replace the mock with a real capture before a coach sees both.
+ * COPY ORDER, everywhere on this page: coach benefit first, product mechanism
+ * second, privacy third. Never open on "coaches can't see individual meals" —
+ * a reader has to want the thing before a safeguard means anything.
  *
- * NEVER on this page: anything an individual athlete ate, any weight, any
- * suggestion a coach can see one athlete's plate. The whole proposition is
- * squad-level. safety.claims promises parents control what is visible and the
- * athlete is told what a parent sees — a coach is a third party neither of them
- * agreed to, so team aggregate is not a nicety, it is the constraint.
+ * The dashboard is a CODED MOCK, not a capture of a shipped screen. Every other
+ * product image on this site is a real screenshot. That is defensible only
+ * while the page frames it as early access, which it does. Replace it with a
+ * real capture before a coach sees both.
  *
- * NEVER: "available now", a login for coaches, or a date. Early access with a
- * first group of clubs is true. A ship date is not.
+ * NEVER on this page: an individual athlete's meals, weight or photos · any
+ * suggestion a coach can see one athlete's plate · calorie or macro language ·
+ * a performance guarantee · fear framing · a ship date · a price.
+ *
+ * ONE CTA LABEL on this page: "Request Coach Access". Not "join the waitlist",
+ * not "request early access". The nav button swaps to it on this route only.
  */
 export const coaches = {
-  eyebrow: "Coaches & athletic directors",
-  h1: "The part of the season you can't see.",
-  sub: "You watch every session. You don't see the seven meals between them, and by the second game of a tournament that gap is the difference. AthFuelPath shows you how the team is fueling, without adding anything to your week.",
-  chips: ["Nothing for you to set up", "Team totals only", "Soccer, 13–17"],
+  ctaLabel: "Request Coach Access",
 
-  points: {
+  hero: {
+    eyebrow: "Coaches & athletic directors",
+    h1: "The part of the season you can't see.",
+    /** Two paragraphs on purpose: the problem, then what you get. */
+    p1: "You plan the training. You set the lineup. But you can't see whether your players are fueling for the week you've planned.",
+    p2: "AthFuelPath gives you a simple team-level view, so you can spot fueling gaps before training, games and tournament weekends, without tracking individual athletes or adding work to your week.",
+    chips: ["Parents set it up", "Team-level only", "Nothing new to manage", "Built for youth soccer"],
+    secondary: "See what coaches see",
+  },
+
+  effort: {
     h2: "Three minutes a week. That's the whole ask.",
     sub: "Parents set it up. Athletes use it. You look when you want to.",
     items: [
-      {
-        n: "01",
-        h: "You add nothing.",
-        p: "No rosters to maintain, no data to enter, no app for your athletes to be nagged about. Families run it. You get the view.",
-      },
-      {
-        n: "02",
-        h: "Team totals, never a plate.",
-        p: "You see how the squad is fueling as a group. What any one athlete ate stays between them and their parent.",
-      },
-      {
-        n: "03",
-        h: "Built around your fixtures.",
-        p: "Tournament weekends and two-game days are where fueling decides the second half. The week you see is the week you scheduled.",
-      },
+      { n: "01", h: "Nothing new to manage.", p: "No roster maintenance. No meal logging. No chasing athletes. Families set up their own accounts." },
+      { n: "02", h: "See the squad, not the individual.", p: "Understand how the team is fueling as a group, without seeing an athlete's meals, weight or photos." },
+      { n: "03", h: "Built around your schedule.", p: "Training Tuesday. Game Saturday. Tournament weekend. Fueling guidance adjusts around the week you have already planned." },
     ],
   },
+
+  why: {
+    h2: "You coach the game. We help with what happens between sessions.",
+    sub: "AthFuelPath gives families the guidance to fuel around the schedule you have already created, and gives you just enough visibility to understand how the squad is doing.",
+    items: [
+      { icon: "calendar", h: "Better prepared athletes", p: "Families understand how to fuel around practices, games and tournament weekends." },
+      { icon: "trend", h: "Spot team-wide gaps", p: "See when fueling habits across the squad need attention, without singling out a player." },
+      { icon: "whistle", h: "You stay the coach", p: "AthFuelPath handles the nutrition guidance. You keep your attention on coaching." },
+    ],
+  },
+
+  /** The bridge into the product. Kept to two lines — any longer and it repeats
+   *  the section above it rather than handing over to the dashboard. */
+  bridge: { a: "You plan the workload.", b: "AthFuelPath helps families fuel for it." },
 
   dash: {
     badge: "Early access · opening to clubs this season",
     h2: "Your squad, at a glance.",
-    sub: "One screen, team level only. Nothing about any one athlete's plate, and nothing for you to keep updated.",
+    sub: "See whether your squad is fueling for the week ahead, in seconds. Team-level patterns only. No individual meals, weights or photos, and nothing for you to maintain.",
     team: "Twin Creeks SC · U15 Boys",
-    week: "Week of 8 Sep",
-    metrics: [
-      { label: "Fueling days followed", value: "78%", pct: 78, note: "Squad average, last 7 days" },
-      { label: "Pre-game meal on time", value: "15", suffix: "/18", pct: 83, note: "Saturday's fixture" },
-      /* The only number a coach can act on, and the only one that is not about
-         eating at all — it is onboarding status. Keep it last and keep it amber. */
-      { label: "Not set up yet", value: "3", pct: 17, note: "Families still to finish onboarding", warn: true },
+    /**
+     * Two states, switched by tabs. The point is to show the dashboard is worth
+     * looking at twice in a week, not to build a demo. Keep it to two.
+     */
+    states: [
+      {
+        id: "tue",
+        tab: "Tuesday",
+        week: "Week of 8 Sep",
+        metrics: [
+          { label: "Fueling days followed", value: "78%", pct: 78, note: "Squad average, last 7 days" },
+          { label: "Pre-game meal on time", value: "15", suffix: "/18", pct: 83, note: "Last Saturday's fixture" },
+          { label: "Not set up yet", value: "3", pct: 17, note: "Families still to finish onboarding", warn: true },
+        ],
+        read: {
+          h: "Week looks on track",
+          p: "Most of the squad is following their fueling days ahead of Saturday's fixture. Three families still have not finished setting up.",
+        },
+      },
+      {
+        id: "fri",
+        tab: "Friday",
+        week: "Week of 8 Sep",
+        metrics: [
+          { label: "Fueling days followed", value: "81%", pct: 81, note: "Squad average, last 7 days" },
+          { label: "Pre-game prep done", value: "9", suffix: "/18", pct: 50, note: "For tomorrow's 10am kickoff", warn: true },
+          { label: "Not set up yet", value: "2", pct: 11, note: "Families still to finish onboarding", warn: true },
+        ],
+        read: {
+          h: "Pre-game fueling needs attention",
+          p: "Half the squad has not completed tomorrow's pre-game preparation. A reminder at tonight's session would land.",
+        },
+      },
     ],
     days: [
       { d: "MON", k: "Rest" }, { d: "TUE", k: "Train", train: true }, { d: "WED", k: "Train", train: true },
       { d: "THU", k: "Rest" }, { d: "FRI", k: "Train", train: true }, { d: "SAT", k: "Game", game: true },
       { d: "SUN", k: "Game", game: true },
     ],
-    /** Load-bearing. This sentence is why a coach can forward the app to 18 families. */
-    privacy: {
-      h: "Team numbers only.",
-      p: "Coaches never see an individual athlete's meals, weight or photos. Parents control what is shared, and their athlete is told what a parent can see.",
+    readTitle: "What this tells you",
+    /** No diagnosis, no promise. It names a pattern and hands the individual
+     *  guidance back to the app, which is exactly the division of labour the
+     *  whole page is selling. */
+    readFoot: "You see the pattern. AthFuelPath handles the individual guidance.",
+  },
+
+  trust: {
+    h2: "Built for teams. Designed around athlete privacy.",
+    sub: "Coaches see team-level patterns, never an individual athlete's meals, weight, photos or personal nutrition history.",
+    items: [
+      { h: "Team-level insights", p: "Coach views are built around squad patterns rather than monitoring what any one athlete eats." },
+      { h: "Parent-controlled sharing", p: "Parents stay in control of their athlete's information and whether they take part at all." },
+      { h: "Athlete privacy", p: "Individual meals, body weight and personal photos are never shown to a coach." },
+    ],
+    /** Factual, and matches proof.affiliation on the homepage. She wrote the
+     *  guidance the app applies. Do not upgrade this to "reviews every plan". */
+    credibility: {
+      label: "Nutrition guidance",
+      p: "The fueling guidance in AthFuelPath was written by a Registered Dietitian who works with youth athletes.",
+      name: "Purvi Shah, MS, RDN",
+      role: "Founder · Registered Dietitian Nutritionist",
     },
   },
 
   form: {
-    h2: "Bring it to your club.",
-    sub: "We are opening the coach view to a first group of clubs this season. Tell us what your week looks like and what you would want on it, and we will bring you in early.",
+    h2: "Bring AthFuelPath to your squad.",
+    sub: "We are opening Coach Access to a small group of youth soccer clubs this season. Early clubs help shape the coach experience and get direct access to our team as it rolls out.",
+    note: "No commitment. Tell us about your club and we will follow up personally.",
     name: { label: "Your name" },
     club: { label: "Club, school or program" },
-    role: { label: "Your role", options: ["Coach", "Athletic director", "Trainer", "Club admin"] },
-    want: {
-      label: "What would you want to see on it?",
-      hint: "One line is plenty. It shapes what your club sees first.",
-      placeholder: "Whether the squad ate before a 10am kickoff…",
-    },
-    email: { label: "Email", hint: "Purvi Shah, MS, RDN reads these herself." },
-    submit: "Request early access",
+    role: { label: "Your role", options: ["Coach", "Athletic Director", "Trainer", "Club Admin"] },
+    email: { label: "Email" },
+    submit: "Request Coach Access",
     sending: "Sending…",
     done: {
       h: "Thanks — that's with us.",
       p: "Purvi will be in touch about bringing your club into the first group.",
+    },
+    /**
+     * Asked AFTER the request is recorded, never before. The answer is the most
+     * useful thing on this page, and it is also the field most likely to make a
+     * coach abandon the form. Post-submission it can cost nothing.
+     */
+    research: {
+      h: "One quick question",
+      p: "What's the biggest fueling challenge you see with your athletes?",
+      placeholder: "They come to Saturday games straight from a 7am wake-up with nothing in them…",
+      submit: "Send",
+      skip: "Skip",
+      thanks: "Thank you — that goes straight to Purvi.",
     },
     error: "That didn't send. Try again, or email us at",
   },
