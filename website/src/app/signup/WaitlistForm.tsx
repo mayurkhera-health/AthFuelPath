@@ -102,40 +102,48 @@ export function WaitlistForm() {
         <span className="hint">{waitlist.fields.pain.hint}</span>
       </div>
 
-      <div className={`field${errors.email ? " field--err" : ""}`}>
-        <label htmlFor="email">{waitlist.fields.email.label}</label>
-        <input
-          id="email" name="email" type="email" autoComplete="email" inputMode="email" required
-          aria-invalid={!!errors.email} aria-describedby={errors.email ? "e-mail" : "h-mail"}
-        />
-        {errors.email
-          ? <span id="e-mail" className="err" role="alert">{errors.email}</span>
-          : <span id="h-mail" className="hint">{waitlist.fields.email.hint}</span>}
+      {/* The two required fields, side by side from 720px. */}
+      <div className="field-pair">
+        <div className={`field${errors.email ? " field--err" : ""}`}>
+          <label htmlFor="email">{waitlist.fields.email.label}</label>
+          <input
+            id="email" name="email" type="email" autoComplete="email" inputMode="email" required
+            aria-invalid={!!errors.email} aria-describedby={errors.email ? "e-mail" : "h-mail"}
+          />
+          {errors.email
+            ? <span id="e-mail" className="err" role="alert">{errors.email}</span>
+            : <span id="h-mail" className="hint">{waitlist.fields.email.hint}</span>}
+        </div>
+
+        <div className={`field${errors.parent ? " field--err" : ""}`}>
+          <label htmlFor="parent">{waitlist.fields.parent.label}</label>
+          <input
+            id="parent" name="parent" maxLength={120} autoComplete="name" required
+            aria-invalid={!!errors.parent} aria-describedby={errors.parent ? "e-parent" : "h-parent"}
+          />
+          {errors.parent
+            ? <span id="e-parent" className="err" role="alert">{errors.parent}</span>
+            : <span id="h-parent" className="hint">{waitlist.fields.parent.hint}</span>}
+        </div>
       </div>
 
-      <div className={`field${errors.parent ? " field--err" : ""}`}>
-        <label htmlFor="parent">{waitlist.fields.parent.label}</label>
-        <input
-          id="parent" name="parent" maxLength={120} autoComplete="name" required
-          aria-invalid={!!errors.parent} aria-describedby={errors.parent ? "e-parent" : "h-parent"}
-        />
-        {errors.parent
-          ? <span id="e-parent" className="err" role="alert">{errors.parent}</span>
-          : <span id="h-parent" className="hint">{waitlist.fields.parent.hint}</span>}
-      </div>
+      {/* Paired from 720px. Both are short, both are about the athlete, and
+          stacking every field made this column roughly twice the height of the
+          panel beside it — about 950px of empty green. One column on a phone. */}
+      <div className="field-pair">
+        <div className="field">
+          <label htmlFor="athlete">{waitlist.fields.athlete.label}</label>
+          <input id="athlete" name="athlete" maxLength={80} autoComplete="off" />
+          <span className="hint">{waitlist.fields.athlete.hint}</span>
+        </div>
 
-      <div className="field">
-        <label htmlFor="athlete">{waitlist.fields.athlete.label}</label>
-        <input id="athlete" name="athlete" maxLength={80} autoComplete="off" />
-        <span className="hint">{waitlist.fields.athlete.hint}</span>
-      </div>
-
-      <div className="field">
-        <label htmlFor="age">{waitlist.fields.age.label}</label>
-        <select id="age" name="age" defaultValue="">
-          <option value="">Prefer not to say</option>
-          {waitlist.fields.age.options.map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
+        <div className="field">
+          <label htmlFor="age">{waitlist.fields.age.label}</label>
+          <select id="age" name="age" defaultValue="">
+            <option value="">Prefer not to say</option>
+            {waitlist.fields.age.options.map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </div>
       </div>
 
       <div className="field">

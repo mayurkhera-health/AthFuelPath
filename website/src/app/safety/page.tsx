@@ -40,7 +40,7 @@ export default function Safety() {
       <section className="section surface-light">
         <div className="container">
           <div className="section-head"><h2 className="h2">What we never do.</h2></div>
-          <ul className="grid grid-2">
+          <ul className="grid grid-2 grid--tocontent">
             {never.map((n) => (
               <li key={n.h} className="card">
                 <h3 className="h4">{n.h}</h3>
@@ -51,10 +51,10 @@ export default function Safety() {
         </div>
       </section>
 
-      <section className="section surface-light">
+      <section className="section surface-tint">
         <div className="container">
           <div className="section-head"><h2 className="h2">Your athlete&apos;s data.</h2></div>
-          <ul className="grid grid-2">
+          <ul className="grid grid-2 grid--tocontent">
             {data.map((n) => (
               <li key={n.h} className="card">
                 <h3 className="h4">{n.h}</h3>

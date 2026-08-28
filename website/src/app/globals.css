@@ -39,7 +39,13 @@
   --container: 1200px;
   --gutter: 20px;
   --text-col: 720px;
-  --section-y: 48px;      /* <768 */
+  /* Section padding is the single biggest source of dead space on this site:
+     two sections meeting means padding-bottom + padding-top with nothing
+     between them, and density.mjs measured that seam at 159-201px on every
+     page at 1440, with 34-48% of total page height carrying no content at all.
+     Tightened one step at every breakpoint. Re-run density.mjs before changing
+     these again. */
+  --section-y: 40px;      /* <768 — was 48 */
   --grid-gap: 14px;       /* mobile */
   --gap-max: 96px;        /* no vertical gap may exceed this */
   --nav-h: 64px;          /* mobile bar */
@@ -60,10 +66,10 @@
 }
 
 @media (min-width: 768px) {
-  :root { --section-y: 64px; --grid-gap: 20px; --gutter: 24px; }
+  :root { --section-y: 52px; --grid-gap: 20px; --gutter: 24px; }
 }
 @media (min-width: 1024px) {
-  :root { --section-y: 80px; --nav-h: 72px; --gutter: 24px; }
+  :root { --section-y: 64px; --nav-h: 72px; --gutter: 24px; }
 }
 
 /* ================= Reset ================= */
@@ -116,6 +122,19 @@ input, select, textarea { font: inherit; }
 .surface-dark { background: var(--dark); color: var(--on-dark); }
 
 .grid { display: grid; gap: var(--grid-gap); align-items: stretch; }
+/* Cards sized to their own copy rather than stretched to the tallest in the
+   row. Use this where the bodies differ a lot in length: on /safety a two-line
+   card sat beside a nine-line one and carried ~190px of blank card. Equal
+   heights are right when the bodies are comparable — leave .grid alone.
+   Column flow, not a grid: with a grid the row is still as tall as its tallest
+   card, so unstretching the short one only moves the hole outside it. Columns
+   let the next card rise into the space. These are independent statements, so
+   reading down one column then the other is fine. */
+.grid--tocontent {
+  display: block; columns: 1; column-gap: var(--grid-gap);
+}
+@media (min-width: 820px) { .grid--tocontent { columns: 2; } }
+.grid--tocontent > * { break-inside: avoid; margin-bottom: var(--grid-gap); }
 @media (min-width: 768px) {
   .grid-2 { grid-template-columns: repeat(2, 1fr); }
   .grid-3 { grid-template-columns: repeat(3, 1fr); }
@@ -458,7 +477,7 @@ img.photo--portrait { width: 100%; height: auto; }
 .page { padding-top: var(--nav-h); }
 
 /* ================= Footer ================= */
-.footer { background: var(--dark); color: var(--on-dark-soft); padding-top: var(--s8); padding-bottom: var(--s7); font-size: 16px; }
+.footer { background: var(--dark); color: var(--on-dark-soft); padding-top: var(--s7); padding-bottom: var(--s6); font-size: 16px; }
 .footer__grid { display: grid; gap: var(--s6); }
 @media (min-width: 768px) { .footer__grid { grid-template-columns: 1fr 1fr; } }
 @media (min-width: 1024px) { .footer__grid { grid-template-columns: 1.6fr 1fr 1fr; gap: var(--s7); } }
@@ -765,8 +784,11 @@ img.photo--portrait { width: 100%; height: auto; }
 .reassure li { display: flex; gap: var(--s2); }
 
 /* ================= Closing (S11) ================= */
+/* The closing block still gets more air than a normal section — it is the last
+   thing on the page and the ask — but 96px top and bottom made it the largest
+   dead band on four pages. --s8 (64) up from --s7 (48) keeps the emphasis. */
 .closing { padding-block: var(--s7); text-align: center; }
-@media (min-width: 1024px) { .closing { padding-block: var(--gap-max); } }
+@media (min-width: 1024px) { .closing { padding-block: var(--s8); } }
 .closing .h2 { margin-inline: auto; max-width: 18ch; }
 .closing .body { margin-inline: auto; margin-top: var(--s3); }
 .closing .cta-row { margin-top: var(--s5); }
@@ -817,6 +839,16 @@ img.photo--portrait { width: 100%; height: auto; }
 .form-page__main { background: var(--page); padding: var(--s8) var(--gutter); display: flex; align-items: center; }
 .form { width: 100%; max-width: 480px; margin-inline: auto; display: grid; gap: var(--s5); }
 .form .btn { width: 100%; }
+
+/* Two short related fields on one row from 720px. Stacking all six made the
+   waitlist form roughly twice the height of the dark panel beside it, and the
+   panel is pinned to the top (see the note above), so the difference showed as
+   about 950px of empty green. The form widens to hold the pairs. */
+.field-pair { display: grid; gap: var(--s5); }
+@media (min-width: 720px) {
+  .form { max-width: 600px; }
+  .field-pair { grid-template-columns: 1fr 1fr; gap: var(--s4); align-items: start; }
+}
 .mini-steps { display: grid; gap: var(--s3); }
 .mini-steps li { display: flex; gap: var(--s3); font-size: 18px; }
 .mini-steps .n { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 15px; font-weight: 800; background: var(--lime); color: var(--lime-ink); flex-shrink: 0; }
@@ -945,11 +977,14 @@ img.photo--portrait { width: 100%; height: auto; }
    Every value inherits from the token set in §1. The one new colour is a very
    light green tint used as a third band, so the page can pace itself across six
    sections without introducing a second brand hue. */
-.coachpg { --tint: #eef4ec; --section-y-coach: 88px; }
-@media (max-width: 767px) { .coachpg { --section-y-coach: 60px; } }
-/* Section spacing is tightened ~18% on this page only. --section-y is a global
-   token; changing it here would tighten the homepage too. */
-.coachpg .section { padding-block: var(--section-y-coach); }
+/* --tint used to live only on .coachpg. It is a site-wide band now: /safety and
+   /our-story use it too, and two identical surfaces meeting is what turns a
+   section seam into a random gap. */
+:root { --tint: #eef4ec; }
+/* This page had its own --section-y-coach at 88/60px, written when the global
+   was tighter. It is now looser than the global and was producing the widest
+   dead bands on the site (200px seams at 1440). Deleted: /coaches uses the
+   same rhythm as every other page. */
 .surface-tint { background: var(--tint, #eef4ec); color: var(--ink); }
 
 /* ---- hero ---- */
