@@ -105,6 +105,112 @@ export const TERMS_OF_SERVICE: Section[] = [
   },
 ];
 
+/* ==========================================================================
+ * WEBSITE PRIVACY — website only. NOT synced with the mobile app.
+ *
+ * Everything above and below this block is copied verbatim from
+ * fuelup-mobile/constants/legal.ts and is served by the app at
+ * GET /api/legal/*. Editing those arrays here makes the website and the app
+ * disagree about the same policy, which is worse than having no website
+ * section at all. So this lives in its own export instead, and /privacy renders
+ * it BEFORE the app policy.
+ *
+ * Why it exists: until 2026-08-28 the published policy described an app nobody
+ * could reach and said nothing about the website — while the waitlist form was
+ * live and collecting a required parent name, an optional child's first name,
+ * an age band, a club, and free text. A policy that does not mention the only
+ * thing a visitor can actually do is not a policy.
+ *
+ * EVERY CLAIM BELOW IS CHECKED AGAINST THE CODE, and has to stay that way:
+ *   - fields:      src/app/signup/WaitlistForm.tsx, src/app/coaches/CoachForm.tsx
+ *   - handling:    src/app/api/waitlist/route.ts (stdout log, then Gmail SMTP,
+ *                  per-instance IP rate limit, honeypot)
+ *   - no cookies:  no document.cookie / localStorage / sessionStorage anywhere
+ *                  in src/, and no third-party <Script> in app/layout.tsx
+ *   - analytics:   src/lib/analytics.ts forwards to window.posthog only IF a
+ *                  PostHog snippet is present. No snippet is loaded today, so
+ *                  nothing is sent. THE MOMENT ONE IS ADDED, the "no analytics"
+ *                  bullet below becomes false and must be rewritten first.
+ * ========================================================================== */
+export const WEBSITE_PRIVACY_UPDATED = "August 28, 2026";
+
+export const WEBSITE_PRIVACY: Section[] = [
+  { type: "heading", text: "This website and the waitlist" },
+  {
+    type: "body",
+    text: `Updated ${WEBSITE_PRIVACY_UPDATED}. This part covers athfuelpath.com — the website you are reading now, and the waitlist and coach-access forms on it. The numbered sections that follow cover the AthFuelPath app, which is not yet open to families. If you have only used this website, this part is the one that applies to you.`,
+  },
+  { type: "heading", text: "What the forms collect" },
+  {
+    type: "table",
+    headers: ["What we ask", "Required?", "Why"],
+    rows: [
+      ["Your name", "Required", "So we know who we are writing back to"],
+      ["Your email", "Required", "The only thing we use to reach you"],
+      ["Your athlete's first name", "Optional", "So a reply can use their name. First name only — we never ask for a surname or a date of birth"],
+      ["Your athlete's age band", "Optional", "To understand who is asking"],
+      ["Club or team", "Optional", "To understand where interest is coming from"],
+      ["Whatever you write in the open question", "Optional", "It is the most useful thing you can tell us, and Purvi reads them"],
+      ["Whether you ticked the 1:1 box", "Optional", "So Purvi knows to get in touch about it"],
+      ["Coaches only: your role and your club", "Optional", "To understand the request"],
+    ],
+  },
+  {
+    type: "body",
+    text: "Your IP address reaches our server with the request, as it does with any website. We hold it in memory for about a minute to stop a script submitting the form hundreds of times, and it is not written to a database or attached to your entry. The form also contains a hidden field no person can see; anything typed into it is discarded, because only automated software fills it in.",
+  },
+  { type: "heading", text: "What this website does not do" },
+  {
+    type: "bullets",
+    items: [
+      "It sets no cookies. None at all, including analytics and advertising cookies.",
+      "It stores nothing in your browser — no local storage, no session storage.",
+      "It runs no analytics, no tracking pixels, no advertising tags and no third-party scripts of any kind.",
+      "It does not create an account for you, and there is nothing to log in to.",
+      "It does not follow you to other websites, and cannot.",
+    ],
+  },
+  {
+    type: "warning",
+    text: "We do not sell what you send us, share it for advertising, or add you to any list other than the one you asked to join.",
+  },
+  { type: "heading", text: "Where your answers go" },
+  {
+    type: "body",
+    text: "Your entry is emailed to AthFuelPath and read by Purvi Shah and Mayur Khera. It is also written to our server log at the moment you submit it, so that an answer is not lost if the email fails to send. Two companies handle it on the way: Fly.io, which hosts this website and holds those logs, and Google, which delivers the email. Nobody else receives it. There is no marketing platform, no advertising network and no data broker in this path.",
+  },
+  { type: "heading", text: "Your athlete's first name and age" },
+  {
+    type: "body",
+    text: "These two fields are optional and are filled in by you, the parent or guardian, not by your child. We ask for a first name only. We do not collect a surname, a date of birth, an email address, a photograph or any contact detail for your athlete, and we never contact them — every reply goes to the adult who filled in the form. If you would rather not give us your athlete's name at all, leave both fields blank; it changes nothing about your place on the waitlist.",
+  },
+  {
+    type: "body",
+    text: "This website is not directed to children and we do not knowingly collect information from anyone under 13 through it. Where a parent chooses to tell us a younger athlete's first name and age band, we hold it on that parent's instruction and delete it on request.",
+  },
+  { type: "heading", text: "How long we keep it" },
+  {
+    type: "bullets",
+    items: [
+      "Waitlist and coach entries are kept until AthFuelPath opens and we have written to you about it, or until you ask us to delete them, whichever comes first.",
+      "Server logs, which contain the same entry, are kept for as long as our host retains them and are not used for anything else.",
+      "Joining the waitlist does not create an account, so there is nothing else being kept about you.",
+    ],
+  },
+  { type: "heading", text: "Changing your mind" },
+  {
+    type: "body",
+    text: "Email support@athfuelpath.com and ask to be removed. We will delete your entry and confirm that we have. You do not have to give a reason, and you can ask us at any time what we hold about you — it will be the fields listed in the table above and nothing more.",
+  },
+  { type: "divider" },
+  { type: "heading", text: "The AthFuelPath app" },
+  {
+    type: "body",
+    text: "The numbered sections below describe the AthFuelPath app, which is not yet open to families. They apply once you have an account, and nothing in them happens as a result of joining the waitlist. They are unchanged since July 2, 2026 and are the same text the app itself shows.",
+  },
+  { type: "divider" },
+];
+
 export const PRIVACY_POLICY: Section[] = [
   {
     type: "body",

@@ -125,6 +125,21 @@ export const waitlist = {
   },
   submit: "Join the waitlist",
   sending: "Sending…",
+  /**
+   * This form had no link to the privacy policy at all until 2026-08-28, while
+   * the coach form did — and this is the form that asks for a child's first
+   * name. /privacy now opens with a section describing exactly these fields,
+   * so the link lands somewhere that answers the question it raises.
+   *
+   * Names the athlete's first name explicitly. A parent about to type their
+   * child's name should be told where it goes at that moment, not left to find
+   * out by reading a policy they had no reason to open.
+   */
+  privacyNote: {
+    a: "We use this to tell you when AthFuelPath opens, and nothing else. Your athlete's first name is optional. See our",
+    link: "privacy notice",
+    href: "/privacy",
+  },
   /** Says only what actually happens. No account, no link, no timeline. */
   done: {
     h: "You're on the list.",
@@ -348,12 +363,13 @@ export const coaches = {
     },
     done: {
       /**
-       * "Two business days" is a promise a person has to keep. It is here
-       * because the spec asked for it; if Purvi cannot answer that fast, change
-       * this line rather than letting a club wait on it.
+       * NO TIMELINE. This said "within two business days" and was removed on
+       * 2026-08-28: replies come from one person working by hand, and a clock
+       * on the page is a promise she has to keep on the worst week as well as
+       * the best. Put a number back only when someone is accountable for it.
        */
       h: "Request received.",
-      p: "We'll email you within two business days with early-access details for your club.",
+      p: "We'll be in touch with early-access details for your club.",
     },
     /**
      * Asked AFTER the request is recorded, never before. The answer is the most

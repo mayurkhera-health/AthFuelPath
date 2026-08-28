@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Tick } from "@/components/ui/Icons";
 import { track } from "@/lib/analytics";
@@ -173,6 +174,13 @@ export function WaitlistForm() {
       <Button type="submit" arrow disabled={busy} section="waitlist">
         {busy ? waitlist.sending : waitlist.submit}
       </Button>
+
+      {/* This form had no link to the privacy policy at all, while the coach
+          form did — and this is the one that asks for a child's first name.
+          /privacy now opens with a section describing exactly these fields. */}
+      <p className="form-note">
+        {waitlist.privacyNote.a} <Link href={waitlist.privacyNote.href}>{waitlist.privacyNote.link}</Link>.
+      </p>
     </form>
   );
 }
