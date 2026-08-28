@@ -291,6 +291,118 @@ export const coaches = {
   },
 };
 
+/* ------------------------------------------------------------- Our Story
+ * /our-story — the founder story.
+ *
+ * This page's job is trust, not features. Five chapters, in this order and no
+ * other: who built it → why it became personal → how one family's fix became a
+ * product → what it holds to → a personal close. The waitlist CTA is the
+ * outcome of that trust, not the point of the page.
+ *
+ * NEVER on this page: product screenshots · statistics · testimonials · club
+ * logos · feature grids · timelines · stock photography · a second CTA before
+ * the close · nutrition instruction. The founder story carries the credibility;
+ * anything that makes this look like a product page weakens it.
+ *
+ * The positioning line appears ONCE, in `belief`. Do not restate it in the
+ * hero, the origin section or the close.
+ *
+ * Credentials appear ONCE, in the identity card. After that they are
+ * demonstrated by the story rather than repeated.
+ */
+export const ourStory = {
+  hero: {
+    eyebrow: "Our story",
+    h1: "A dietitian built this for her own daughter.",
+    p1: "Purvi Shah spent years helping families make nutrition practical. Then her own daughter started playing competitive soccer, and the problem became personal.",
+    p2: "Practices after school. Early games. Tournament weekends. Long drives home. She needed guidance that understood the schedule of a young athlete.",
+    portraitAlt: "Purvi Shah, founder of AthFuelPath, sitting at an outdoor table",
+    card: {
+      name: "Purvi Shah, MS, RDN",
+      /** Her credential string exactly as the rest of the site uses it. Do not
+       *  add CSSD or any other credential here without confirming she holds it. */
+      role: "Registered Dietitian Nutritionist · Soccer mom · Founder",
+      line: "Building the kind of youth-sports nutrition support she wanted for her own family.",
+    },
+  },
+
+  personal: {
+    eyebrow: "When it became personal",
+    h2: "Knowing what to do was one thing. Making it work at home was another.",
+    body: [
+      "When Purvi's daughter started playing competitive soccer, nutrition stopped being something she only explained professionally.",
+      "It became the 6:00 PM kickoff after a full school day. The early tournament game. The cooler packed in a hotel room. The long drive home when everyone was hungry.",
+      "She knew what a young athlete needed. The harder question was making it work in real family life.",
+    ],
+    /** The signature visual element of this section. Editorial statements with a
+     *  green rule, never cards — they are the parent's problem and the origin of
+     *  the company at the same time. */
+    questions: [
+      "What should my athlete eat today?",
+      "When should they eat it?",
+      "What changes because practice is tonight, or there are two games tomorrow?",
+    ],
+    /** Measured on purpose. "Too much of" — not "all of". */
+    close1: "Too much of the nutrition guidance Purvi encountered was built around numbers, written with adults in mind, or disconnected from the day in front of a young athlete.",
+    close2: "So she started turning what she knew into something her daughter could actually use.",
+  },
+
+  origin: {
+    eyebrow: "How AthFuelPath started",
+    h2: "It started with one athlete. The problem wasn't unique to her.",
+    body: [
+      "What started as a way to help her own daughter didn't stay a one-family problem for long.",
+      "At practices, games and tournaments, Purvi kept hearing versions of the same questions from other parents. What should they eat before practice? What changes on game day? What do we pack for a tournament? How do we help them recover without turning food into another thing to stress about?",
+      "AthFuelPath grew out of what she was already doing at home, taking an athlete's actual soccer schedule and turning it into a simple plan for the day.",
+    ],
+    statement: { a: "Built first for one daughter.", b: "Designed now for families like hers." },
+    /** Deliberately low priority. A visitor who now understands the story may
+     *  want to see what was built; this is not a second CTA. */
+    link: { label: "See how that idea became AthFuelPath", href: "/#how-it-works" },
+  },
+
+  belief: {
+    /** The one positioning statement on the site. Stated once, here, and never
+     *  restated in a variation elsewhere on the page. */
+    a: "Nutrition science wasn't missing.",
+    b: "Families needed a simpler way to use it.",
+    sub: "AthFuelPath is about making sound nutrition guidance easier for young athletes and their families to use in everyday life.",
+    eyebrow: "What we hold to",
+    h2: "The principles behind AthFuelPath.",
+    /** Parallel convictions, not sequential steps. Never number these, never
+     *  add icons, never imply an order. */
+    items: [
+      { h: "Young athletes aren't small adults.", p: "Growing bodies need guidance that respects growth, development and the demands of youth sport." },
+      { h: "The schedule matters.", p: "A practice day, a rest day and a tournament weekend shouldn't all look the same." },
+      { h: "Start with food.", p: "Everyday food should do the heavy lifting. Supplements aren't the starting point." },
+      { h: "Parents need practical guidance.", p: "Helping your athlete eat well shouldn't require a nutrition degree, or turn food into another source of family stress." },
+    ],
+  },
+
+  close: {
+    /**
+     * NULL UNTIL PURVI APPROVES THE WORDING. Publishing an invented quote
+     * attributed to a real person is not something to do on anyone's behalf,
+     * and the spec that asked for this section said so explicitly.
+     *
+     * Working draft awaiting her approval or her own words — prefer hers, even
+     * if less polished:
+     *
+     *   "I didn't want my daughter thinking about nutrition all day. I wanted
+     *    her to know what to do, do it, and get back to being a kid who loves
+     *    playing soccer."
+     *
+     * To publish, replace null with:
+     *   { text: "…", name: "Purvi Shah, MS, RDN", role: "Founder, AthFuelPath" }
+     * The close renders correctly either way.
+     */
+    quote: null as { text: string; name: string; role: string } | null,
+    h2: "Built for the young athlete in your family.",
+    sub: "AthFuelPath turns the week ahead into simple, practical fueling guidance young athletes and parents can actually follow.",
+    secondary: { label: "See how it works", href: "/#how-it-works" },
+  },
+};
+
 export const nav = {
   links: [
     { label: "How It Works", href: "/#how-it-works" },

@@ -1,6 +1,10 @@
 import { chromium } from "playwright";
 const b = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
-const PAGES = ["/", "/how-it-works", "/for-parents", "/pricing", "/safety", "/our-story", "/faq", "/signup", "/login", "/questions/before-a-530-practice", "/privacy"];
+/* Routes that actually exist today. /how-it-works, /for-parents, /pricing and
+   /login were in this list long after they were folded away or parked — and a
+   404 page passes every check here, so a stale list reports ALL PASS on pages
+   nobody is testing. Add a route here the same commit you add the page. */
+const PAGES = ["/", "/safety", "/our-story", "/coaches", "/faq", "/signup", "/questions/before-a-530-practice", "/privacy", "/terms", "/disclaimer"];
 const WIDTHS = [320, 390, 768, 1024, 1440];
 const fails = [];
 for (const w of WIDTHS) {
@@ -25,10 +29,18 @@ for (const w of WIDTHS) {
       out.small = [];
       if (window.innerWidth < 1024) {
         document.querySelectorAll("a,button,input,select,[role=tab]").forEach(el => {
-          const rc = el.getBoundingClientRect(); if (!rc.width || !rc.height) return;
+          /* A visually-hidden radio or checkbox inside a label is not the tap
+             target — the label is, and it is what a finger actually lands on.
+             Measure that instead of the 1px input, but do NOT simply skip it:
+             if the label is small the control is still unreachable. */
+          const rc = el.getBoundingClientRect();
+          const lab = el.closest("label");
+          const hidden = (el.tagName === "INPUT" && lab && (rc.width <= 2 || rc.height <= 2));
+          const box = hidden ? lab.getBoundingClientRect() : rc;
+          if (!box.width || !box.height) return;
           const inProse = el.tagName === "A" && el.parentElement && /^(P|SPAN|LI|LABEL)$/.test(el.parentElement.tagName);
           if (inProse || el.closest(".footer__bottom") || el.closest(".prose") || el.closest(".check")) return;
-          if (rc.height < 44) out.small.push(`${Math.round(rc.height)}px ${(el.textContent||el.tagName).trim().slice(0,24)}`);
+          if (box.height < 44) out.small.push(`${Math.round(box.height)}px ${(el.textContent||lab?.textContent||el.tagName).trim().slice(0,24)}`);
         });
       }
       // measure: no body copy over 68ch
