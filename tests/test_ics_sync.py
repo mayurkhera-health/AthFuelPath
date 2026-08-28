@@ -820,3 +820,68 @@ def test_same_feed_two_uids_stable_across_5_resync_cycles(monkeypatch, _spy_wind
         if i > 0:
             assert counts["inserted"] == 0, f"cycle {i}: must not re-report the logical game as new"
     conn.close()
+
+
+# ─── ECNL-RL provider-format drift (Nora / athlete 62 confirmed gap) ────────
+
+def test_ecnl_rl_marker_format_drift_adopts_not_inserts(monkeypatch, _spy_windows):
+    """The confirmed BYGA gap: a pre-existing row named with the
+    parenthesized "(ECNL-RL)" form, re-exported under a rotated UID with the
+    spaced "ECNL RL" + division-code form. Must be adopted (updated), never
+    inserted as a second row."""
+    conn = _fresh_conn()
+    event_date = FUT1.strftime("%Y-%m-%d")
+    start_time = FUT1.strftime("%H:%M")
+
+    conn.execute(
+        "INSERT INTO events (athlete_id, event_name, event_type, event_date, "
+        "start_time, duration_hours, uid, source) VALUES "
+        "(1,'U13 ECNL & RL Girls at Marin FC (ECNL-RL)','practice',%s,%s,1.5,'old-uid','byga')",
+        (event_date, start_time),
+    )
+    conn.commit()
+    original_id = conn.execute("SELECT id FROM events WHERE uid = 'old-uid'").fetchone()["id"]
+
+    _feed(monkeypatch, _cal(_vevent(
+        "rotated-uid", FUT1, "U13 ECNL & RL Girls at Marin FC ECNL RL G2013/14",
+    )))
+    counts = ics_sync.sync_platform(conn, 1, "byga", "http://x", "competitive_club")
+
+    rows = conn.execute("SELECT * FROM events WHERE athlete_id = 1").fetchall()
+    assert len(rows) == 1, f"Expected 1 row (adopted), got {len(rows)}: {[dict(r) for r in rows]}"
+    row = dict(rows[0])
+    assert row["id"] == original_id
+    assert row["uid"] == "rotated-uid"
+    assert row["event_name"] == "U13 ECNL & RL Girls at Marin FC ECNL RL G2013/14"
+    assert counts["updated"] == 1
+    assert counts["inserted"] == 0, (
+        "Must not report this event as new — the existing new-events email must not fire for it"
+    )
+
+
+def test_ecnl_rl_marker_format_drift_stable_across_5_resync_cycles(monkeypatch, _spy_windows):
+    """Re-running sync_platform 5 times, alternating provider naming between
+    the parenthesized and spaced-with-division-code forms and rotating UID
+    each cycle, must never grow the row count past 1."""
+    conn = _fresh_conn()
+    event_date = FUT1.strftime("%Y-%m-%d")
+    start_time = FUT1.strftime("%H:%M")
+
+    names = [
+        "U13 ECNL & RL Girls at Marin FC (ECNL-RL)",
+        "U13 ECNL & RL Girls at Marin FC ECNL RL G2013/14",
+        "U13 ECNL & RL Girls at Marin FC (ECNL-RL)",
+        "U13 ECNL & RL Girls at Marin FC ECNL RL G2013/14",
+        "U13 ECNL & RL Girls at Marin FC (ECNL-RL)",
+    ]
+    for i, name in enumerate(names):
+        _feed(monkeypatch, _cal(_vevent(f"ecnl-rl-cycle-uid-{i}", FUT1, name)))
+        counts = ics_sync.sync_platform(conn, 1, "byga", "http://x", "competitive_club")
+        rows = conn.execute(
+            "SELECT COUNT(*) AS n FROM events WHERE athlete_id = 1 "
+            "AND event_date = %s AND start_time = %s", (event_date, start_time),
+        ).fetchone()
+        assert rows["n"] == 1, f"cycle {i}: row count must stay at 1, got {rows['n']}"
+        if i > 0:
+            assert counts["inserted"] == 0, f"cycle {i}: must not re-report the logical game as new"
+    conn.close()

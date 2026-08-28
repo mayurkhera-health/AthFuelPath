@@ -103,6 +103,33 @@ _DIVISION_CODE_RE = re.compile(r"\s*\bg(\d{3,4}/\d{2})\b\s*$")
 # this set, so those stay real differences.
 _TRAILING_ORG_MARKERS = frozenset({"ecnl", "sc"})
 
+# ECNL/RL competition-marker format tolerance — narrow, pair-aware, and
+# distinct from _TRAILING_ORG_MARKERS above. Confirmed production gap
+# (Nora / athlete 62): BYGA represents the SAME "ECNL-RL" competition marker
+# in different textual forms across exports — "(ECNL-RL)" in one export,
+# "ECNL RL" (plus the already-tolerated trailing division code) in another.
+# This is a FORMAT variation of one marker, not a presence/absence drift, so
+# unlike the facility-number/division-code extractions it never carries a
+# conflicting value to compare — the three recognized forms all mean the
+# same thing. To avoid ever confusing this with the single-word "ecnl"
+# already in _TRAILING_ORG_MARKERS (which would wrongly let a bare "ECNL"
+# name match an "ECNL-RL" name once the marker is stripped from only one
+# side), this extraction requires the marker to be present on BOTH sides
+# before stripping either — see the "both sides" branch in names_equivalent.
+_ECNL_RL_MARKER_RE = re.compile(r"\s*(?:\(ecnl-rl\)|ecnl-rl|ecnl\s+rl)\s*$")
+
+
+def _extract_ecnl_rl_marker(name: str) -> tuple[str, bool]:
+    """If `name` ends with a recognized ECNL-RL marker form
+    ("(ECNL-RL)", "ECNL-RL", or "ECNL RL"), return (name with that marker
+    removed, True). Otherwise (name, False) unchanged. Call AFTER
+    _extract_division_code, so "...ECNL RL G2013/14" has already had its
+    division code stripped down to "...ECNL RL" before this runs."""
+    m = _ECNL_RL_MARKER_RE.search(name)
+    if not m:
+        return name, False
+    return name[: m.start()].rstrip(), True
+
 
 def _basic_normalize(name: str | None) -> str:
     """Lowercase, trim, collapse internal whitespace. No token stripping —
@@ -177,6 +204,15 @@ def names_equivalent(a: str | None, b: str | None) -> bool:
     if div_a is not None and div_b is not None and div_a != div_b:
         return False
     na, nb = div_base_a, div_base_b
+
+    # ECNL-RL marker format tolerance — see _extract_ecnl_rl_marker's
+    # docstring for why this requires the marker on BOTH sides, never just
+    # one (that asymmetric case is exactly what would let a bare "ECNL" or
+    # bare "RL" side wrongly collapse onto an "ECNL-RL" side).
+    ecnl_rl_base_a, has_ecnl_rl_a = _extract_ecnl_rl_marker(na)
+    ecnl_rl_base_b, has_ecnl_rl_b = _extract_ecnl_rl_marker(nb)
+    if has_ecnl_rl_a and has_ecnl_rl_b:
+        na, nb = ecnl_rl_base_a, ecnl_rl_base_b
 
     if na == nb:
         return True

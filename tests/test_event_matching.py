@@ -55,6 +55,57 @@ def test_names_equivalent_tolerates_trailing_org_abbreviation():
     assert names_equivalent("U19/18 ECNL vs San Juan", "U19/18 ECNL vs San Juan SC")
 
 
+def test_names_equivalent_tolerates_ecnl_rl_marker_format_drift():
+    """Confirmed production bug (Nora / athlete 62): BYGA represents the same
+    ECNL/RL competition marker in different textual forms across exports —
+    a parenthesized "(ECNL-RL)" suffix in one export, a spaced-out
+    "ECNL RL" plus the already-tolerated trailing division code in another.
+    Same logical game, must be recognized as equivalent."""
+    assert names_equivalent(
+        "U13 ECNL & RL Girls at Marin FC (ECNL-RL)",
+        "U13 ECNL & RL Girls at Marin FC ECNL RL G2013/14",
+    )
+
+
+def test_names_equivalent_ecnl_rl_marker_symmetric():
+    a = "U13 ECNL & RL Girls at Marin FC (ECNL-RL)"
+    b = "U13 ECNL & RL Girls at Marin FC ECNL RL G2013/14"
+    assert names_equivalent(a, b) == names_equivalent(b, a)
+
+
+def test_names_equivalent_tolerates_ecnl_rl_hyphenated_form():
+    """The plain hyphenated form (no parens) must also be recognized as the
+    same marker as the spaced-out form."""
+    assert names_equivalent(
+        "U15 RL Girls at Marin FC ECNL-RL",
+        "U15 RL Girls at Marin FC ECNL RL G2011/12",
+    )
+
+
+# ─── ECNL-RL marker: required false-positive protection ────────────────────
+# The new tolerance must ONLY recognize the combined ECNL+RL marker in one of
+# its observed forms — it must never let a bare "ECNL" or bare "RL" side
+# collapse into an "ECNL-RL" side, and must never affect any other name pair.
+
+def test_names_equivalent_rejects_ecnl_vs_rl():
+    assert not names_equivalent("U13 Girls at Marin FC ECNL", "U13 Girls at Marin FC RL")
+
+
+def test_names_equivalent_rejects_ecnl_vs_ecnl_rl():
+    assert not names_equivalent(
+        "U13 Girls at Marin FC ECNL", "U13 Girls at Marin FC (ECNL-RL)",
+    )
+    assert not names_equivalent(
+        "U13 Girls at Marin FC ECNL", "U13 Girls at Marin FC ECNL-RL",
+    )
+
+
+def test_names_equivalent_rejects_rl_vs_ecnl_rl():
+    assert not names_equivalent(
+        "U13 Girls at Marin FC RL", "U13 Girls at Marin FC (ECNL-RL)",
+    )
+
+
 def test_names_equivalent_is_symmetric():
     a, b = "Practice: Complex", "Practice: Complex #10"
     assert names_equivalent(a, b) == names_equivalent(b, a)
