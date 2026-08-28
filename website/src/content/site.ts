@@ -989,7 +989,14 @@ export const plan = {
   },
 };
 
-/* ------------------------------------------------------------------ S11 */
+/* ------------------------------------------------------------------ S11
+ * PARKED with the homepage's closing section (2026-08-28). Nothing renders this
+ * today — /parents, /safety, /faq and /questions each write their own close
+ * with their own headline, which is what keeps two pages from ending
+ * identically. Kept because restoring the homepage close is one import and one
+ * line in page.tsx, and because `trust` is the only place the audience is
+ * stated at the foot of the homepage. See _parked/Closing.tsx.
+ */
 export const closing = {
   h2: "Their next practice is already on the calendar.",
   sub: "Let's get their food sorted too.",

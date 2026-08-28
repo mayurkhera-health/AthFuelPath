@@ -5,7 +5,6 @@ import { Schedule } from "@/components/sections/Schedule";
 import { Steps } from "@/components/sections/Steps";
 import { Capabilities } from "@/components/sections/Capabilities";
 import { Safety } from "@/components/sections/Safety";
-import { Closing } from "@/components/sections/Closing";
 import { LegacyHash } from "@/components/LegacyHash";
 
 export const metadata = routeMetadata({
@@ -46,7 +45,17 @@ export default function Home() {
       <Steps />
       <Capabilities />
       <Safety />
-      <Closing />
+      {/* <Closing /> removed on 2026-08-28.
+          The homepage now ends on the trust strip, whose two tertiary links
+          hand a reader on to /parents and /safety rather than asking a third
+          time. That is coherent for a recognition page — someone who has read
+          the whole thing and is still deciding is better served by the page
+          that answers objections than by another button.
+          THE COST, stated plainly so it is a choice and not a surprise: below
+          1024px the sticky bar still offers the waitlist at the bottom, but on
+          DESKTOP the last waitlist CTA is now mid-page, in the setup section.
+          A reader who scrolls to the end has to use the nav. If waitlist
+          sign-ups per visitor drop, this is the first thing to put back. */}
     </>
   );
 }
