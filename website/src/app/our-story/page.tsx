@@ -54,17 +54,23 @@ export default function OurStory() {
               width={880}
               height={1100}
               className="story-hero__portrait"
-              sizes="(max-width: 900px) 92vw, 520px"
+              sizes="(max-width: 900px) 92vw, 460px"
               priority
             />
-            <div className="story-card">
-              <Image src="/img/purvi-avatar.webp" alt="" width={192} height={192} className="story-card__ico" aria-hidden />
-              <span>
-                <strong>{hero.card.name}</strong>
-                <span className="story-card__role">{hero.card.role}</span>
-                <span className="story-card__line">{hero.card.line}</span>
-              </span>
-            </div>
+          </div>
+
+          {/* Third grid child, not a caption under the portrait. Stacked under
+              the photograph it made an 841px column stand beside 363px of copy.
+              Here it reads last on mobile and balances the right column on
+              desktop. Source order is copy, portrait, card so mobile gets
+              headline, then face, then credentials. */}
+          <div className="story-card">
+            <Image src="/img/purvi-avatar.webp" alt="" width={192} height={192} className="story-card__ico" aria-hidden />
+            <span>
+              <strong>{hero.card.name}</strong>
+              <span className="story-card__role">{hero.card.role}</span>
+              <span className="story-card__line">{hero.card.line}</span>
+            </span>
           </div>
         </div>
       </section>

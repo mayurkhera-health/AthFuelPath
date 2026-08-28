@@ -822,14 +822,25 @@ img.photo--portrait { width: 100%; height: auto; }
   /* Portrait left, copy right, but the copy comes FIRST in the DOM so mobile
      reads the headline before it meets the photograph.
 
-     center, not start: the portrait column runs roughly twice the height of the
-     copy, and aligning both to the top left a tall blank rectangle under the
-     headline — the dead space this redesign exists to remove. */
-  .story-hero { grid-template-columns: 48fr 46fr; gap: 64px; align-items: center; }
-  .story-hero__media { order: -1; }
+     The white space above the headline was never an alignment problem. Measured
+     at 1440: the media column ran 841px (a 540px-wide 4:5 portrait is 675px
+     tall, plus the founder card) against 363px of copy. 478px of nothing.
+     align-items only chooses where that void sits — top, bottom, or split.
+
+     So the columns are made to match instead: the portrait is capped at 460px
+     wide (575px tall) and the founder card moved into the copy column, which
+     brings both sides to roughly 540px. Keep them within ~60px of each other if
+     this copy ever changes; past that the void comes back. */
+  .story-hero {
+    grid-template-columns: minmax(0, 460px) minmax(0, 1fr);
+    grid-template-areas: "media copy" "media card";
+    column-gap: 64px; row-gap: var(--s5); align-items: center;
+  }
+  .story-hero__media { grid-area: media; }
+  .story-hero__copy { grid-area: copy; align-self: end; }
+  .story-hero .story-card { grid-area: card; align-self: start; margin-top: 0; }
 }
 .story-hero__portrait { width: 100%; height: auto; border-radius: 20px; }
-@media (min-width: 900px) { .story-hero__media { max-width: 540px; } }
 
 .story-hero__h1 {
   font-size: clamp(36px, 5.2vw, 56px); line-height: 1.06; letter-spacing: -1.4px;
@@ -875,7 +886,7 @@ img.photo--portrait { width: 100%; height: auto; }
 /* ---- origin close ---- */
 .story-statement {
   display: grid; gap: 2px; text-align: center; text-wrap: balance;
-  margin: 88px auto 0; max-width: 760px; color: var(--on-dark);
+  margin: 56px auto 0; max-width: 760px; color: var(--on-dark);
   font-size: clamp(26px, 4vw, 40px); line-height: 1.2; letter-spacing: -1px; font-weight: 800;
 }
 .story-statement span:last-child { color: var(--lime); }
@@ -897,7 +908,7 @@ img.photo--portrait { width: 100%; height: auto; }
 }
 
 /* ---- principles ---- */
-.story-principles { margin-top: 72px; }
+.story-principles { margin-top: 56px; }
 .story-principles__list { display: grid; gap: 40px; margin-top: var(--s5); }
 @media (min-width: 820px) { .story-principles__list { grid-template-columns: 1fr 1fr; column-gap: 72px; row-gap: 54px; } }
 .story-principles__rule { display: block; width: 32px; height: 2px; background: var(--forest); margin-bottom: var(--s3); }
