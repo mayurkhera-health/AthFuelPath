@@ -800,7 +800,12 @@ img.photo--portrait { width: 100%; height: auto; }
   min-height: calc(100dvh - var(--nav-h));
 }
 @media (min-width: 1024px) { .form-page { grid-template-columns: 1fr 1fr; } }
-.form-page__aside { background: var(--dark); color: var(--on-dark); padding: var(--s8) var(--gutter); display: flex; flex-direction: column; justify-content: center; gap: var(--s5); }
+/* flex-start, not center. The column is as tall as the form beside it, and the
+   waitlist form is long — centring pushed this panel roughly halfway down the
+   page, so someone landing on /signup saw empty dark space next to the first
+   fields and only met the "Not open yet" framing after scrolling. It has to sit
+   level with the form's heading, because it is what explains the form. */
+.form-page__aside { background: var(--dark); color: var(--on-dark); padding: var(--s8) var(--gutter); display: flex; flex-direction: column; justify-content: flex-start; gap: var(--s5); }
 .form-page__main { background: var(--page); padding: var(--s8) var(--gutter); display: flex; align-items: center; }
 .form { width: 100%; max-width: 480px; margin-inline: auto; display: grid; gap: var(--s5); }
 .form .btn { width: 100%; }
