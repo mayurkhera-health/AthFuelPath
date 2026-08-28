@@ -217,7 +217,7 @@ export default function Parents() {
       {/* 08 — the objections, answered plainly */}
       <section className="section surface-tint" aria-labelledby="pf-h">
         <div className="container">
-          <div className="text-col">
+          <div className="par-faq">
             <span className="eyebrow">{faq.eyebrow}</span>
             <h2 id="pf-h" className="h2 balance" style={{ marginTop: "var(--s3)", marginBottom: "var(--s5)" }}>{faq.h2}</h2>
             <Accordion items={faq.items} openFirst />

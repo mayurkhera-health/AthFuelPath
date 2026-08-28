@@ -66,10 +66,10 @@
 }
 
 @media (min-width: 768px) {
-  :root { --section-y: 52px; --grid-gap: 20px; --gutter: 24px; }
+  :root { --section-y: 48px; --grid-gap: 20px; --gutter: 24px; }
 }
 @media (min-width: 1024px) {
-  :root { --section-y: 64px; --nav-h: 72px; --gutter: 24px; }
+  :root { --section-y: 56px; --nav-h: 72px; --gutter: 24px; }
 }
 
 /* ================= Reset ================= */
@@ -1537,3 +1537,12 @@ img.photo--portrait { width: 100%; height: auto; }
 .par-safe__note strong { color: var(--on-dark); }
 .par-safe__link { margin-top: var(--s5); text-align: center; }
 .par-safe__link .tlink { min-height: 44px; display: inline-flex; align-items: center; gap: var(--s2); }
+
+/* The /parents FAQ column is centred, not left-aligned.
+   .text-col hangs a 720px column off the left of a 1200px container, which put
+   the heading and every question against the left edge with the right half of
+   the band empty — read as "too much space" even though the vertical rhythm
+   here is the site standard. Centred, the emptiness is symmetric and stops
+   looking like something is missing. */
+.par-faq { max-width: 800px; margin-inline: auto; }
+.par-faq .eyebrow, .par-faq .h2 { text-align: center; }
