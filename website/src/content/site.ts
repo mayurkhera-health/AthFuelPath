@@ -510,8 +510,24 @@ export const ourStory = {
 
 export const nav = {
   links: [
+    /**
+     * "For Parents" was removed here on 2026-08-28.
+     *
+     * It was an anchor, not a page — it scrolled a visitor two thirds down the
+     * homepage and landed them on the safety commitments, which is one specific
+     * reassurance rather than "everything for parents". The label promised a
+     * destination the site does not have.
+     *
+     * It does not have one because it does not need one: the homepage IS the
+     * parents page. Every section of it is addressed to a parent. /coaches
+     * exists because coaches are a different audience with a different ask;
+     * parents are the default audience, so there is nothing left over to put on
+     * a separate page. Building /for-parents would restate the homepage on a
+     * second URL.
+     *
+     * The safety section keeps its id so any link already shared still lands.
+     */
     { label: "How It Works", href: "/#how-it-works" },
-    { label: "For Parents", href: "/#for-parents" },
     { label: "Coaches", href: "/coaches" },
     { label: "Our Story", href: "/our-story" },
   ],
@@ -986,8 +1002,10 @@ export const faqsParked: Faq[] = [
 export const footer = {
   blurb: "Straightforward sports nutrition for young soccer players and the families behind them.",
   explore: [
+    /* "For parents" removed with the nav entry — see the note on nav.links.
+       Safety commitments already have their own footer link under Legal &
+       safety, which is a truer home for what that anchor pointed at. */
     { label: "How it works", href: "/#how-it-works" },
-    { label: "For parents", href: "/#for-parents" },
     { label: "Coaches", href: "/coaches" },
     { label: "Our story", href: "/our-story" },
     { label: "All questions", href: "/faq" },

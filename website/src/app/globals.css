@@ -567,15 +567,31 @@ img.photo--portrait { width: 100%; height: auto; }
 .qs__note { margin-top: var(--s3); font-size: 17px; line-height: 1.5; color: var(--muted); }
 @media (min-width: 1024px) { .qs__note { margin-top: auto; padding-top: var(--s5); } }
 
-/* Mobile: horizontal snap row of chips */
+/* Mobile: a plain vertical list. NOT a horizontal scroller.
+ *
+ * This was a snap carousel of 260px cards. Two things were wrong with it and
+ * only one was fixable. The card was a fixed width, so on a 390px screen the
+ * next one was sliced through the middle of a word — "Did he e… the gam…" — and
+ * with the scrollbar hidden there was nothing to say it scrolled at all. Three
+ * of the four questions were invisible and undiscoverable.
+ *
+ * Widening the card did not fix it, and could not: any peek wide enough to
+ * signal "there is more" is wide enough to render half a sentence, and any peek
+ * narrow enough to hide the text is too narrow to notice on a white-on-off-white
+ * card. The pattern was wrong, not the numbers.
+ *
+ * Four items, two lines each, costs about 280px stacked — and every question is
+ * then visible, tappable and readable, which is the whole point of the section.
+ * It also matches the desktop model: list first, answer second.
+ */
 @media (max-width: 767px) {
-  .qs__tabs {
-    flex-direction: row; width: 100%; max-width: 100vw; overflow-x: auto; scroll-snap-type: x mandatory;
-    margin-inline: calc(var(--gutter) * -1); padding-inline: var(--gutter);
-    padding-bottom: var(--s2); -webkit-overflow-scrolling: touch; scrollbar-width: none;
-  }
-  .qs__tabs::-webkit-scrollbar { display: none; }
-  .qs__q { flex: 0 0 260px; width: 260px; scroll-snap-align: start; font-size: 17px; }
+  .qs__tabs { flex-direction: column; gap: var(--s2); }
+  .qs__q { font-size: 17px; }
+  /* The note sits under the ANSWER, not between the questions and the answer,
+     where it pushed the panel away from the list that controls it. */
+  .qs__list { display: contents; }
+  .qs__panel { order: 2; }
+  .qs__note { order: 3; margin-top: var(--s4); }
 }
 
 /* ---- Answer panel ---- */
@@ -625,7 +641,13 @@ img.photo--portrait { width: 100%; height: auto; }
 }
 .qs__dot { width: 10px; height: 10px; border-radius: 50%; background: var(--lime); flex-shrink: 0; }
 .qs__dot--event { background: #e8a33d; }
-.qs__label { font-size: 17px; font-weight: 700; color: var(--on-dark); line-height: 1.3; white-space: nowrap; }
+/* min-width: 0 so this can shrink inside the flex row, and nowrap only where
+   there is room for it. "Game-day breakfast" and "Between-game fuel" are on the
+   tournament question, and at 320px nowrap pushed them 12px past the viewport —
+   a horizontal scrollbar on the whole page, but only while that one question
+   was selected, which is why the audit never saw it. */
+.qs__label { font-size: 17px; font-weight: 700; color: var(--on-dark); line-height: 1.3; white-space: nowrap; min-width: 0; }
+@media (max-width: 520px) { .qs__label { white-space: normal; text-wrap: pretty; } }
 @media (min-width: 768px) { .qs__label { font-size: 19px; } }
 .qs__rownote { margin-left: auto; font-size: 16px; color: #a9bfb2; white-space: nowrap; }
 @media (max-width: 479px) { .qs__rownote { display: none; } }

@@ -68,6 +68,23 @@ for (const w of WIDTHS) {
       out.bgs = [...bgs]; out.h1 = document.querySelectorAll("h1").length;
       return out;
     });
+    /* Every page here was audited in ONE state — whatever renders on load. A
+       tab that is not selected is never measured, and that hid a real bug: the
+       tournament question on the homepage overflowed 320px by 12px, but only
+       while it was the selected tab. Click through every tablist and re-check
+       overflow in each state. */
+    const tabs = await p.$$('[role="tab"]');
+    for (let t = 1; t < tabs.length; t++) {
+      await tabs[t].click().catch(() => {});
+      await p.waitForTimeout(220);
+      const o = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      if (o > 0) {
+        const label = (await tabs[t].textContent())?.trim().slice(0, 24);
+        fails.push(`${w} ${u} OVERFLOW +${o} in tab "${label}"`);
+      }
+    }
+    if (tabs.length) await tabs[0].click().catch(() => {});
+
     const tag = `${w} ${u}`;
     if (r.overflow > 0) fails.push(`${tag} OVERFLOW +${r.overflow}`);
     if (r.placeholder) fails.push(`${tag} PLACEHOLDER`);

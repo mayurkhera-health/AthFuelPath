@@ -21,6 +21,11 @@ export function Questions() {
   function select(next: number) {
     if (next === i) return;
     setI(next);
+    /* On mobile the questions are a horizontal scroller. Without this, tapping
+       the sliver of the next card selects it and leaves it half off-screen —
+       the answer below changes for a question you cannot fully read. Harmless
+       on desktop, where the list is a static column and nothing scrolls. */
+    btns.current[next]?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
     track("question_select", { index: next, label: items[next].q });
   }
 
