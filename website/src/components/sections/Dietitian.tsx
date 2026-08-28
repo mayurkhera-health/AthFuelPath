@@ -1,5 +1,4 @@
 import { Shot } from "@/components/ui/Shot";
-import { Button } from "@/components/ui/Button";
 import { Tick } from "@/components/ui/Icons";
 import { dietitian } from "@/content/site";
 
@@ -41,9 +40,12 @@ export function Dietitian() {
 
           <p className="diet__billing">{dietitian.billing}</p>
 
-          <div className="cta-row" style={{ marginTop: "var(--s5)" }}>
-            <Button href="/signup" arrow section="dietitian">{dietitian.cta}</Button>
-          </div>
+          {/* The waitlist button that sat here was removed on 2026-08-28 —
+              one of five on the homepage. It was also the most misleading of
+              them: this section sells a paid 1:1 session, and a "Join the
+              waitlist" button directly under the billing line invited a reader
+              to think they were signing up for the session. The waitlist form
+              has its own 1:1 checkbox, which is the honest route in. */}
         </div>
 
         <div className="diet__shot">

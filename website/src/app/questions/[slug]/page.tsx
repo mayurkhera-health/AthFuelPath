@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Button, TextLink } from "@/components/ui/Button";
 import { questionPages, bySlug } from "@/content/questions";
-import { cta, trialLine } from "@/content/site";
+import { cta } from "@/content/site";
 
 export function generateStaticParams() {
   return questionPages.map((q) => ({ slug: q.slug }));
@@ -48,7 +48,6 @@ export default async function QuestionPage({ params }: { params: Promise<{ slug:
           <h2 className="h2 balance">Sort this one for good.</h2>
           <p className="body muted-txt">Set it up once. The app answers it every week, for every session on their schedule.</p>
           <div className="cta-row cta-row--center"><Button href="/signup" hero arrow section="question">{cta.primary}</Button></div>
-          <p className="trust-row">{trialLine}</p>
         </div>
       </section>
     </>

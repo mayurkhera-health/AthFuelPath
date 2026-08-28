@@ -596,6 +596,17 @@ img.photo--portrait { width: 100%; height: auto; }
   color: var(--on-dark); text-wrap: pretty;
 }
 @media (min-width: 768px) { .qs__q3 { font-size: 30px; } }
+/* From 1024px the question list sits beside this panel with the chosen question
+   highlighted, so printing it again as the panel heading showed the same
+   sentence twice about 300px apart. Hidden visually, not removed: it is still
+   the panel's accessible name, and below 1024px the list stacks above the panel
+   where the heading is the only thing saying which question is being answered. */
+@media (min-width: 1024px) {
+  .qs__q3 {
+    position: absolute; width: 1px; height: 1px; margin: -1px;
+    padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+}
 .qs__answer {
   margin-top: var(--s3); font-size: 18px; line-height: 1.55; color: #c8d8ce; max-width: 640px;
 }
@@ -1202,8 +1213,12 @@ img.photo--portrait { width: 100%; height: auto; }
 @media (min-width: 900px) { .dash__action { grid-column: 2; margin-top: var(--s2); } }
 
 /* ---- trust ---- */
+/* auto-fit, not repeat(3, 1fr): this list is down to one item after the two
+   that restated the subheading above it were cut, and a fixed three-column
+   grid left it stranded in the first third of the row. */
 .coach-trust { display: grid; gap: var(--s5); }
-@media (min-width: 820px) { .coach-trust { grid-template-columns: repeat(3, 1fr); gap: var(--s6); } }
+@media (min-width: 820px) { .coach-trust { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--s6); } }
+.coach-trust > li:only-child { max-width: 62ch; }
 .coach-trust > li { display: flex; gap: var(--s3); align-items: flex-start; }
 .coach-trust .tick { color: var(--forest); flex-shrink: 0; margin-top: 4px; }
 .coach-trust strong { display: block; font-size: 19px; line-height: 1.25; }

@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/Button";
 import Link from "next/link";
 import { Arrow } from "@/components/ui/Icons";
 import { questionPages } from "@/content/questions";
-import { faqs, cta, trialLine, faqNotice } from "@/content/site";
+import { faqs, cta, faqNotice } from "@/content/site";
 import { routeMetadata } from "@/lib/meta";
 
 export const metadata = routeMetadata({
@@ -37,6 +37,15 @@ export default function FaqPage() {
               <section key={g} style={{ marginTop: "var(--s6)" }}>
                 <h2 className="h4" style={{ marginBottom: "var(--s4)" }}>{g}</h2>
                 <Accordion items={faqs.filter((f) => f.group === g)} openFirst={g === "Setup"} />
+                {/* Three safety questions were removed from this group because
+                    each restated a card on /safety, two of them near-verbatim.
+                    This link replaces them: one pointer to the full account
+                    rather than a shortened second copy of it. */}
+                {g === "Safety" && (
+                  <p style={{ marginTop: "var(--s4)" }}>
+                    <Link href="/safety" className="tlink">Everything we never do, and what we collect <Arrow /></Link>
+                  </p>
+                )}
               </section>
             ))}
             <section style={{ marginTop: "var(--s6)" }}>
@@ -58,7 +67,6 @@ export default function FaqPage() {
           <div className="cta-row cta-row--center" style={{ marginTop: "var(--s6)" }}>
             <Button href="/signup" hero arrow section="faq">{cta.primary}</Button>
           </div>
-          <p className="trust-row">{trialLine}</p>
         </div>
       </section>
     </>

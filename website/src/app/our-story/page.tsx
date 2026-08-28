@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Arrow } from "@/components/ui/Icons";
-import { ourStory, cta, trialLine } from "@/content/site";
+import { ourStory, cta } from "@/content/site";
 import { routeMetadata } from "@/lib/meta";
 
 export const metadata = routeMetadata({
@@ -164,9 +164,12 @@ export default function OurStory() {
 
           <div className="cta-row cta-row--center story-close__cta">
             <Button href="/signup" hero arrow section="our-story">{cta.primary}</Button>
-            <Link href={close.secondary.href} className="tlink">{close.secondary.label} <Arrow /></Link>
+            {/* close.secondary is null — see the note in site.ts. It pointed at
+                the same anchor as origin.link earlier on this page. */}
+            {close.secondary && (
+              <Link href={close.secondary.href} className="tlink">{close.secondary.label} <Arrow /></Link>
+            )}
           </div>
-          <p className="trust-row">{trialLine}</p>
         </div>
       </section>
     </>

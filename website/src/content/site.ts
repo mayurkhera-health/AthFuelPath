@@ -57,6 +57,15 @@ export const cta = {
  * must describe only what actually happens. No trial length, no price, no
  * "takes 4 minutes" — none of those are true yet.
  */
+/**
+ * Two places only: the homepage hero and /signup, where the email is actually
+ * handed over. It used to sit under the closing CTA of six pages, which made it
+ * the most repeated sentence on the site — a reassurance a reader has already
+ * accepted stops reassuring and starts sounding anxious.
+ *
+ * Rule: this line goes where someone is about to type their address, not
+ * wherever there is a button.
+ */
 export const trialLine = "No card. No spam. One email when it opens.";
 
 /* --------------------------------------------------------------- Waitlist
@@ -162,7 +171,10 @@ export const coaches = {
     h1: "The part of the season you can't see.",
     /** Two paragraphs on purpose: the problem, then what you get. */
     p1: "You plan the training. You set the lineup. But you can't see whether your players are fueling for the week you've planned.",
-    p2: "AthFuelPath gives you a simple team-level view, so you can spot fueling gaps before training, games and tournament weekends, without tracking individual athletes or adding work to your week.",
+    /* Shortened: "before training, games and tournament weekends" was the third
+       appearance of that list on this page, and the privacy clause is made
+       properly in the trust section rather than four times in passing. */
+    p2: "AthFuelPath gives you a simple team-level view, so you can spot fueling gaps before they show up on the pitch, without adding work to your week.",
     chips: ["Parents set it up", "Team-level only", "Nothing new to manage", "Built for youth soccer"],
     secondary: "See what coaches see",
   },
@@ -196,7 +208,11 @@ export const coaches = {
   dash: {
     badge: "Early access · opening to clubs this season",
     h2: "Your squad, at a glance.",
-    sub: "See whether your squad is fueling for the week ahead, in seconds. Team-level patterns only. No individual meals, weights or photos, and nothing for you to maintain.",
+    /* The privacy clause was cut from this line. It said "Team-level patterns
+       only. No individual meals, weights or photos" — which the hero says
+       above it and the trust section says below it in full. Five assertions of
+       one promise on a single page reads as insisting rather than explaining. */
+    sub: "See whether your squad is fueling for the week ahead, in seconds, with nothing for you to maintain.",
     team: "Twin Creeks SC · U15 Boys",
     /**
      * Two states, switched by tabs. The point is to show the dashboard is worth
@@ -270,10 +286,20 @@ export const coaches = {
   trust: {
     h2: "Built for teams. Designed around athlete privacy.",
     sub: "Coaches see team-level patterns, never an individual athlete's meals, weight, photos or personal nutrition history.",
+    /**
+     * ONE item, not three. Cut on 2026-08-28.
+     *
+     * "Team-level insights" and "Athlete privacy" were both restatements of the
+     * `sub` directly above them — the sub already says coaches see team-level
+     * patterns and never an athlete's meals, weight or photos, so the list was
+     * the section explaining itself and then repeating itself.
+     *
+     * What survives is the only idea the sub does not contain: the family, not
+     * the club, decides. Before adding an item here, check it says something
+     * `sub` does not.
+     */
     items: [
-      { h: "Team-level insights", p: "Coach views are built around squad patterns rather than monitoring what any one athlete eats." },
-      { h: "Parent-controlled sharing", p: "Parents stay in control of their athlete's information and whether they take part at all." },
-      { h: "Athlete privacy", p: "Individual meals, body weight and personal photos are never shown to a coach." },
+      { h: "Parents decide, not the club", p: "Parents stay in control of their athlete's information and whether they take part at all." },
     ],
     /** Factual, and matches proof.affiliation on the homepage. She wrote the
      *  guidance the app applies. Do not upgrade this to "reviews every plan". */
@@ -454,7 +480,15 @@ export const ourStory = {
     quote: null as { text: string; name: string; role: string } | null,
     h2: "Built for the young athlete in your family.",
     sub: "AthFuelPath turns the week ahead into simple, practical fueling guidance young athletes and parents can actually follow.",
-    secondary: { label: "See how it works", href: "/#how-it-works" },
+    /**
+     * There was a "See how it works" link here pointing at /#how-it-works.
+     * Removed: `origin.link` sends the reader to exactly the same place earlier
+     * on this page, with better reason ("See how that idea became
+     * AthFuelPath"), and the identical label was also the homepage hero's
+     * secondary button. Two links to one destination on one page, and the same
+     * four words on two pages.
+     */
+    secondary: null as { label: string; href: string } | null,
   },
 };
 
@@ -568,7 +602,11 @@ export const providersNote = "More club platforms are coming. Not on either one?
 export const schedule = {
   eyebrow: "Schedule → fueling",
   h2: "Their soccer schedule becomes their food plan.",
-  body: "Add practices, games and tournaments yourself, or pull in the club calendar you already use. AthFuelPath builds each day around when your player needs to eat.",
+  /* Does not re-list "practices, games and tournaments". The hero says it, the
+     setup card below says it, and the chips in this very section name the
+     session types. Three statements of the same sentence sat within one screen
+     of each other on this page. */
+  body: "Pull in the club calendar you already use, or add sessions by hand. From there the week fills itself in.",
   chipsLabel: "Imports from",
   syncNote: "When the club moves a session, the day updates on its own.",
   weekLabel: "This week",
@@ -730,7 +768,9 @@ export const steps = {
     {
       n: "02",
       title: "Add their soccer schedule",
-      body: "Practices, games and tournaments. Or just import the team calendar you already keep.",
+      /* The chips directly below name the session types. Spelling them out in
+         the body too made this the third copy of the same sentence on the page. */
+      body: "Import the team calendar you already keep, or add sessions one at a time.",
       chips: ["Practice", "Game", "Tournament", "Conditioning"],
       ex: { t: "Club calendar imported", d: "18 sessions and 9 games through the season" },
     },
@@ -765,6 +805,19 @@ export const proof = {
 export const safety = {
   eyebrow: "Safety & privacy",
   h2: "Safe for a growing kid.",
+  /**
+   * THREE claims, not six. Cut on 2026-08-28.
+   *
+   * "No supplements for under-18s", "You pick what you can see" and "Your
+   * athlete knows what you can see" moved out. All three are on /safety in
+   * fuller form, and the link below this section goes there. The homepage
+   * states the boundary; /safety proves it. Stating all six here made this the
+   * first of three places on the site that listed the same commitments.
+   *
+   * These three earn their place: the calorie line carries a disclosure, the
+   * weight line is the one parents actually fear, and "never less food" is the
+   * only one of the six that is a promise about intent rather than data.
+   */
   claims: [
     /**
      * The calorie line names its own exception on purpose. CoachMealCard.tsx renders
@@ -775,9 +828,6 @@ export const safety = {
     { t: "Not built around calorie counting", d: "Daily plans, recipes and reports are about fueling, never a calorie target. If your athlete asks the Fuel Coach about a meal they ate, it may show a nutrition breakdown." },
     { t: "No weight. No BMI. No body tracking.", d: "We don't collect it, show it or score it." },
     { t: "Never a diet. Never less food.", d: "Every step is about adding fuel, not taking it away." },
-    { t: "No supplements for under-18s", d: "Food first, always. Supplement questions go to a dietitian." },
-    { t: "You pick what you can see", d: "Meals, photos and the weekly report are each a setting you control." },
-    { t: "Your athlete knows what you can see", d: "The app tells them plainly, in their own account." },
   ],
 };
 
@@ -836,9 +886,16 @@ export const plan = {
 export const closing = {
   h2: "Their next practice is already on the calendar.",
   sub: "Let's get their food sorted too.",
-  /** One named person beats three participles. "Guided by parents" was
-   *  unfalsifiable and therefore worth nothing as trust. */
-  trust: "Built by a Registered Dietitian who is also a soccer mom. For players 13–17.",
+  /**
+   * Does NOT repeat the credential. `hero.founder.line` at the top of this same
+   * page already says "Registered Dietitian and soccer mom, she built this
+   * around her own daughter's season", beside her photograph. Saying it again
+   * at the bottom was the third assertion of one credential on one page, and
+   * the weakest, because there is no face next to it.
+   *
+   * What is left is the fact the hero does not carry: who it is for.
+   */
+  trust: "For soccer players 13–17, and the parents doing the shopping.",
 };
 
 /* ------------------------------------------------------------------ FAQ */
@@ -863,10 +920,30 @@ export const faqs: Faq[] = [
     a: "No. Pick the recipes you want for the week and AthFuelPath gathers the ingredients into one list, grouped the way you shop. You can also tick off what you already have at home.",
     event: "grocery_faq_open",
   },
-  { group: "Safety", q: "Does my athlete ever see numbers?", a: "AthFuelPath is not built around calorie counting. Daily plans, recipes and the weekly report focus on fueling rather than calorie targets. They do see a carb and protein target for the day, shown as a fuel gauge, because that is the guidance itself. It reads as fuel to add, never as a limit. If your athlete explicitly asks the Fuel Coach about a meal they ate, the Coach may give them a nutrition breakdown." },
-  { group: "Safety", q: "Do you track weight or body composition?", a: "No. Weight and BMI are never tracked, shown or scored." },
-  { group: "Safety", q: "Do you recommend supplements?", a: "No. AthFuelPath is food first, and it makes no supplement recommendations for athletes under 18." },
-  { group: "Safety", q: "What can I see as a parent?", a: "You choose. Meals, photos and the weekly report are each a setting. Your athlete is told in the app what you can see." },
+  /**
+   * The Safety group is deliberately two questions, not five.
+   *
+   * "Do you track weight or body composition?", "Do you recommend supplements?"
+   * and "What can I see as a parent?" were removed on 2026-08-28. Each one was
+   * a shortened restatement of a card on /safety, and two were near-verbatim —
+   * "Weight and BMI are never tracked, shown or scored" against /safety's
+   * "Weight and BMI are not collected for tracking, never shown back to your
+   * athlete, and never scored or trended". A parent reading the homepage, then
+   * /safety, then the FAQ was told the same six commitments three times in
+   * three voices, which reads as insisting rather than explaining.
+   *
+   * /safety is the single full account. Anything cut from here belongs there
+   * first. Do not re-add a safety FAQ that /safety already answers.
+   */
+  {
+    group: "Safety",
+    q: "Does my athlete ever see numbers?",
+    /* Stays because of its last sentence. This is the Fuel Coach disclosure —
+       the one place a nutrition breakdown can reach a young athlete — and
+       deleting it would leave the surrounding no-calorie claim false. It is a
+       disclosure, not marketing. See the note on faqsParked. */
+    a: "AthFuelPath is not built around calorie counting. Daily plans, recipes and the weekly report focus on fueling rather than calorie targets. They do see a carb and protein target for the day, shown as a fuel gauge, because that is the guidance itself. It reads as fuel to add, never as a limit. If your athlete explicitly asks the Fuel Coach about a meal they ate, the Coach may give them a nutrition breakdown.",
+  },
   { group: "Safety", q: "Is this medical advice?", a: "No. AthFuelPath gives sports nutrition guidance to learn from. It does not replace care from your own doctor." },
 ];
 

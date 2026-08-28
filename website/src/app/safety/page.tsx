@@ -1,5 +1,5 @@
 import { Button, TextLink } from "@/components/ui/Button";
-import { cta, trialLine, site } from "@/content/site";
+import { cta } from "@/content/site";
 import { routeMetadata } from "@/lib/meta";
 
 export const metadata = routeMetadata({
@@ -63,7 +63,9 @@ export default function Safety() {
             ))}
           </ul>
           <p style={{ marginTop: "var(--s6)" }}><TextLink href="/privacy" section="safety-page">Youth data &amp; privacy</TextLink></p>
-          <p className="small muted-txt" style={{ marginTop: "var(--s5)" }}>{site.disclaimer}</p>
+          {/* site.disclaimer was printed here. It is already in the footer of
+              every page, including this one, roughly 300px below — the same
+              sentence twice inside one screen. The footer carries it. */}
         </div>
       </section>
 
@@ -73,7 +75,6 @@ export default function Safety() {
           <div className="cta-row cta-row--center" style={{ marginTop: "var(--s6)" }}>
             <Button href="/signup" hero arrow section="safety-closing">{cta.primary}</Button>
           </div>
-          <p className="trust-row">{trialLine}</p>
         </div>
       </section>
     </>

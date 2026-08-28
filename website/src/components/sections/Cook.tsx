@@ -1,10 +1,8 @@
 "use client";
 import { useEffect, useRef } from "react";
-import Link from "next/link";
-import { Arrow } from "@/components/ui/Icons";
 import { Shot } from "@/components/ui/Shot";
-import { cook, cta } from "@/content/site";
-import { track, ctaClick } from "@/lib/analytics";
+import { cook } from "@/content/site";
+import { track } from "@/lib/analytics";
 
 /**
  * "What to cook this week" — the week, filled, and the one list it produces.
@@ -109,13 +107,11 @@ export function Cook() {
                 </li>
               ))}
             </ol>
-            <Link
-              href="/signup"
-              className="tlink cook__cta"
-              onClick={() => { ctaClick(cta.primary, "what-to-cook"); track("cook_cta_click", { label: cta.primary, section: "what-to-cook" }); }}
-            >
-              {cta.primary} <Arrow />
-            </Link>
+            {/* The waitlist link that sat here was removed on 2026-08-28. The
+                homepage carried five of them across eight sections, plus the
+                nav and the sticky bar. Three remain — hero, setup, close. This
+                section is mid-argument; interrupting it to ask was costing the
+                argument more than the extra ask was worth. */}
           </div>
       </div>
     </section>
