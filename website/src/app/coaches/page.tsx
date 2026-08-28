@@ -173,7 +173,6 @@ export default function CoachesPage() {
           <div>
             <h2 id="cf-h" className="h2 balance">{form.h2}</h2>
             <p className="body muted-txt" style={{ marginTop: "var(--s4)" }}>{form.sub}</p>
-            <p className="coach-price">{form.pricing}</p>
             <p className="small muted-txt" style={{ marginTop: "var(--s4)" }}>{form.note}</p>
 
             {/* What the club is actually agreeing to, before they ask. The last

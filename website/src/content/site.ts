@@ -289,12 +289,11 @@ export const coaches = {
     h2: "Bring AthFuelPath to your squad.",
     sub: "We are opening Coach Access to a small group of youth soccer clubs this season. Early clubs help shape the coach experience and get direct access to our team as it rolls out.",
     note: "No commitment. Tell us about your club and we will follow up personally.",
-    /**
-     * COMMERCIAL CLAIM — do not edit without Mayur's say-so. This states a price
-     * (none, for clubs, during early access) and a boundary (families subscribe
-     * separately). If either changes, this line changes first.
-     */
-    pricing: "Free for clubs during early access. Families choose whether to subscribe.",
+    /* No pricing line here, deliberately. There was one — "Free for clubs
+       during early access. Families choose whether to subscribe." — and it was
+       removed: nothing on this site should state a price, for clubs or for
+       families, until that is settled. If a coach asks, Purvi answers in the
+       reply. Do not reintroduce a price without Mayur's say-so. */
     /** Answers the question every coach asks next: what do I actually have to
      *  do, and what am I signing my families up for. */
     how: {
