@@ -18,6 +18,72 @@ _EVENT_TYPES = ["rest", "practice", "game", "tournament", "strength"]
 # considered dead (killed by a deploy or crashed without writing the error sentinel).
 _STALE_GENERATING_SECONDS = 120
 
+# Double-submit / network-retry guard (Security Item 5, F1): a mobile client
+# that never saw the 201 response (dropped connection, app backgrounded mid-
+# request) may resubmit the exact same AthleteCreate payload seconds later.
+# 10s is long enough to absorb that retry window but far too short to ever
+# mistake two genuinely separate athlete-creation actions (a parent adding a
+# second child minutes/hours apart) for the same one.
+_ATHLETE_CREATE_RETRY_WINDOW_SECONDS = 10
+
+# Fixed namespace (first advisory-lock key) for athlete-creation locking, so
+# this can never collide with event_matching.py's acquire_reconciliation_lock,
+# which uses (athlete_id, hashtext(...)) — a completely different first-arg
+# domain (an athlete_id, never this fixed hash of a literal string).
+_ATHLETE_CREATE_LOCK_NAMESPACE = "athlete_create"
+
+
+def _acquire_athlete_create_lock(conn, parent_id: int) -> None:
+    """Transaction-scoped Postgres advisory lock serializing athlete creation
+    for one parent. Without this, two concurrent identical submissions can
+    both observe 'no matching recent athlete' below and both INSERT — same
+    class of race event_matching.acquire_reconciliation_lock closes for
+    events. pg_advisory_xact_lock auto-releases at COMMIT/ROLLBACK."""
+    conn.execute(
+        "SELECT pg_advisory_xact_lock(hashtext(%s), %s)",
+        (_ATHLETE_CREATE_LOCK_NAMESPACE, parent_id),
+    )
+
+
+def _find_recent_duplicate_athlete(conn, data, normalized_season_phase: str):
+    """A retry of the exact same submission has every material field
+    identical AND landed within the short retry window — that's the
+    signature of a network retry/double-tap, not two different children.
+    IS NOT DISTINCT FROM is used for the nullable fields so two NULLs count
+    as equal (a plain = would not match). Deliberately does NOT match on
+    only first_name/age/date_of_birth/parent_id — those alone could
+    coincide for two real, different children (e.g. twins)."""
+    row = conn.execute(
+        f"""SELECT * FROM athletes
+           WHERE parent_id = %s
+             AND first_name = %s
+             AND age = %s
+             AND gender = %s
+             AND weight_lbs = %s
+             AND height_ft = %s
+             AND height_in = %s
+             AND position IS NOT DISTINCT FROM %s
+             AND competition_level IS NOT DISTINCT FROM %s
+             AND sweat_profile IS NOT DISTINCT FROM %s
+             AND allergies IS NOT DISTINCT FROM %s
+             AND dietary_restrictions IS NOT DISTINCT FROM %s
+             AND supplement_use IS NOT DISTINCT FROM %s
+             AND season_phase IS NOT DISTINCT FROM %s
+             AND food_preferences IS NOT DISTINCT FROM %s
+             AND date_of_birth IS NOT DISTINCT FROM %s
+             AND lifestyle_activity = %s
+             AND diet_pref = %s
+             AND phone IS NOT DISTINCT FROM %s
+             AND created_at > to_char((now() AT TIME ZONE 'UTC') - INTERVAL '{_ATHLETE_CREATE_RETRY_WINDOW_SECONDS} seconds', 'YYYY-MM-DD HH24:MI:SS')
+           ORDER BY id DESC LIMIT 1""",
+        (data.parent_id, data.first_name, data.age, data.gender, data.weight_lbs,
+         data.height_ft, data.height_in, data.position, data.competition_level,
+         data.sweat_profile, data.allergies, data.dietary_restrictions, data.supplement_use,
+         normalized_season_phase, data.food_preferences, data.date_of_birth,
+         data.lifestyle_activity, data.diet_pref, data.phone),
+    ).fetchone()
+    return row
+
 
 def _computed_calculated(athlete: dict) -> dict:
     """Derive the _calculated block from athlete physical stats. No LLM needed."""
@@ -108,6 +174,15 @@ def create_athlete(data: AthleteCreate, background_tasks: BackgroundTasks, ident
         ).fetchone()
         if not parent:
             raise HTTPException(403, "Parent consent must be confirmed before adding an athlete profile.")
+
+        normalized_season_phase = normalize_season_phase(data.season_phase)
+        # Serializes athlete creation for this parent so two concurrent
+        # identical submissions can't both pass the duplicate check below.
+        _acquire_athlete_create_lock(conn, data.parent_id)
+        duplicate = _find_recent_duplicate_athlete(conn, data, normalized_season_phase)
+        if duplicate:
+            return dict(duplicate)
+
         row = conn.execute(
             """INSERT INTO athletes
                (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in,
@@ -118,7 +193,7 @@ def create_athlete(data: AthleteCreate, background_tasks: BackgroundTasks, ident
             (data.parent_id, data.first_name, data.age, data.gender, data.weight_lbs,
              data.height_ft, data.height_in, data.position, data.competition_level,
              data.sweat_profile, data.allergies, data.dietary_restrictions, data.supplement_use,
-             normalize_season_phase(data.season_phase), data.food_preferences, data.date_of_birth,
+             normalized_season_phase, data.food_preferences, data.date_of_birth,
              data.lifestyle_activity, data.diet_pref, data.phone),
         ).fetchone()
         conn.commit()

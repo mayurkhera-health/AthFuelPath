@@ -172,34 +172,49 @@ def clear_slot(athlete_id: int, plan_date: str = Query(...), slot_name: str = Qu
 
 @router.post("/{athlete_id}/log-slot")
 def log_slot(athlete_id: int, data: MealPlanLogSlot, identity=Depends(require_session)):
+    """Claiming the slot (UPDATE ... WHERE logged=0 RETURNING) and inserting
+    the meal_logs row happen in the SAME uncommitted transaction — Postgres's
+    own row-level locking on the UPDATE serializes two concurrent calls for
+    the same slot, so only one can ever receive a returned row (Security
+    Item 5, F2: the prior SELECT-then-INSERT-then-UPDATE let two concurrent
+    requests both read logged=0 and both insert a meal_logs row)."""
     conn = get_conn()
     try:
         assert_owns_athlete(identity, athlete_id, conn)
-        row = conn.execute(
-            "SELECT * FROM meal_plans WHERE athlete_id = %s AND plan_date = %s AND slot_name = %s",
+        exists = conn.execute(
+            "SELECT 1 FROM meal_plans WHERE athlete_id = %s AND plan_date = %s AND slot_name = %s",
             (athlete_id, data.plan_date, data.slot_name),
         ).fetchone()
-        if not row:
+        if not exists:
             raise HTTPException(404, "Planned slot not found.")
-        r = dict(row)
-        if r["logged"]:
-            raise HTTPException(400, "This meal has already been logged.")
 
-        # Insert into meal_logs
-        inserted = conn.execute(
-            """INSERT INTO meal_logs
-               (athlete_id, log_method, description, calories, carbs_g, protein_g, fat_g)
-               VALUES (%s, 'meal-plan', %s, %s, %s, %s, %s)
-               RETURNING id""",
-            (athlete_id, r["recipe_name"], r["calories"], r["carbs_g"], r["protein_g"], r["fat_g"]),
-        )
-        meal_log_id = inserted.fetchone()["id"]
-
-        # Mark slot as logged
-        conn.execute(
-            "UPDATE meal_plans SET logged = 1 WHERE athlete_id = %s AND plan_date = %s AND slot_name = %s",
+        claimed = conn.execute(
+            """UPDATE meal_plans SET logged = 1
+               WHERE athlete_id = %s AND plan_date = %s AND slot_name = %s AND logged = 0
+               RETURNING recipe_name, calories, carbs_g, protein_g, fat_g""",
             (athlete_id, data.plan_date, data.slot_name),
-        )
+        ).fetchone()
+        if not claimed:
+            raise HTTPException(400, "This meal has already been logged.")
+        r = dict(claimed)
+
+        # If this fails, the transaction is never committed, so the logged=1
+        # claim above rolls back with it — closing() without commit()
+        # implicitly rolls back, but roll back explicitly so the failure
+        # mode doesn't depend on that implicit behavior.
+        try:
+            inserted = conn.execute(
+                """INSERT INTO meal_logs
+                   (athlete_id, log_method, description, calories, carbs_g, protein_g, fat_g)
+                   VALUES (%s, 'meal-plan', %s, %s, %s, %s, %s)
+                   RETURNING id""",
+                (athlete_id, r["recipe_name"], r["calories"], r["carbs_g"], r["protein_g"], r["fat_g"]),
+            )
+            meal_log_id = inserted.fetchone()["id"]
+        except Exception:
+            conn.rollback()
+            raise
+
         conn.commit()
         return {"logged": True, "meal_log_id": meal_log_id}
     finally:
