@@ -39,23 +39,85 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const AGES = new Set(["Under 13", "13", "14", "15", "16", "17", "18 or older", ""]);
 
 /**
- * Per-machine, per-minute cap. Deliberately modest: this app runs two machines
- * that scale to zero, so the map is per-instance and resets on suspend. It stops
- * a script hammering one box; it is not a substitute for a shared limiter, which
- * belongs in the API once this posts anywhere but an inbox.
+ * TWO limits, because they defend different things.
+ *
+ * PER-IP, per minute: stops one script hammering one box. It was the only limit
+ * here, and on its own it protects nothing that matters — an attacker with a
+ * pool of addresses walks straight past it, and the thing on the other side is
+ * the single inbox the entire waitlist depends on. At 5/min across two machines
+ * that was roughly 14,000 emails a day into Purvi's Gmail.
+ *
+ * GLOBAL, per hour: a ceiling on how many emails this instance will send at
+ * all, regardless of who is asking. Past it, entries are still accepted and
+ * still written to the log in full — nothing is lost — but the send is skipped.
+ * The waitlist keeps working; the mailbox stops being a lever.
+ *
+ * Both are per-instance and reset when a machine suspends, so with two machines
+ * the real ceiling is double. That is a bound, which is the point; it is not a
+ * shared limiter. A shared one needs Redis or the API, and belongs there the day
+ * this posts anywhere but an inbox.
  */
 const WINDOW_MS = 60_000;
 const MAX_PER_WINDOW = 5;
-const hits = new Map<string, number[]>();
+const HOUR_MS = 3_600_000;
+const MAX_MAILS_PER_HOUR = 40;
+const MAX_TRACKED_IPS = 5_000;
 
+const hits = new Map<string, number[]>();
+const sentAt: number[] = [];
+
+/**
+ * The map has to stay bounded AND no request may ever lower another address's
+ * counter. Two earlier attempts each managed only one of those.
+ *
+ * hits.clear() at the ceiling — the original — bounded memory and destroyed the
+ * limiter: flood the map with junk addresses and every real counter is wiped
+ * with it, which is a reset button an attacker can press.
+ *
+ * Evicting only EXPIRED entries kept counters honest and bounded nothing:
+ * 6,000 fresh addresses inside one minute have nothing to expire, so the map
+ * just grows. A test caught that one.
+ *
+ * Evicting least-recently-hit is bounded, but it is the reset button again with
+ * more steps — the address being limited is by definition an old entry, so a
+ * flood pushes it out.
+ *
+ * So an established counter is never touched, and the pressure lands on new
+ * entries instead: sweep what has expired, and if the map is still full of live
+ * entries, don't track this address at all. It is not blocked either — failing
+ * open for a stranger is the right trade when the alternative is a lever that
+ * un-blocks whoever is currently abusing the form. The map self-heals within
+ * WINDOW_MS as the flood expires.
+ *
+ * What none of this does is make per-IP limiting survive a distributed
+ * attacker; no in-memory map can. Someone with 5,000 addresses walks past it.
+ * That is what the hourly ceiling is for — it counts sends, not senders, so
+ * nothing an attacker does resets it.
+ */
 function rateLimited(ip: string): boolean {
   const now = Date.now();
-  const recent = (hits.get(ip) ?? []).filter((t) => now - t < WINDOW_MS);
+  const known = hits.get(ip);
+  const recent = (known ?? []).filter((t) => now - t < WINDOW_MS);
   if (recent.length >= MAX_PER_WINDOW) return true;
   recent.push(now);
+
+  if (known) { hits.set(ip, recent); return false; }
+
+  if (hits.size >= MAX_TRACKED_IPS) {
+    for (const [k, times] of hits) {
+      if (!times.length || now - times[times.length - 1] > WINDOW_MS) hits.delete(k);
+    }
+    if (hits.size >= MAX_TRACKED_IPS) return false;
+  }
   hits.set(ip, recent);
-  if (hits.size > 5000) hits.clear(); // crude ceiling; this is a marketing form
   return false;
+}
+
+/** True when this instance has already sent its hour's worth. */
+function mailBudgetSpent(): boolean {
+  const now = Date.now();
+  while (sentAt.length && now - sentAt[0] > HOUR_MS) sentAt.shift();
+  return sentAt.length >= MAX_MAILS_PER_HOUR;
 }
 
 type Entry = {
@@ -213,12 +275,25 @@ export async function POST(req: Request) {
    * of the standing exposure.
    */
   const masked = entry.email.replace(/^(.).*(@.*)$/, "$1***$2");
+
+  /* Hourly ceiling reached. The person IS on the list — that is the promise the
+     form makes, and it is kept here: the full entry goes to the log, which on
+     this path is the only copy, exactly as on an SMTP failure. Only the
+     notification to Purvi is skipped, and only until the hour rolls. Returning
+     200 is deliberate: a flood is not the submitter's fault to see, and a 429
+     would teach a script that the ceiling exists. */
+  if (mailBudgetSpent()) {
+    console.error(`[waitlist] hourly mail budget spent — send skipped, full entry retained: ${JSON.stringify(entry)}`);
+    return NextResponse.json({ ok: true });
+  }
+
   try {
     const sent = await deliver(entry);
     if (!sent) {
       console.error(`[waitlist] SMTP not configured — full entry retained: ${JSON.stringify(entry)}`);
       return NextResponse.json({ ok: false, error: "unavailable" }, { status: 503 });
     }
+    sentAt.push(Date.now());
     console.log(`[waitlist] ok kind=${entry.kind} source=${entry.source} ${masked}`);
   } catch (e) {
     console.error(`[waitlist] send failed (${e instanceof Error ? e.message : String(e)}) — full entry retained: ${JSON.stringify(entry)}`);
