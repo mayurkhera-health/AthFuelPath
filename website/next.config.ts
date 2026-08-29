@@ -24,6 +24,46 @@ const nextConfig: NextConfig = {
   images: { formats: ["image/webp"] },
   // /how-it-works and /for-parents were duplicates of homepage sections.
   // Permanent redirects so old links and any indexed URLs land on the content.
+  /**
+   * Security headers. The site had none before 2026-08-29.
+   *
+   * CSP is the important one and it is NOT strict: Next's App Router injects
+   * inline scripts to stream the RSC payload, so 'unsafe-inline' is required
+   * for script-src without a nonce middleware. What it still buys is the thing
+   * that matters most for a marketing site — no script from any other origin
+   * can execute, no frame can embed us, and no form can post anywhere else.
+   * Tightening to a nonce needs middleware and is a separate change.
+   *
+   * HSTS deliberately omits `preload`. Preload is a one-way door enforced by
+   * browser vendors and this site is not on its final domain yet.
+   */
+  async headers() {
+    const csp = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob:",
+      "font-src 'self'",
+      "connect-src 'self'",
+      "form-action 'self'",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "object-src 'none'",
+      "upgrade-insecure-requests",
+    ].join("; ");
+    return [{
+      source: "/:path*",
+      headers: [
+        { key: "Content-Security-Policy", value: csp },
+        { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+        { key: "X-Content-Type-Options", value: "nosniff" },
+        { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        { key: "X-Frame-Options", value: "DENY" },
+        { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()" },
+        { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+      ],
+    }];
+  },
   async redirects() {
     return [
       { source: "/how-it-works", destination: "/#how-it-works", permanent: true },

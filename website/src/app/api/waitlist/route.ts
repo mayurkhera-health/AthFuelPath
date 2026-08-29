@@ -12,9 +12,10 @@ import nodemailer from "nodemailer";
  * GMAIL_APP_PASSWORD, already Fly secrets on the api app) rather than adding a
  * second email provider. Copy both secrets onto this app to switch it on.
  *
- * Every entry is also written to stdout before the send is attempted, so a lead
- * survives in `fly logs` even if SMTP is down or the secrets are missing. Losing
- * a parent's answer to a transient mail failure is not acceptable.
+ * A lead must survive an SMTP outage, so the full entry is written to stdout —
+ * but ONLY on the failure path, where the log is the last copy in existence.
+ * A successful send logs a masked, non-identifying line instead. See the note
+ * above the try block.
  */
 
 export const runtime = "nodejs";
@@ -197,16 +198,30 @@ export async function POST(req: Request) {
 
   const entry: Entry = { kind, email: email.toLowerCase(), pain, age, club, parent, athlete, role, oneToOne, source };
 
-  // Written before the send so the lead survives an SMTP failure.
-  console.log(`[waitlist] ${JSON.stringify(entry)}`);
-
+  /**
+   * The full entry is written to the log ONLY when delivery fails.
+   *
+   * It used to be logged on every submission, before the send, so a lead would
+   * survive an SMTP outage. That reasoning still holds — losing a parent's
+   * answer to a transient mail failure is not acceptable — but it put a child's
+   * first name, a parent's name, an email address and free text into the host's
+   * logs for every successful signup, where they sit under Fly's retention
+   * rather than ours and cannot be pulled back on request.
+   *
+   * So: a minimal, non-identifying line on success, and the full entry only on
+   * the path where it is the last copy in existence. Same guarantee, a fraction
+   * of the standing exposure.
+   */
+  const masked = entry.email.replace(/^(.).*(@.*)$/, "$1***$2");
   try {
     const sent = await deliver(entry);
     if (!sent) {
+      console.error(`[waitlist] SMTP not configured — full entry retained: ${JSON.stringify(entry)}`);
       return NextResponse.json({ ok: false, error: "unavailable" }, { status: 503 });
     }
+    console.log(`[waitlist] ok kind=${entry.kind} source=${entry.source} ${masked}`);
   } catch (e) {
-    console.error("[waitlist] send failed:", e instanceof Error ? e.message : String(e));
+    console.error(`[waitlist] send failed (${e instanceof Error ? e.message : String(e)}) — full entry retained: ${JSON.stringify(entry)}`);
     return NextResponse.json({ ok: false, error: "unavailable" }, { status: 503 });
   }
 

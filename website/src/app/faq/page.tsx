@@ -26,7 +26,16 @@ export default function FaqPage() {
   };
   return (
     <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }} />
+      {/* JSON.stringify does NOT escape "</script>". The schema is built from
+          `faqs` in site.ts, which is authored rather than user input, so this is
+          not exploitable today — but FAQ copy is edited often and one answer
+          containing that string would close the tag early and turn the rest of
+          the page into markup. Escaping the two characters that can break out
+          costs nothing and removes the trap. */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(schema).replace(/</g, "\\u003c").replace(/\u2028|\u2029/g, "") }}
+      />
       <section className="section surface-light">
         <div className="container">
           <div className="text-col">
