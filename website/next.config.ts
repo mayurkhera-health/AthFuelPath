@@ -27,7 +27,12 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       { source: "/how-it-works", destination: "/#how-it-works", permanent: true },
-      { source: "/for-parents", destination: "/#for-parents", permanent: true },
+      /* Straight to /parents, not to /#for-parents.
+         This used to 308 to the homepage anchor, and since /parents exists that
+         became a CHAIN: 308 -> /#for-parents -> a client-side hop to /parents.
+         A permanent redirect is cached by browsers and search engines, so the
+         chain would have outlived the decision that created it. */
+      { source: "/for-parents", destination: "/parents", permanent: true },
       /* Pricing is hidden while the product is pre-launch and the price is not
          committed. TEMPORARY (permanent: false) on purpose — a 308 would be
          cached by browsers and search engines and would outlive the decision. */

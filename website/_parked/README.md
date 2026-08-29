@@ -41,3 +41,17 @@ sent) needs its own message.
 Also unmounted but still in `src/`, not here:
 `components/sections/Coach.tsx` and `Proof.tsx`. `../_to_delete/MealPlan.tsx`
 is superseded — its content lives in `Cook.tsx` and it can be deleted.
+
+
+## StickyCta.tsx (parked 2026-08-28)
+Superseded by `components/StickyBar.tsx` and imported by nothing. It had no CSS
+left in globals.css either — the `.sticky-cta` rules were already gone, so it
+could not have rendered correctly if something had imported it. A `"use client"`
+file that was still being type-checked and bundled for nothing.
+
+## sections/Coach.tsx (parked 2026-08-28)
+The AI Fuel Coach section, taken off the homepage in August. It stayed in
+`src/` for weeks after nothing imported it. Its content (`coach` in site.ts) and
+its ~30 rules in globals.css are deliberately LEFT IN PLACE, because this is
+expected back — restoring is one import in `src/app/page.tsx`. Restore it with
+`faqsParked` in the same commit, never separately.
