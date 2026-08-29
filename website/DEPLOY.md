@@ -195,6 +195,72 @@ For a launch where a deploy must not drop a request:
 fly scale count 2
 ```
 
+## Regions and resilience
+
+The app is **stateless** — no volumes, no database, nothing on disk that has to
+be replicated. That is the only reason adding a region is a two-minute change
+here; for an app with a Postgres volume it is a project.
+
+Everything below is optional. It is insurance against one failure mode: Fly's
+incidents are region-isolated and there is no automatic re-scheduling to another
+region, so with every Machine in `sjc`, an `sjc` incident takes the whole site
+down with nothing to fall back to.
+
+### 1+1 beats 2+0, for the same money
+
+Two Machines in one region buys a deploy that never drops a request, and nothing
+else. One Machine in each of two regions buys **the same** deploy safety — a
+rolling deploy still leaves one serving — plus survival of a regional incident,
+at the same Machine count. There is no reason to prefer 2+0 once a second region
+is on the table.
+
+Going to 2+2 doubles the bill for capacity this site does not need. Do not,
+unless traffic says otherwise.
+
+### The commands
+
+`fly scale count N --region X` sets the count **within X**, not the total. Add
+before you subtract, so the app is never down to a single Machine:
+
+```bash
+fly status -a athfuelpath-web                        what is actually running
+fly scale count 1 --region ewr -a athfuelpath-web    add the east coast
+fly status -a athfuelpath-web                        confirm it is up first
+fly scale count 1 --region sjc -a athfuelpath-web    then trim sjc to one
+```
+
+`ewr` is Secaucus, NJ; `iad` (Ashburn, VA) is the other reasonable east-coast
+choice. Both are fine. Note that `primary_region` says most early users are in
+the Bay Area — if that is still true, this is redundancy, not a speed-up, and
+should not be justified as one.
+
+### Test the failover, do not assume it
+
+Fly documents routing to the "closest healthy region". It does **not** document
+automatic cross-region failover during a regional outage, and Fly's own guidance
+is to test resilience rather than rely on undocumented behaviour. So test it:
+
+```bash
+fly machine list -a athfuelpath-web
+fly machine stop <the sjc machine id> -a athfuelpath-web
+curl -s -o /dev/null -w '%{http_code}\n' https://athfuelpath.com/
+fly machine start <the sjc machine id> -a athfuelpath-web
+```
+
+A 200 with sjc stopped is the whole point of the exercise. Anything else means
+this bought less than it appears to, and it is far better to find that out on a
+Tuesday than during a launch.
+
+### It changes the waitlist limits
+
+Both limits in `src/app/api/waitlist/route.ts` are **per instance**, held in
+memory. The hourly mail ceiling is therefore `MAX_MAILS_PER_HOUR × running
+machines`, not 40 — two Machines is a real ceiling of 80/hour whatever region
+they are in. Machine *count* is what moves that number, not region count, which
+is another argument for 1+1 over 2+2. If the count ever goes up, re-read the
+comment at the top of that file and decide whether the ceiling still reflects
+what the inbox can take.
+
 ## Before a production deploy
 
 ```bash
