@@ -80,6 +80,25 @@ const nextConfig: NextConfig = {
       /* Login is hidden until the app is open to families. Temporary for the
          same reason as /pricing: this comes back, and a cached 308 would not. */
       { source: "/login", destination: "/", permanent: false },
+      /* www -> apex. Fly answers on both hostnames once both certs exist, so
+         without this the entire site is reachable at two addresses and every
+         page has a twin. The canonical tags already point at the apex, which is
+         usually enough for Google — but a canonical is a hint, and it does
+         nothing about a person who bookmarks the www copy, or a link someone
+         shares from it, or the second set of URLs in anyone's analytics.
+         A 308 makes one address the address.
+
+         Host-matched rather than path-matched: `has` reads the Host header, so
+         this fires only for www and leaves athfuelpath-web.fly.dev alone —
+         important, because that host is still how the site is checked before
+         DNS moves. `:path*` preserves the deep link, so a shared
+         www.athfuelpath.com/parents lands on /parents and not the homepage. */
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "www.athfuelpath.com" }],
+        destination: "https://athfuelpath.com/:path*",
+        permanent: true,
+      },
     ];
   },
 };

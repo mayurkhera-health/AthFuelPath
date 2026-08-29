@@ -21,10 +21,29 @@ primary_region = "sjc"          # San Jose: the company and most early users are
     #      preview deploy — the exact thing the check in site-url.ts exists to
     #      prevent. Lying about the host defeated its own safeguard.
     #
-    # Change this to "https://athfuelpath.com" on the day that domain points at
-    # this app, and not before. Nothing else needs to change: robots.txt,
-    # sitemap.xml, canonicals and every og:image follow this value.
-    NEXT_PUBLIC_SITE_URL = "https://athfuelpath-web.fly.dev"
+    # Switched to the production domain on 2026-08-29, when athfuelpath.com was
+    # registered and pointed at this app. Nothing else changes with it:
+    # robots.txt, sitemap.xml, canonicals and every og:image follow this value.
+    #
+    # TIMING, because this is a BUILD arg and not a runtime setting. The value is
+    # compiled into the image, so the running app cannot pick up a new one — only
+    # a fresh `fly deploy` can. That creates a window with exactly one safe order:
+    #
+    #   set the DNS records, then deploy, then let the certificate finish.
+    #
+    # Deploy too early and athfuelpath-web.fly.dev spends the wait serving
+    # allow-crawl robots.txt with canonicals pointing at a domain that does not
+    # resolve yet. Deploy too late and the far worse thing happens: the moment
+    # the certificate issues, athfuelpath.com is live and serving
+    # `noindex, nofollow` and `Disallow: /`, because SITE_URL still says fly.dev
+    # and IS_PRODUCTION_SITE is false. Certificate issuance is public — it lands
+    # in the Certificate Transparency logs that crawlers watch — so a first crawl
+    # can arrive within minutes of the domain working, and a noindex seen on the
+    # first visit is slow to undo.
+    #
+    # To go back to serving from fly.dev, set this back and redeploy; the site
+    # returns to noindex on its own.
+    NEXT_PUBLIC_SITE_URL = "https://athfuelpath.com"
 
 [env]
   PORT = "3000"

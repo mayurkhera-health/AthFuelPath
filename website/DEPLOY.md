@@ -104,14 +104,83 @@ higher than 40. That is a bound, not a guarantee — see the comment at the top 
 
 ## Custom domain
 
+Registered at GoDaddy. Apex is canonical; www 308s to it, via the host-matched
+redirect in `next.config.ts`.
+
+Order matters and is not obvious, so it is spelled out. `NEXT_PUBLIC_SITE_URL`
+is compiled into the image, so a running app cannot pick up a new value — only a
+fresh deploy can. There is exactly one safe sequence.
+
+**1. Get the addresses this app answers on.**
+
 ```bash
-fly certs add athfuelpath.com
-fly certs add www.athfuelpath.com
-fly certs show athfuelpath.com     # prints the DNS records to create
+fly ips list -a athfuelpath-web
 ```
 
-Deploy with the production build arg *before* pointing DNS, or the first crawl of
-the live domain sees the staging noindex.
+**2. Tell Fly the hostnames, so it starts watching for the DNS.**
+
+```bash
+fly certs add athfuelpath.com -a athfuelpath-web
+fly certs add www.athfuelpath.com -a athfuelpath-web
+```
+
+**3. Create the records in GoDaddy** (Domain → DNS → Manage Zones).
+
+| Type | Name | Value |
+|---|---|---|
+| A | `@` | the IPv4 from step 1 |
+| AAAA | `@` | the IPv6 from step 1 |
+| CNAME | `www` | `athfuelpath-web.fly.dev` |
+
+Delete GoDaddy's parked records first — a new domain ships with an A record on
+`@` pointing at their holding page and a CNAME on `www`. Leaving either one
+means the domain resolves somewhere else half the time. Set TTL to the shortest
+GoDaddy offers (600s) until this is confirmed working; raise it after.
+
+GoDaddy does not support ALIAS/ANAME at the apex, which is why this uses a plain
+A record rather than a CNAME to `.fly.dev`.
+
+**4. Deploy immediately**, while the certificate is still issuing.
+
+```bash
+cd website && fly deploy
+```
+
+This is the whole reason for the ordering. Deploy earlier and the fly.dev host
+spends the wait serving `allow: /` with canonicals pointing at a domain that
+does not resolve. Deploy later and the moment the certificate issues,
+athfuelpath.com is live and serving `noindex, nofollow` — because SITE_URL still
+says fly.dev and `IS_PRODUCTION_SITE` is false. Certificate issuance is public,
+logged in Certificate Transparency, and crawlers watch those logs, so a first
+crawl can arrive within minutes. A noindex seen on the first visit is slow to
+undo.
+
+**5. Confirm, before telling anyone the address.**
+
+```bash
+fly certs show athfuelpath.com -a athfuelpath-web        Status should be Ready
+curl -s https://athfuelpath.com/robots.txt               Allow: /, not Disallow: /
+curl -sI https://www.athfuelpath.com/parents | head -3   308 to the apex
+curl -s https://athfuelpath.com/ | grep canonical        https://athfuelpath.com
+```
+
+`Disallow: /` at step 5 means the deploy did not carry the production build arg.
+Redeploy; it is not a DNS problem and waiting will not fix it.
+
+Then paste the link into a chat app and check the preview card renders — og:image
+is absolute and follows `NEXT_PUBLIC_SITE_URL`, so it breaks in exactly the same
+way and is worth eyeballing once.
+
+Search Console can wait until step 5 passes. Verifying a domain that is serving
+noindex just records the noindex.
+
+### Email on this domain
+
+Not set up, and adding it is a DNS change on the same zone. If `purvi@athfuelpath.com`
+is ever wanted, it needs MX records, which are independent of the A/AAAA records
+above — mail and web routing do not interfere. Until then the waitlist sends from
+the Gmail address in `GMAIL_USER`, which is a different domain and is why replies
+come from that address.
 
 ## Cost and cold starts
 
