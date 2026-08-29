@@ -15,6 +15,22 @@
     "react-dom": "^19.1.0",
     "sharp": "^0.35.3"
   },
+  "_overrides_note": [
+    "Both entries patch a package that only reaches us THROUGH next, which is",
+    "why they are overrides rather than dependency bumps: the alternative was",
+    "next 15 -> 16, a major version, to fix two transitive packages.",
+    "sharp — next pins its own range and npm nests a separate copy, so the",
+    "0.35.3 listed in dependencies above did nothing for it; the vulnerable",
+    "0.34.5 was the one running image optimisation on the server. That is the",
+    "runtime half of the pair and the reason this was worth doing.",
+    "postcss — build-time only, and the CSS it reads is ours. Patched because",
+    "it is a minor bump, not because a traversal in our own stylesheets is a",
+    "plausible attack. Drop both when next no longer needs them."
+  ],
+  "overrides": {
+    "sharp": "^0.35.3",
+    "postcss": "^8.5.23"
+  },
   "devDependencies": {
     "@types/node": "^22",
     "@types/nodemailer": "^8.0.1",

@@ -9,6 +9,13 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# The *.mjs audits import playwright, which is deliberately NOT in package.json.
+# Dockerfile runs `npm ci`, which installs devDependencies, so listing it there
+# would pull a browser download into every production image build. It lives as
+# an unsaved install instead — and `npm install` prunes it as extraneous, which
+# is how it vanished once mid-audit. Reinstate it silently if it is missing.
+[ -d node_modules/playwright ] || npm install --no-save playwright >/dev/null 2>&1
+
 npm run build >/tmp/build.log 2>&1 || { tail -30 /tmp/build.log; exit 1; }
 pkill -9 -f next-server 2>/dev/null || true
 pkill -9 -f "next start" 2>/dev/null || true
