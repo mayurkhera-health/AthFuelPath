@@ -3,6 +3,7 @@ from typing import List, Optional
 from api.models import MealLogCreate, MealLogResponse, PhotoMealAnalyzeRequest, VoiceMealAnalyzeRequest
 from api.database import get_conn
 from api.services import photo_meal_analyzer, voice_meal_analyzer
+from api.services.fdc_client import FdcError
 from api.services.session_auth import require_session, assert_owns_athlete
 
 router = APIRouter()
@@ -45,6 +46,8 @@ def analyze_photo_meal(data: PhotoMealAnalyzeRequest, identity=Depends(require_s
         raise HTTPException(400, str(e))
     except RuntimeError as e:
         raise HTTPException(503, str(e))
+    except FdcError:
+        raise HTTPException(503, "Nutrition lookup service is temporarily unavailable.")
     except Exception as e:
         raise HTTPException(500, f"Photo analysis failed: {e}")
 
@@ -74,6 +77,8 @@ def analyze_voice_meal(data: VoiceMealAnalyzeRequest, identity=Depends(require_s
         raise HTTPException(400, str(e))
     except RuntimeError as e:
         raise HTTPException(503, str(e))
+    except FdcError:
+        raise HTTPException(503, "Nutrition lookup service is temporarily unavailable.")
     except Exception as e:
         raise HTTPException(500, f"Voice analysis failed: {e}")
 

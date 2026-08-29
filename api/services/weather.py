@@ -61,9 +61,9 @@ def _fetch_weather(city: str | None = None, lat: float | None = None, lon: float
         return {"temp_f": None, "humidity": None, "description": "unknown", "error": "No API key configured"}
     # Prefer precise coordinates (venue lat/lon) over a coarse city-name query.
     if lat is not None and lon is not None:
-        url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api_key}&units=imperial"
+        url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api_key}&units=imperial"
     elif city:
-        url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=imperial"
+        url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=imperial"
     else:
         return {"temp_f": None, "humidity": None, "description": "unknown", "error": "No location provided"}
     try:
@@ -190,7 +190,7 @@ def reverse_geocode_city(lat: float, lon: float) -> str | None:
 
     try:
         resp = requests.get(
-            "http://api.openweathermap.org/geo/1.0/reverse",
+            "https://api.openweathermap.org/geo/1.0/reverse",
             params={"lat": lat, "lon": lon, "limit": 1, "appid": api_key},
             timeout=3,
         )
@@ -235,7 +235,7 @@ def geocode_location(text: str) -> tuple[float, float] | None:
         return cached[1]
 
     is_zip = bool(_ZIP_RE.match(text))
-    url = "http://api.openweathermap.org/geo/1.0/zip" if is_zip else "http://api.openweathermap.org/geo/1.0/direct"
+    url = "https://api.openweathermap.org/geo/1.0/zip" if is_zip else "https://api.openweathermap.org/geo/1.0/direct"
     params = {"zip": f"{text},US", "appid": api_key} if is_zip else {"q": text, "limit": 1, "appid": api_key}
 
     try:
