@@ -8,6 +8,13 @@ import yaml
 from api.database import get_conn
 from api.services.knowledge.embedding_utils import EMBEDDING_MODEL, embed_text, pack_embedding
 
+# POST /api/knowledge/ingest (admin-key gated) accepts a caller-supplied
+# file_path — without this boundary, an admin-key holder could read/ingest
+# arbitrary files on the container filesystem instead of just approved
+# knowledge-source Markdown. Anchored to this file's location (not CWD) so it
+# holds regardless of the process's working directory.
+_KNOWLEDGE_BASE_DIR = (Path(__file__).resolve().parents[3] / "knowledge").resolve()
+
 
 def _parse_frontmatter(text: str) -> tuple[dict, str]:
     """Split YAML frontmatter from Markdown body. Returns (meta, body)."""
@@ -62,10 +69,21 @@ def ingest_file(file_path: str) -> dict:
     Returns {"status": "ok"|"skipped"|"error", "slug": str, "chunks": int, "reason": str|None}.
     """
     path = Path(file_path)
-    if not path.exists():
+    # Resolve BEFORE the containment check — resolve() follows symlinks, so a
+    # symlink inside the approved directory pointing outside it is caught
+    # here too, not just a literal ../ or absolute-path escape.
+    resolved = path.resolve()
+    try:
+        resolved.relative_to(_KNOWLEDGE_BASE_DIR)
+    except ValueError:
+        return {
+            "status": "error",
+            "reason": f"file_path must be inside the knowledge/ directory: {file_path}",
+        }
+    if not resolved.exists():
         return {"status": "error", "reason": f"File not found: {file_path}"}
 
-    text = path.read_text(encoding="utf-8")
+    text = resolved.read_text(encoding="utf-8")
     meta, body = _parse_frontmatter(text)
 
     status = meta.get("review_status", "draft")

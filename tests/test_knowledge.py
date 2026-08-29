@@ -84,8 +84,12 @@ def test_ingest_creates_chunks():
     conn.close()
     assert len(chunks) >= 3
 
-def test_draft_file_not_ingested(tmp_path):
+def test_draft_file_not_ingested(tmp_path, monkeypatch):
     """A file with review_status: draft must not be ingested."""
+    from api.services.knowledge import ingest as ingest_module
+    # ingest_file only reads inside the approved knowledge/ directory (Item 3
+    # hardening, F5) — scope that check to tmp_path for this test's fixture file.
+    monkeypatch.setattr(ingest_module, "_KNOWLEDGE_BASE_DIR", tmp_path.resolve())
     draft = tmp_path / "draft_test.md"
     draft.write_text("""---
 title: "Draft Test"

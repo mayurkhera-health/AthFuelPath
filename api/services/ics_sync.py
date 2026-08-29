@@ -25,7 +25,7 @@ import logging
 import socket
 import threading
 from datetime import datetime, timedelta, timezone, date
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 import psycopg
@@ -59,67 +59,158 @@ def normalize_calendar_url(url: str) -> str:
 
 _MAX_REDIRECTS = 5
 
+# Real BYGA/PlayMetrics season feeds run a few hundred VEVENTs at roughly
+# 1-2KB of ICS text each — tens to low hundreds of KB in practice. 5MB gives
+# >25x headroom over any legitimate feed while still bounding memory against
+# a malicious or compromised (but allowlist-passing) public feed host that
+# returns an arbitrarily large body.
+_MAX_ICS_BYTES = 5 * 1024 * 1024
+
+# RFC 6598 "Shared Address Space" (100.64.0.0/10) — carved out for
+# cloud-provider/CGNAT-internal networking. Python's ipaddress module does
+# NOT classify it as private/reserved/link-local, but it's exactly the kind
+# of range a cloud metadata-equivalent service could live in (e.g. Alibaba
+# Cloud's metadata IP, 100.100.100.200, sits inside it), so it's blocked
+# explicitly alongside the ranges ipaddress already covers.
+_CGNAT_RANGE = ipaddress.ip_network("100.64.0.0/10")
+
 
 def _is_disallowed_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    return (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
-            or ip.is_multicast or ip.is_unspecified)
+    if (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+            or ip.is_multicast or ip.is_unspecified):
+        return True
+    return isinstance(ip, ipaddress.IPv4Address) and ip in _CGNAT_RANGE
 
 
-def _is_public_host(host: str) -> bool:
-    """SSRF guard — reject any host that is (or resolves to) a private/loopback/
-    link-local/reserved IP (RFC 1918, 169.254.0.0/16 cloud-metadata range, ::1,
-    etc). Real BYGA/PlayMetrics feeds resolve to public hosting and pass through
-    untouched; this only blocks a submitted URL from reaching internal
-    infrastructure.
+def _resolve_validated_ips(host: str) -> list[str]:
+    """Resolve host to its candidate IP(s) and validate that EVERY one is
+    public — a DNS answer mixing a public and a private/internal address is
+    rejected outright, not filtered down to the public subset. Returns the
+    validated IP string(s) so fetch_ics_text can connect DIRECTLY to one of
+    them (pinning) instead of handing the hostname to the HTTP client and
+    letting it resolve independently at connect time — which would reopen a
+    DNS-rebinding TOCTOU window between this check and the real connection
+    (a hostname could resolve public here and to an internal/cloud-metadata
+    address microseconds later when the client itself resolves it again).
 
-    A URL host that's already a literal IP address (e.g. "10.0.0.5") is checked
+    A host that's already a literal IP address (e.g. "10.0.0.5") is checked
     directly via ipaddress — deterministic, no network I/O. This matters
     because routing a literal IP through socket.getaddrinfo() instead depends
     on the host machine's resolver/VPN/proxy stack, which can behave
     inconsistently for private ranges (observed: getaddrinfo misclassifying
     RFC1918 literals as resolvable/"public" after other outbound network
     activity on some machines) — a real bypass risk this avoids entirely for
-    the literal-IP case, not just a test artifact."""
+    the literal-IP case, not just a test artifact.
+
+    Raises ValueError if the host is disallowed, unresolvable, or resolves to
+    zero usable addresses."""
     try:
-        return not _is_disallowed_ip(ipaddress.ip_address(host))
+        literal = ipaddress.ip_address(host)
     except ValueError:
-        pass  # not a literal IP — a real hostname needing DNS resolution
+        literal = None
+    if literal is not None:
+        if _is_disallowed_ip(literal):
+            raise ValueError(f"Calendar URL host is not allowed: {host!r}")
+        return [host]
+
     try:
         infos = socket.getaddrinfo(host, None)
     except socket.gaierror:
-        return False
+        raise ValueError(f"Calendar URL host is not allowed: {host!r}")
+
+    ips: list[str] = []
     for _, _, _, _, sockaddr in infos:
-        if _is_disallowed_ip(ipaddress.ip_address(sockaddr[0])):
-            return False
-    return True
+        ip = ipaddress.ip_address(sockaddr[0])
+        if _is_disallowed_ip(ip):
+            raise ValueError(f"Calendar URL host is not allowed: {host!r}")
+        s = str(ip)
+        if s not in ips:
+            ips.append(s)
+    if not ips:
+        raise ValueError(f"Calendar URL host is not allowed: {host!r}")
+    return ips
+
+
+def _is_public_host(host: str) -> bool:
+    """Boolean convenience wrapper around _resolve_validated_ips, for any
+    caller that only needs a yes/no answer rather than a pinned IP."""
+    try:
+        _resolve_validated_ips(host)
+        return True
+    except ValueError:
+        return False
+
+
+def _pinned_url(fetch_url: str, ip: str) -> tuple[str, str]:
+    """Rewrite fetch_url's host to the literal, validated ip — the HTTP client
+    then connects to exactly that address instead of re-resolving the
+    hostname itself. Returns (pinned_url, original_host): the caller sets the
+    Host header and TLS SNI back to original_host, since certificate
+    validation and name-based virtual hosting both depend on the hostname the
+    server actually expects, not the IP used to reach it."""
+    parts = urlparse(fetch_url)
+    original_host = parts.hostname
+    netloc = f"[{ip}]" if ":" in ip else ip
+    if parts.port:
+        netloc = f"{netloc}:{parts.port}"
+    if parts.username:
+        userinfo = parts.username + (f":{parts.password}" if parts.password else "")
+        netloc = f"{userinfo}@{netloc}"
+    pinned = urlunparse((parts.scheme, netloc, parts.path, parts.params, parts.query, parts.fragment))
+    return pinned, original_host
 
 
 def fetch_ics_text(url: str) -> str:
-    """Fetch raw ICS text. Raises on network / HTTP error — callers treat any raise
-    as a failed feed and SKIP the delete phase (never wipe on a transient failure).
+    """Fetch raw ICS text, capped at _MAX_ICS_BYTES. Raises on network / HTTP
+    / oversize error — callers treat any raise as a failed feed and SKIP the
+    delete phase (never wipe on a transient failure).
 
-    SSRF guard: redirects are followed manually (follow_redirects=False) with the
-    host re-validated on every hop — a URL that starts out public can still 302 to
-    an internal address, so trusting httpx's automatic redirect following would
-    only check the first hop."""
+    SSRF guard: the destination is resolved and validated on every hop (the
+    initial URL AND every redirect — a URL can start out public and 302 to an
+    internal address, so trusting httpx's automatic redirect following would
+    only check the first hop), and the actual HTTP connection is made
+    directly to the validated IP (pinned via the "sni_hostname" extension —
+    httpcore's documented mechanism for this) rather than handing the
+    hostname to httpx and letting it resolve independently, which would
+    reopen the DNS-rebinding window between validation and connection. TLS
+    SNI and the Host header are kept as the ORIGINAL hostname so certificate
+    verification (never disabled — verify stays at httpx's default True) and
+    virtual hosting both work exactly as they would without pinning."""
     fetch_url = normalize_calendar_url(url)
-    if not fetch_url.startswith("http"):
-        raise ValueError(f"Invalid calendar URL: {url!r}")
 
     for _ in range(_MAX_REDIRECTS + 1):
-        host = urlparse(fetch_url).hostname
-        if not host or not _is_public_host(host):
+        parts = urlparse(fetch_url)
+        if parts.scheme not in ("http", "https"):
+            raise ValueError(f"Invalid calendar URL scheme: {parts.scheme!r}")
+        host = parts.hostname
+        if not host:
             raise ValueError(f"Calendar URL host is not allowed: {host!r}")
-        resp = httpx.get(fetch_url, timeout=15, headers={"User-Agent": "AthFuelPath/1.0"},
-                         follow_redirects=False)
-        if resp.status_code in (301, 302, 303, 307, 308):
-            location = resp.headers.get("location")
-            if not location:
+        # Validate (and resolve the pinned IP) BEFORE opening any client —
+        # a disallowed host must never reach the network layer at all, not
+        # even to construct a connection-pool object.
+        ips = _resolve_validated_ips(host)
+        pinned_url, original_host = _pinned_url(fetch_url, ips[0])
+        headers = {"User-Agent": "AthFuelPath/1.0", "Host": original_host}
+        extensions = {"sni_hostname": original_host} if parts.scheme == "https" else {}
+
+        with httpx.Client(timeout=15) as client:
+            with client.stream("GET", pinned_url, headers=headers,
+                               extensions=extensions, follow_redirects=False) as resp:
+                if resp.status_code in (301, 302, 303, 307, 308):
+                    location = resp.headers.get("location")
+                    if not location:
+                        resp.raise_for_status()
+                    fetch_url = str(httpx.URL(fetch_url).join(location))
+                    continue
                 resp.raise_for_status()
-            fetch_url = str(httpx.URL(fetch_url).join(location))
-            continue
-        resp.raise_for_status()
-        return resp.text
+                body = bytearray()
+                for chunk in resp.iter_bytes():
+                    body += chunk
+                    if len(body) > _MAX_ICS_BYTES:
+                        raise ValueError(
+                            f"Calendar feed exceeds the {_MAX_ICS_BYTES}-byte limit."
+                        )
+                return bytes(body).decode(resp.encoding or "utf-8", errors="replace")
     raise ValueError("Too many redirects while fetching calendar feed")
 
 

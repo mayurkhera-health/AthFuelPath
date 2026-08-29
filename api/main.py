@@ -103,11 +103,27 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from api.routes import parents, athletes, events, nutrition, meals, recipes, analysis, reports, notifications, meal_plans, meal_plan_selections, today, water, knowledge, legal, library, auth, fuel_report, report_config, coach, shopping, support, onboarding, feedback, calendar, admin, admin_analytics, admin_health, admin_overview, admin_action_hub, plate, fueliq, fueliq_daily_challenge, instacart_feedback, instacart, teamcoach_auth, teamcoach_admin, teamcoach_dashboard
 from apscheduler.schedulers.background import BackgroundScheduler
 
+def _docs_enabled(environment: str | None = None) -> bool:
+    """/docs, /redoc, and /openapi.json expose the full route map (including
+    admin/coach/knowledge-admin paths) to anyone — fine for local/test work,
+    a needless recon surface in production. Unset ENVIRONMENT defaults to
+    "production" (fail-safe: a real deployment that forgets to set this still
+    gets docs disabled) — local dev must set ENVIRONMENT=development (see
+    .env.example) to see /docs."""
+    env = (environment if environment is not None else os.getenv("ENVIRONMENT", "production"))
+    return env.lower() != "production"
+
+
+_DOCS_ENABLED = _docs_enabled()
+
 app = FastAPI(
     title="Fueling2Win Soccer Nutrition API",
     description="Science-backed pediatric sports nutrition platform for athletes ages 13-17. Educational food guidance — NOT medical nutrition therapy.",
     version="1.0.0",
     lifespan=lifespan,
+    docs_url="/docs" if _DOCS_ENABLED else None,
+    redoc_url="/redoc" if _DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if _DOCS_ENABLED else None,
 )
 
 app.add_middleware(
@@ -174,15 +190,17 @@ _scheduler = BackgroundScheduler()
 
 @app.get("/api/info")
 def root():
-    return {
+    body = {
         "app": "Fueling2Win Soccer Nutrition Platform",
         "version": "1.0.0",
         "launch_date": "June 16, 2026",
         "built_by": "Purvi Shah MS, RDN | Food Explorers LLC",
         "science": "Everett MD 2025 | Boston Children's Hospital RDN | AAP | ACSM 2016",
         "disclaimer": "Fueling2Win provides educational food guidance — not medical nutrition therapy.",
-        "docs": "/docs",
     }
+    if _DOCS_ENABLED:
+        body["docs"] = "/docs"
+    return body
 
 
 @app.get("/health")

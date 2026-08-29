@@ -29,6 +29,12 @@ import pytest
 # api/services/session_auth.py).
 os.environ.setdefault("APP_SESSION_SECRET", "test-session-secret-do-not-use-in-prod")
 
+# ENVIRONMENT unset defaults to "production" (api/main.py's _docs_enabled) so
+# a real Cloud Run deployment is docs-safe with zero config — the test suite
+# opts back into /docs/openapi.json availability explicitly here, same as
+# local dev is expected to via ENVIRONMENT=development in .env.
+os.environ.setdefault("ENVIRONMENT", "test")
+
 # Real PostgreSQL only. The database name MUST unmistakably signal "test" —
 # see _assert_test_db() — this is not just a convention, it's enforced.
 os.environ.setdefault("DATABASE_URL", "postgresql:///athfuelpath_test")
