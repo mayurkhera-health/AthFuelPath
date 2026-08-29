@@ -1,6 +1,6 @@
 import re
 from datetime import datetime as _dt
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Literal, Optional, List
 
 from api.services.activity_type_resolver import VALID_ACTIVITY_TYPES
@@ -72,9 +72,14 @@ class AthleteCreate(BaseModel):
     first_name: str
     age: int
     gender: str  # Girl / Boy / Prefer not to say
-    weight_lbs: float
-    height_ft: int
-    height_in: float
+    # Broad input-integrity limits (Security Item 6, N2), not medical/
+    # performance targets — wide enough to never reject a real 13-17-year-old
+    # athlete, tight enough to reject an implausible typo/unit mistake before
+    # it silently corrupts every downstream nutrition target (calc_rmr/
+    # calc_daily_targets derive RMR/TDEE/carb/protein/hydration from these).
+    weight_lbs: float = Field(ge=30, le=500)
+    height_ft: int = Field(ge=3, le=8)
+    height_in: float = Field(ge=0, lt=12)
     position: Optional[str] = None  # Goalkeeper / Defender / Midfielder / Forward
     competition_level: Optional[str] = None  # recreational / competitive_club / elite_club (legacy values tolerated)
     sweat_profile: Optional[str] = None  # Light / Moderate / Heavy / Very Heavy
@@ -103,9 +108,10 @@ class OnboardingAthlete(BaseModel):
     first_name: str
     age: int
     gender: str
-    weight_lbs: float
-    height_ft: int
-    height_in: float
+    # Same broad input-integrity limits as AthleteCreate — see its comment.
+    weight_lbs: float = Field(ge=30, le=500)
+    height_ft: int = Field(ge=3, le=8)
+    height_in: float = Field(ge=0, lt=12)
     position: Optional[str] = None
     competition_level: Optional[str] = None
     sweat_profile: Optional[str] = None
@@ -176,7 +182,10 @@ class EventCreate(BaseModel):
     event_type: str
     event_date: str  # YYYY-MM-DD
     start_time: Optional[str] = None  # HH:MM (24h)
-    duration_hours: Optional[float] = None
+    # Same [0.5, 8.0] sanity range already applied to synced calendar events
+    # (api/services/ics_sync.py) — an unbounded/negative manual duration feeds
+    # linearly into the hydration estimate with no ceiling (Security Item 6, N3).
+    duration_hours: Optional[float] = Field(default=None, ge=0.5, le=8.0)
     city: Optional[str] = None
     venue_name: Optional[str] = None   # Google Places name (e.g. "Mustang Soccer Complex")
     address: Optional[str] = None      # Google Places formatted_address
@@ -203,7 +212,8 @@ class EventUpdate(BaseModel):
     event_type: Optional[str] = None
     event_date: Optional[str] = None  # YYYY-MM-DD
     start_time: Optional[str] = None  # HH:MM (24h)
-    duration_hours: Optional[float] = None
+    # Same bound as EventCreate.duration_hours — see its comment.
+    duration_hours: Optional[float] = Field(default=None, ge=0.5, le=8.0)
     city: Optional[str] = None
     venue_name: Optional[str] = None
     address: Optional[str] = None
@@ -255,16 +265,23 @@ class ActivityTypePatch(BaseModel):
 
 
 class MealLogCreate(BaseModel):
+    # Bounds below are broad corruption-prevention ceilings (Security Item 6,
+    # N1) — not nutrition guidance. They exist to reject physically-impossible
+    # or obviously-corrupted single-meal values (a typo like an extra zero, or
+    # a tampered client), not to second-guess a real athlete's actual meal.
+    # These values feed the AI Nutrition Coach prompt and the Weekly Report's
+    # nutrient totals/safety flags unfiltered, so an unbounded bad value
+    # propagates directly into athlete-facing guidance.
     athlete_id: int
     log_method: str  # photo / text / quick-select / restaurant / water
     description: Optional[str] = None
-    calories: Optional[float] = None
-    carbs_g: Optional[float] = None
-    protein_g: Optional[float] = None
-    fat_g: Optional[float] = None
-    iron_mg: Optional[float] = None
-    calcium_mg: Optional[float] = None
-    water_oz: Optional[float] = None
+    calories: Optional[float] = Field(default=None, ge=0, le=5000)
+    carbs_g: Optional[float] = Field(default=None, ge=0, le=1000)
+    protein_g: Optional[float] = Field(default=None, ge=0, le=500)
+    fat_g: Optional[float] = Field(default=None, ge=0, le=500)
+    iron_mg: Optional[float] = Field(default=None, ge=0, le=100)
+    calcium_mg: Optional[float] = Field(default=None, ge=0, le=5000)
+    water_oz: Optional[float] = Field(default=None, ge=0, le=256)
     edamam_raw: Optional[str] = None
 
 
