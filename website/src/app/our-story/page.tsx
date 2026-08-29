@@ -26,8 +26,9 @@ export const metadata = routeMetadata({
  * Backgrounds use three values only — base, tint, dark — rather than six
  * near-identical whites.
  *
- * The founder quote is deliberately absent until Purvi approves the wording.
- * See `ourStory.close.quote` in site.ts; the close renders correctly either way.
+ * There is no founder quote in the close, and no placeholder waiting for one.
+ * If one is added later it is a deliberate addition, not a gap being filled —
+ * see the note on `ourStory.close` in site.ts.
  */
 export default function OurStory() {
   const { hero, personal, origin, belief, close } = ourStory;
@@ -149,16 +150,6 @@ export default function OurStory() {
       {/* 05 — personal close */}
       <section className="section surface-tint" aria-labelledby="sc-h">
         <div className="container story-close">
-          {close.quote && (
-            <figure className="story-quote">
-              <blockquote>{close.quote.text}</blockquote>
-              <figcaption>
-                <strong>{close.quote.name}</strong>
-                <span>{close.quote.role}</span>
-              </figcaption>
-            </figure>
-          )}
-
           <h2 id="sc-h" className="h2 balance">{close.h2}</h2>
           <p className="body muted-txt story-close__sub">{close.sub}</p>
 

@@ -497,22 +497,21 @@ export const ourStory = {
 
   close: {
     /**
-     * NULL UNTIL PURVI APPROVES THE WORDING. Publishing an invented quote
-     * attributed to a real person is not something to do on anyone's behalf,
-     * and the spec that asked for this section said so explicitly.
+     * There was a `quote` field here, null, waiting for Purvi to approve a
+     * founder quote for this section. Removed rather than left waiting.
      *
-     * Working draft awaiting her approval or her own words — prefer hers, even
-     * if less polished:
+     * A null field with a paragraph explaining what would go in it is a to-do
+     * item wearing the costume of a feature: it kept a conditional in the page,
+     * CSS for a figure that never rendered, and a note in three files, all for
+     * copy nobody had committed to writing. If a founder quote is wanted later
+     * it is a small addition made deliberately, not a hole to be filled.
      *
+     * The draft that was parked here, if it is ever useful:
      *   "I didn't want my daughter thinking about nutrition all day. I wanted
      *    her to know what to do, do it, and get back to being a kid who loves
      *    playing soccer."
-     *
-     * To publish, replace null with:
-     *   { text: "…", name: "Purvi Shah, MS, RDN", role: "Founder, AthFuelPath" }
-     * The close renders correctly either way.
+     * It was never approved and must not ship attributed to her unapproved.
      */
-    quote: null as { text: string; name: string; role: string } | null,
     h2: "Built for the young athlete in your family.",
     sub: "AthFuelPath turns the week ahead into simple, practical fueling guidance young athletes and parents can actually follow.",
     /**
