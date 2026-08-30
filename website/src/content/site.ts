@@ -24,6 +24,27 @@ import type { EventName } from "@/lib/analytics";
  *
  * Headline lengths: h1 ≤5 words / section headline ≤8 / sub-headline ≤28 /
  * card title ≤5 / card body ≤24 / button label 2–4.
+ *
+ * SOCCER, AND THE SPORTS AFTER IT (2026-08-29)
+ * The product is soccer-only today and the FAQ says so plainly. That answer is
+ * load-bearing and does not soften: it is what lets everything else be written
+ * without a sport in it.
+ *
+ * The rule is that copy about WHAT WE ARE is sport-neutral, and copy about WHAT
+ * THE PRODUCT DOES stays exactly as specific as the product is. So headlines,
+ * the footer, the trust lines and the capability cards say "athletes" and
+ * "training"; the FAQ answers, and the 5:30 PM row in `week` that reads "Soccer
+ * practice", do not. An example is evidence, and evidence should be concrete —
+ * a screenshot captioned "sports practice" is a category, not a Tuesday.
+ *
+ * Prefer "training" over "sports". "Their sports schedule" reads like a
+ * category page; "their training schedule" is concrete and still carries every
+ * sport. Avoid "game" as the generic — it quietly excludes swimming, track and
+ * cross-country, which are the likeliest sports to come next.
+ *
+ * The ceiling on all of this is the screenshots: every product shot on the site
+ * shows a soccer schedule. Copy cannot get more sport-neutral than the images
+ * without the gap showing.
  */
 
 export const site = {
@@ -561,14 +582,18 @@ export const nav = {
 
 /* ------------------------------------------------------------------ S1 */
 export const hero = {
-  eyebrow: "Sports nutrition for soccer players 13–17",
+  eyebrow: "Sports nutrition for young athletes 13–17",
   h1: "Fuel smarter. Play stronger.",
   sub: "Add their practices and games. AthFuelPath works out what your player should eat and when, around the day they actually have.",
   founder: {
     name: "Purvi Shah, MS, RDN",
     line: "Registered Dietitian and soccer mom. She built this around her own daughter's season.",
   },
-  chips: ["Parents run it", "Soccer only", "Real food"],
+  /* "Soccer first", not "Soccer only". Same fact, and the FAQ still answers
+     "is it only for soccer?" with "yes, for now" — but "only" reads as a wall
+     and "first" reads as an order of operations. Nothing here promises a second
+     sport; it stops promising there will never be one. */
+  chips: ["Parents run it", "Soccer first", "Real food"],
 };
 
 /* ------------------------------------------------------------------ S3 */
@@ -663,7 +688,7 @@ export const providersNote = "More club platforms are coming. Not on either one?
 
 export const schedule = {
   eyebrow: "Schedule → fueling",
-  h2: "Their soccer schedule becomes their food plan.",
+  h2: "Their training schedule becomes their food plan.",
   /* Does not re-list "practices, games and tournaments". The hero says it, the
      setup card below says it, and the chips in this very section name the
      session types. Three statements of the same sentence sat within one screen
@@ -829,7 +854,7 @@ export const steps = {
     },
     {
       n: "02",
-      title: "Add their soccer schedule",
+      title: "Add their training schedule",
       /* The chips directly below name the session types. Spelling them out in
          the body too made this the third copy of the same sentence on the page. */
       body: "Import the team calendar you already keep, or add sessions one at a time.",
@@ -876,9 +901,9 @@ export const proof = {
  */
 export const capabilities = {
   eyebrow: "Built around their week",
-  h2: "Everything their soccer week needs.",
+  h2: "Everything their training week needs.",
   items: [
-    { icon: "sun", label: "Today's Fuel Plan", h: "Know what fits the day.", p: "Simple guidance before, between and after soccer." },
+    { icon: "sun", label: "Today's Fuel Plan", h: "Know what fits the day.", p: "Simple guidance before, between and after training." },
     { icon: "bowl", label: "Recipes That Fit", h: "Food that works with the schedule.", p: "Meals and snacks matched to the moment and their preferences." },
     /* The Fuel Coach section was hidden from this page in August. It returns
        here as a one-line card only — a much smaller claim than the section —
@@ -971,7 +996,7 @@ export const plan = {
     "A fueling plan for practices and games",
     "Game days and tournaments covered",
     "Weekly recipes and a grocery list",
-    "Import your soccer calendar",
+    "Import your team calendar",
     "A weekly report for you",
     "AI Fuel Coach for parents & athletes (Beta)",
   ],
@@ -1008,7 +1033,7 @@ export const closing = {
    *
    * What is left is the fact the hero does not carry: who it is for.
    */
-  trust: "For soccer players 13–17, and the parents doing the shopping.",
+  trust: "For athletes 13–17, and the parents doing the shopping.",
 };
 
 /* ------------------------------------------------------------------ FAQ */
@@ -1111,7 +1136,7 @@ export const parents = {
   lead: {
     eyebrow: "One less thing",
     h2: "One less thing to figure out.",
-    p: "Soccer already comes with enough logistics. Food shouldn't become another daily planning exercise.",
+    p: "Club sport already comes with enough logistics. Food shouldn't become another daily planning exercise.",
     moments: [
       { when: "Before school", q: "What breakfast makes sense today?" },
       { when: "After school", q: "What can they eat before practice?" },
@@ -1213,13 +1238,17 @@ export const parents = {
   close: {
     h2: "You've got the schedule handled. Let us take the food.",
     sub: "Join the waitlist and we'll email you when it opens.",
-    trust: "Built for soccer players 13–17 and the parents helping them get there.",
+    /* Changed with the homepage's closing trust line, not separately. The two
+       are the same line in two places; leaving this one as "soccer players"
+       while the homepage said "athletes" would have been an inconsistency
+       introduced by the edit rather than one that was already there. */
+    trust: "Built for athletes 13–17 and the parents helping them get there.",
   },
 };
 
 /* ---------------------------------------------------------------- Footer */
 export const footer = {
-  blurb: "Straightforward sports nutrition for young soccer players and the families behind them.",
+  blurb: "Straightforward sports nutrition for young athletes and the families behind them.",
   explore: [
     { label: "How it works", href: "/#how-it-works" },
     { label: "For parents", href: "/parents" },
