@@ -34,20 +34,47 @@ _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 # Tables holding rows keyed by a single athlete_id column. Deleted when an
 # athlete (or its parent) is removed. Order doesn't matter (no enforced FKs
 # between them) — all are deleted before the athlete row itself.
+#
+# Security Item 7B (2026-08-29): audited the full current schema (68 tables)
+# for every athlete_id-owning table with an ON DELETE NO ACTION (or no FK at
+# all) constraint back to athletes — dietitian_bookings, fueling_window_log,
+# roster_membership, recipe_selections, and the FuelIQ athlete-progress tables
+# were all missing here and would FK-violate (or silently orphan) on delete.
+# recipe_lists and notification_prefs are NOT here — they need row lookups
+# (recipe_lists has a NO ACTION child, recipe_list_items) or aren't keyed by a
+# plain athlete_id column (notification_prefs is profile_type/profile_id
+# polymorphic) — both are handled explicitly in _preview_athlete/_delete_athlete
+# below, same pattern as the pre-existing shopping_lists special-case.
 ATHLETE_CHILD_TABLES = [
     "events", "meal_logs", "meal_plans", "meal_plan_selections", "daily_targets",
     "water_logs", "push_subscriptions", "expo_push_tokens", "athlete_article_picks",
     "athlete_logins", "athlete_food_prefs", "notification_log", "window_logs",
     "confirmations", "streak_state", "pantry_list_items", "account_athlete",
     "feature_requests",
+    "dietitian_bookings", "fueling_window_log", "roster_membership",
+    "recipe_selections", "instacart_handoff_feedback",
+    "fueliq_athlete_progress", "fueliq_badges_earned",
+    "fueliq_daily_challenge_answers", "fueliq_daily_challenge_streak",
+    "fueliq_lesson_completions", "fueliq_notification_prefs",
+    "fueliq_quiz_attempts", "fueliq_push_events",
 ]
 
 # Parent-level tables keyed directly by the parent's id (child athletes are
 # cascaded separately). account_athlete uses account_id = the parent account id.
+#
+# account_deletion_requests (added 2026-08-29, Item 7B): parent_id is NOT NULL
+# with an ON DELETE NO ACTION FK, so any parent who ever filed the user-facing
+# deletion request (api/routes/parents.py, the normal way an admin ends up
+# performing this delete at all) would FK-violate delete_parent otherwise. The
+# row is a point-in-time text snapshot (parent_name/parent_email/athlete_names
+# already denormalized onto it) of a request that this hard-delete *is* the
+# fulfillment of — not a standing audit record independent of the account —
+# so removing it here is completing the request, not discarding audit trail.
 PARENT_CHILD_TABLES = [
     ("otp_codes", "parent_id"),
     ("expo_push_tokens", "parent_id"),
     ("account_athlete", "account_id"),
+    ("account_deletion_requests", "parent_id"),
 ]
 
 
@@ -167,6 +194,30 @@ def _preview_athlete(conn, athlete_id: int) -> dict:
                 counts["shopping_list_items"] = n
         if list_ids:
             counts["shopping_lists"] = len(list_ids)
+    # recipe_list_items (+ recipe_list_item_sources, CASCADE from there) via
+    # list_id → recipe_lists.athlete_id. Same NO ACTION shape as shopping_lists
+    # above (Item 7B, 2026-08-29).
+    if _table_exists(conn, "recipe_lists"):
+        list_ids = [r["id"] for r in conn.execute(
+            "SELECT id FROM recipe_lists WHERE athlete_id = %s", (athlete_id,)).fetchall()]
+        if list_ids and _table_exists(conn, "recipe_list_items"):
+            q = ",".join(["%s"] * len(list_ids))
+            n = conn.execute(
+                f"SELECT COUNT(*) AS count FROM recipe_list_items WHERE list_id IN ({q})", list_ids
+            ).fetchone()["count"]
+            if n:
+                counts["recipe_list_items"] = n
+        if list_ids:
+            counts["recipe_lists"] = len(list_ids)
+    # notification_prefs is profile_type/profile_id polymorphic (athlete OR
+    # parent), not a plain athlete_id column (Item 7B, 2026-08-29).
+    if _table_exists(conn, "notification_prefs"):
+        n = conn.execute(
+            "SELECT COUNT(*) AS count FROM notification_prefs "
+            "WHERE profile_type = 'athlete' AND profile_id = %s", (athlete_id,)
+        ).fetchone()["count"]
+        if n:
+            counts["notification_prefs"] = n
     return counts
 
 
@@ -180,6 +231,18 @@ def _delete_athlete(conn, athlete_id: int) -> None:
             q = ",".join(["%s"] * len(list_ids))
             conn.execute(f"DELETE FROM shopping_list_items WHERE list_id IN ({q})", list_ids)
         conn.execute("DELETE FROM shopping_lists WHERE athlete_id = %s", (athlete_id,))
+    if _table_exists(conn, "recipe_lists"):
+        list_ids = [r["id"] for r in conn.execute(
+            "SELECT id FROM recipe_lists WHERE athlete_id = %s", (athlete_id,)).fetchall()]
+        if list_ids and _table_exists(conn, "recipe_list_items"):
+            q = ",".join(["%s"] * len(list_ids))
+            conn.execute(f"DELETE FROM recipe_list_items WHERE list_id IN ({q})", list_ids)
+        conn.execute("DELETE FROM recipe_lists WHERE athlete_id = %s", (athlete_id,))
+    if _table_exists(conn, "notification_prefs"):
+        conn.execute(
+            "DELETE FROM notification_prefs WHERE profile_type = 'athlete' AND profile_id = %s",
+            (athlete_id,),
+        )
     for table in ATHLETE_CHILD_TABLES:
         if _table_exists(conn, table):
             conn.execute(f"DELETE FROM {table} WHERE athlete_id = %s", (athlete_id,))
@@ -633,6 +696,14 @@ def _preview_parent(conn, parent_id: int) -> dict:
         n = _count(conn, table, f"{col} = %s", (parent_id,))
         if n:
             counts[f"{table}:{col}"] = counts.get(f"{table}:{col}", 0) + n
+    # notification_prefs, parent side — see _preview_athlete (Item 7B, 2026-08-29).
+    if _table_exists(conn, "notification_prefs"):
+        n = conn.execute(
+            "SELECT COUNT(*) AS count FROM notification_prefs "
+            "WHERE profile_type = 'parent' AND profile_id = %s", (parent_id,)
+        ).fetchone()["count"]
+        if n:
+            counts["notification_prefs:parent"] = n
     return counts
 
 
@@ -662,6 +733,11 @@ def delete_parent(parent_id: int, data: DeleteConfirm, _: bool = Depends(require
             conn.execute("BEGIN")
             for aid in _athlete_ids(conn, parent_id):
                 _delete_athlete(conn, aid)
+            if _table_exists(conn, "notification_prefs"):
+                conn.execute(
+                    "DELETE FROM notification_prefs WHERE profile_type = 'parent' AND profile_id = %s",
+                    (parent_id,),
+                )
             for table, col in PARENT_CHILD_TABLES:
                 if _table_exists(conn, table):
                     conn.execute(f"DELETE FROM {table} WHERE {col} = %s", (parent_id,))
