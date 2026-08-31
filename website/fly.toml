@@ -21,29 +21,41 @@ primary_region = "sjc"          # San Jose: the company and most early users are
     #      preview deploy — the exact thing the check in site-url.ts exists to
     #      prevent. Lying about the host defeated its own safeguard.
     #
-    # Switched to the production domain on 2026-08-29, when athfuelpath.com was
-    # registered and pointed at this app. Nothing else changes with it:
-    # robots.txt, sitemap.xml, canonicals and every og:image follow this value.
+    # ---------------------------------------------------------------------
+    # THE CUTOVER LINE. Leave it on fly.dev until the day DNS moves.
+    #
+    # This was briefly set to https://athfuelpath.com on 2026-08-29, when the
+    # domain was registered. It was set back the same day, before any deploy
+    # carried it, because athfuelpath.com does not point here yet — GoDaddy
+    # auto-provisioned a Website Builder starter page ("Fuel Your Fitness
+    # Journey") and that is what the domain currently serves. Deploying the
+    # production value while that is true would point every canonical and every
+    # og:image at somebody else's page, which is failure 1 and 2 above, live.
     #
     # TIMING, because this is a BUILD arg and not a runtime setting. The value is
     # compiled into the image, so the running app cannot pick up a new one — only
-    # a fresh `fly deploy` can. That creates a window with exactly one safe order:
+    # a fresh `fly deploy` can. That gives exactly one safe order:
     #
-    #   set the DNS records, then deploy, then let the certificate finish.
+    #   1. remove GoDaddy's Website Builder site from the domain
+    #   2. point A / AAAA / CNAME at this app, fly certs add both hostnames
+    #   3. CHANGE THE LINE BELOW to "https://athfuelpath.com"
+    #   4. fly deploy, while the certificate is still issuing
     #
-    # Deploy too early and athfuelpath-web.fly.dev spends the wait serving
-    # allow-crawl robots.txt with canonicals pointing at a domain that does not
-    # resolve yet. Deploy too late and the far worse thing happens: the moment
-    # the certificate issues, athfuelpath.com is live and serving
-    # `noindex, nofollow` and `Disallow: /`, because SITE_URL still says fly.dev
-    # and IS_PRODUCTION_SITE is false. Certificate issuance is public — it lands
-    # in the Certificate Transparency logs that crawlers watch — so a first crawl
-    # can arrive within minutes of the domain working, and a noindex seen on the
-    # first visit is slow to undo.
+    # Step 3 is an edit to this file on purpose, rather than a --build-arg on the
+    # deploy command. A one-off override would work once and then every later
+    # plain `fly deploy` would silently put production back to noindex. The value
+    # that ships has to be the value written here.
     #
-    # To go back to serving from fly.dev, set this back and redeploy; the site
-    # returns to noindex on its own.
-    NEXT_PUBLIC_SITE_URL = "https://athfuelpath.com"
+    # Getting step 3 and 4 late is the expensive mistake: the moment the
+    # certificate issues, athfuelpath.com is live serving `noindex, nofollow` and
+    # `Disallow: /`, because SITE_URL still says fly.dev and IS_PRODUCTION_SITE
+    # is false. Certificate issuance is public — it lands in the Certificate
+    # Transparency logs that crawlers watch — so a first crawl can arrive within
+    # minutes, and a noindex seen on the first visit is slow to undo.
+    #
+    # While this says fly.dev the site serves noindex and Disallow: / on every
+    # host, which is correct for a preview nobody should find.
+    NEXT_PUBLIC_SITE_URL = "https://athfuelpath-web.fly.dev"
 
 [env]
   PORT = "3000"
