@@ -568,7 +568,22 @@ export const nav = {
      */
     { label: "How It Works", href: "/#how-it-works" },
     { label: "For Parents", href: "/parents" },
-    { label: "Coaches", href: "/coaches" },
+    /* "Coaches" removed from the nav on 2026-08-29, and from the footer and the
+       sitemap in the same change. HIDDEN, NOT PARKED — this is the important
+       distinction:
+
+       /coaches still builds, still renders and still works. Its form still
+       posts to /api/waitlist and still arrives in Purvi's inbox with a [COACH]
+       prefix. Purvi can send a club the link and the whole flow behaves exactly
+       as it did. What changed is only that nobody arrives there by accident.
+
+       Removing it from the sitemap is the half that is easy to forget. Without
+       that, the tab is gone but search still sends strangers to a page that has
+       been judged not ready for them, which is the worst of both.
+
+       To bring it back: restore this line, the footer entry, and "/coaches" in
+       src/app/sitemap.ts. Three lines, no code. Nothing about the page itself
+       was touched, so there is nothing to un-park and nothing to re-test. */
     { label: "Our Story", href: "/our-story" },
   ],
   /**
@@ -1252,7 +1267,9 @@ export const footer = {
   explore: [
     { label: "How it works", href: "/#how-it-works" },
     { label: "For parents", href: "/parents" },
-    { label: "Coaches", href: "/coaches" },
+    /* Coaches removed here with the nav item — see the note in `nav.links`.
+       The footer is on every page, so leaving it here would have made the nav
+       removal cosmetic. */
     { label: "Our story", href: "/our-story" },
     { label: "All questions", href: "/faq" },
   ],
