@@ -1,9 +1,7 @@
 import io
 import json
-import uuid
 import base64
 from datetime import date as dt_date, timedelta
-from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from api.database import get_conn
 from api.services.session_auth import require_session, assert_owns_athlete
@@ -29,42 +27,32 @@ from api.services.activity_engine import get_activity_profile
 
 router = APIRouter()
 
-_PHOTOS_DIR = Path("/tmp/athfuelpath_photos")
-_AUDIO_DIR  = Path("/tmp/athfuelpath_audio")
-
 
 async def _store_meal_photo(photo: UploadFile, athlete_id: int, slot_name: str):
-    """Save full image to disk; return (photo_url, thumb_data_uri)."""
+    """Generate the meal-card thumbnail. No active consumer reads a stored full-size
+    image back (nutrient_resolver.py never opens it; today_service.py's response only
+    ever uses thumb_url) — Item 7C removed the /tmp write, keeping only the in-memory
+    thumbnail this endpoint's response actually depends on. Returns (photo_url, thumb_data_uri);
+    photo_url is always None now — kept in the return shape to avoid touching the caller."""
     try:
         from PIL import Image as PILImage
         content = await photo.read()
-        _PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
-        filename = f"{athlete_id}_{slot_name}_{uuid.uuid4().hex[:8]}.jpg"
-        photo_path = _PHOTOS_DIR / filename
-        photo_path.write_bytes(content)
         img = PILImage.open(io.BytesIO(content)).convert("RGB")
         img.thumbnail((120, 120))
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=70)
         thumb_b64 = base64.b64encode(buf.getvalue()).decode()
-        return str(photo_path), f"data:image/jpeg;base64,{thumb_b64}"
+        return None, f"data:image/jpeg;base64,{thumb_b64}"
     except Exception:
         return None, None
 
 
 async def _store_meal_audio(audio: UploadFile, athlete_id: int, slot_name: str) -> str | None:
-    """Save voice clip to disk; return path string."""
-    try:
-        content = await audio.read()
-        _AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-        raw_name = audio.filename or "clip.webm"
-        ext = raw_name.rsplit(".", 1)[-1] if "." in raw_name else "webm"
-        filename = f"{athlete_id}_{slot_name}_{uuid.uuid4().hex[:8]}.{ext}"
-        audio_path = _AUDIO_DIR / filename
-        audio_path.write_bytes(content)
-        return str(audio_path)
-    except Exception:
-        return None
+    """Accept the voice clip upload. No active consumer reads a stored audio file back
+    (nutrient_resolver.py never opens it — real audio transcription/nutrient AI is
+    future work) — Item 7C removed the /tmp write. Always returns None (audio_url)."""
+    await audio.read()
+    return None
 
 
 @router.get("/{athlete_id}/meal-plan")
