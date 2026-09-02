@@ -1546,161 +1546,244 @@ img.photo--portrait { width: 100%; height: auto; }
 .par-faq .eyebrow, .par-faq .h2 { text-align: center; }
 
 /* ==================================================================== */
-/* /athletes                                                            */
-/*                                                                      */
-/* Uses the existing tokens throughout. The design spec asked for a      */
-/* larger type scale (hero 54-60px, section h2 40-46px) and eight        */
-/* distinct background values; this file has three surface tokens and    */
-/* .h1/.h2 top out at 56/44. A page-specific scale is how a site starts  */
-/* looking like two sites, and the difference is a few pixels.           */
+/* /athletes — the Lovable design spec, scoped to this page               */
+/*                                                                       */
+/* Every rule below is prefixed .ath, and the page wraps itself in that   */
+/* class. The spec introduces a fourth surface, two accents and two mid   */
+/* greens that the rest of the site does not have; scoping them here is   */
+/* what lets /athletes take the spec without dragging 20 other pages into */
+/* a palette nobody asked to change.                                      */
+/*                                                                       */
+/* Six of the spec's tokens are already site tokens byte for byte —       */
+/* primary #1B4332, background #F7FAF5, mint #D1FAE5, border #C0C9C1,     */
+/* night-surface #10241C, and Hanken Grotesk. Those reuse the existing    */
+/* variables rather than being redeclared.                               */
+/*                                                                       */
+/* THREE DELIBERATE DEPARTURES, all forced rather than preferred.        */
+/*                                                                       */
+/* 1. muted-foreground. The spec's #707973 fails                          */
+/* WCAG AA as body text on the spec's own surfaces: 4.27:1 on background, */
+/* 3.96:1 on mint, and 3.22:1 on the new dim band. The site's own --muted */
+/* #656e68 also fails on dim, at 3.77:1 — the surface is the problem, not */
+/* just the ink. --ath-muted is #5a615c: the same hue walked darker until */
+/* it clears 4.5:1 on all three (6.05 / 4.55 / 5.61). contrast.mjs is the */
+/* gate and it does not care which document a colour came from.           */
+/*                                                                       */
+/* 2. night #061C14 is NOT used. The spec is for a single-route app where */
+/* the nav and footer are part of the page. Here they are shared chrome   */
+/* rendered outside this wrapper, so a page-scoped dark leaves the footer */
+/* at the site's --dark #0b1f17 directly beneath a #061C14 CTA — two      */
+/* darks meeting at a visible seam, which the audit caught as a fourth    */
+/* background. Dark sections use --dark. The delta is five points of      */
+/* luminance; matching the chrome is worth more.                          */
+/*                                                                       */
+/* 3. Card body is 15px, not the spec's 14px. The site enforces a 15px    */
+/* floor everywhere and audit.mjs fails the page otherwise. Eyebrows and  */
+/* footnotes keep 12px through the .eyebrow class, which the floor        */
+/* exempts by name.                                                      */
 /* ==================================================================== */
 
-/* ---- hero: text only, centred. Every other hero carries a phone; the
-   screen worth showing here is FuelIQ, two sections down. ---- */
-.ath-hero { max-width: 760px; }
+.ath {
+  --ath-dim: #d8dbd6;        /* alternating section background */
+  --ath-secondary: #2d6a4f;  /* eyebrows on light, text links */
+  --ath-tertiary: #40916c;   /* label-strip text, chip fill */
+  --ath-carbs: #9bc24a;      /* accent on dark: eyebrows, links, progress fill */
+  --ath-sodium: #f2c84b;     /* accent, sparingly */
+  --ath-muted: #5a615c;      /* see the note above — NOT the spec's #707973 */
+  --ath-r-card: 12px;
+  --ath-r-tile: 8px;
+  --sh-ath: 0 1px 2px rgba(6, 28, 20, .06), 0 5px 14px rgba(6, 28, 20, .07);
+  --sh-ath-hover: 0 2px 4px rgba(6, 28, 20, .05), 0 10px 24px rgba(6, 28, 20, .10);
+  --sh-ath-dark: 0 1px 2px rgba(0, 0, 0, .18), 0 6px 18px rgba(0, 0, 0, .22);
+}
+
+/* The three surface tokens repointed for this page only. */
+.ath .surface-tint { background: var(--ath-dim); }
+.ath .muted-txt { color: var(--ath-muted); }
+.ath .surface-dark .muted-txt, .ath .closing .muted-txt { color: rgba(247, 250, 245, .7); }
+.ath .eyebrow { color: var(--ath-secondary); }
+.ath .surface-dark .eyebrow, .ath .closing .eyebrow { color: var(--ath-carbs); }
+.ath .surface-dark .tlink, .ath .closing .tlink { color: var(--ath-carbs); }
+.ath .tlink { color: var(--ath-secondary); }
+/* Hover is an underline at 4px offset, per the spec — not a colour change. */
+.ath .tlink:hover { text-decoration: underline; text-underline-offset: 4px; }
+
+/* ---- shared card treatment ---- */
+.ath .ath-card-base {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--ath-r-card); box-shadow: var(--sh-ath);
+  transition: box-shadow 300ms ease;
+}
+/* Shadow lift only. The spec is explicit: no translate, no scale. */
+.ath .ath-card-base:hover { box-shadow: var(--sh-ath-hover); }
+@media (prefers-reduced-motion: reduce) { .ath .ath-card-base { transition: none; } }
+
+/* ---- 02 hero: centred, 880px ---- */
+.ath-hero { max-width: 880px; margin-inline: auto; text-align: center; }
 .ath-hero__h1 {
-  margin-top: var(--s3);
-  font-size: clamp(36px, 5.2vw, 56px); line-height: 1.06; letter-spacing: -1.4px;
-  font-weight: 800; text-wrap: balance;
+  margin-top: var(--s2);
+  font-size: clamp(44px, 6vw, 60px); font-weight: 900;
+  line-height: 1.04; letter-spacing: -.03em; text-wrap: balance;
 }
 .ath-hero__p {
-  margin-top: var(--s4); max-width: 560px;
-  font-size: clamp(18px, 2.2vw, 20px); line-height: 1.6; color: var(--muted);
+  margin-top: var(--s3); margin-inline: auto; max-width: 620px;
+  font-size: 16px; line-height: 1.6; color: var(--ath-muted);
 }
-.ath-hero__cta { margin-top: var(--s6); }
+.ath-hero__cta { margin-top: var(--s6); justify-content: center; }
 
-/* ---- notifications: 2x2 at desktop, stacked on mobile ---- */
+/* ---- section header stack: eyebrow -> headline -> subcopy -> 28px ---- */
+.ath .h2 { font-size: clamp(30px, 3.6vw, 34px); font-weight: 900; line-height: 1.12; letter-spacing: -.02em; }
+.ath .section-head { margin-bottom: 28px; }
+.ath .section-head .h2 { margin-top: var(--s2); }
+.ath .section-head .body { margin-top: 14px; font-size: 15px; }
+
+/* ---- 03 nudge cards ---- */
 .ath-notes {
-  display: grid; gap: var(--s4);
-  grid-template-columns: 1fr; max-width: 900px; margin-inline: auto;
+  display: grid; gap: var(--s3); grid-template-columns: 1fr;
+  max-width: 768px; margin-inline: auto; list-style: none;
 }
-@media (min-width: 720px) { .ath-notes { grid-template-columns: 1fr 1fr; } }
-/* Shaped like a real notification: app name, bold line, body. Left rule in
-   lime rather than an icon, so nothing here pretends to be an OS chrome it
-   is not. */
-.ath-note {
-  background: #fff; border: 1px solid var(--line); border-left: 3px solid var(--lime);
-  border-radius: var(--r-card); padding: var(--s4) var(--s5);
+@media (min-width: 640px) { .ath-notes { grid-template-columns: 1fr 1fr; } }
+.ath-note { padding: var(--s5); }
+.ath-note__badge {
+  width: 44px; height: 44px; border-radius: 999px; display: grid; place-items: center;
+  background: var(--mint); color: var(--forest);
 }
-/* Carries .eyebrow in the markup — it IS an eyebrow, so it takes the site's
-   own micro-label size and the documented exemption from the 15px floor,
-   rather than inventing a second small-text scale on one page. Colour only.
-   --numeral was 3.93:1 on white here; --forest clears 4.5. --numeral is
-   sized for large step figures, not 11px bold. */
-.ath-note__app { color: var(--forest); }
-.ath-note__when { display: block; margin-top: var(--s2); font-size: 17px; line-height: 1.3; }
-.ath-note__body { margin-top: var(--s1); font-size: 16px; line-height: 1.5; color: var(--muted); }
+.ath-note__badge svg { width: 20px; height: 20px; }
+.ath-note__when { display: block; margin-top: 14px; font-size: 16px; font-weight: 700; line-height: 1.3; }
+.ath-note__body { margin-top: var(--s1); font-size: 15px; line-height: 1.55; color: var(--ath-muted); }
+/* The spec files this as a 12px footnote. It is raised to the site's 15px
+   floor for the usual reason, and because of what it says — "never during
+   school hours, never late at night" is the strongest trust line on the page
+   and setting it in footnote type buries the argument. */
 .ath-notes__note {
-  margin: var(--s5) auto 0; max-width: 900px; text-align: center;
-  font-size: 15px; color: var(--muted);
+  margin: var(--s5) auto 0; max-width: 768px; text-align: center;
+  font-size: 15px; line-height: 1.6; color: var(--ath-muted);
 }
 
-/* ---- FuelIQ ---- */
-.fq__sub { display: block; color: var(--lime); }
-.fq { display: grid; gap: var(--s7); margin-top: var(--s7); list-style: none; }
+/* ---- 05 topic cards ---- */
+.ath-topics {
+  display: grid; gap: var(--s3); grid-template-columns: 1fr;
+  max-width: 1024px; margin-inline: auto; list-style: none;
+}
+@media (min-width: 640px) { .ath-topics { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 1024px) { .ath-topics { grid-template-columns: repeat(3, 1fr); } }
+.ath-topics li { border-radius: var(--ath-r-tile); padding: var(--s5); }
+.ath-topics__chip {
+  width: 40px; height: 40px; border-radius: 999px; display: grid; place-items: center;
+}
+.ath-topics__chip svg { width: 20px; height: 20px; }
+/* Cycling the brand accents, per the spec. Ink is chosen per chip so every
+   glyph clears contrast against its own fill rather than inheriting one. */
+.ath-topics li:nth-child(1) .ath-topics__chip { background: var(--ath-sodium); color: #3d2f05; }
+.ath-topics li:nth-child(2) .ath-topics__chip { background: var(--ath-carbs); color: #1f2e08; }
+.ath-topics li:nth-child(3) .ath-topics__chip { background: var(--mint); color: var(--forest); }
+.ath-topics li:nth-child(4) .ath-topics__chip { background: var(--ath-tertiary); color: #f7faf5; }
+.ath-topics li:nth-child(5) .ath-topics__chip { background: var(--ath-secondary); color: #f7faf5; }
+.ath-topics__h { margin-top: 14px; font-size: 16px; font-weight: 700; line-height: 1.3; }
+.ath-topics__p { margin-top: var(--s1); font-size: 15px; line-height: 1.55; color: var(--ath-muted); }
+
+/* ---- 06 understand it: two columns ---- */
+.ath-ind { display: grid; gap: var(--s5); }
+@media (min-width: 900px) { .ath-ind { grid-template-columns: 1fr 1fr; gap: var(--s7); align-items: start; } }
+.ath-ind__h { margin-top: var(--s2); }
+.ath-ind__body { font-size: 15px; line-height: 1.65; color: var(--ath-muted); }
+.ath-ind__flow {
+  display: flex; flex-wrap: wrap; align-items: center; margin-top: var(--s5);
+  font-size: 15px; font-weight: 700; letter-spacing: .1em;
+  /* The spec puts the label strip in --ath-tertiary. On the dim band that
+     measures 2.74:1 — it is a mid green on a mid grey. --ath-secondary is the
+     next colour along the same ramp and clears at 4.57:1, so the strip keeps
+     the spec's intent (a lighter green than the headline) while staying
+     legible. --ath-tertiary is still used for the chip fill, where it carries
+     white text rather than sitting on dim. */
+  text-transform: uppercase; color: var(--ath-secondary);
+}
+.ath-ind__arw { margin-inline: var(--s2); color: var(--ath-muted); }
+.ath-ind__close { margin-top: var(--s4); font-size: 16px; font-weight: 700; line-height: 1.45; }
+.ath-ind__link { margin-top: var(--s4); }
+
+/* ---- 07 progress ---- */
+.ath-prog { display: grid; gap: var(--s6); align-items: start; }
+@media (min-width: 900px) { .ath-prog { grid-template-columns: 1fr 1fr; gap: var(--s7); } }
+.ath-prog__strong { margin-top: var(--s5); font-size: 15px; font-weight: 700; color: var(--ath-secondary); }
+.ath-card {
+  background: var(--dark); color: var(--on-dark);
+  border: 1px solid rgba(247, 250, 245, .15); border-radius: var(--ath-r-tile);
+  box-shadow: var(--sh-ath-dark); padding: var(--s5);
+}
+@media (min-width: 640px) { .ath-card { padding: var(--s6); } }
+/* Carries .eyebrow, and needs .ath in front of it to win. This is the second
+   time this trap has bitten on this page: `.ath .eyebrow` is (0,2,0) and a bare
+   `.ath-card__lab` is (0,1,0), so the label took the LIGHT-surface green. The
+   card is dark but its section is light, so none of the .surface-dark rules
+   applied either. Specificity, not surface, decides. */
+.ath .ath-card__lab { color: rgba(247, 250, 245, .7); }
+.ath-card__lvl { display: block; margin-top: var(--s1); font-size: 24px; font-weight: 900; color: var(--ath-carbs); }
+.ath-card__bar {
+  margin-top: var(--s4); height: 10px; border-radius: 999px;
+  background: var(--dark-card); overflow: hidden;
+}
+.ath-card__bar span { display: block; height: 100%; background: var(--ath-carbs); border-radius: 999px; }
+.ath-week { display: flex; gap: 6px; margin-top: var(--s4); }
+.ath-week__d { flex: 1; height: 10px; border-radius: 6px; background: var(--dark-card); }
+.ath-week__d.is-done, .ath-week__d.is-today { background: var(--ath-carbs); }
+.ath-card__note { display: block; margin-top: var(--s3); font-size: 15px; line-height: 1.6; color: rgba(247, 250, 245, .5); }
+
+/* ---- 08 promise cards: mint, no icon ---- */
+.ath-trust {
+  display: grid; gap: var(--s3); grid-template-columns: 1fr;
+  max-width: 1024px; margin-inline: auto; list-style: none;
+}
+@media (min-width: 640px) { .ath-trust { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 1024px) { .ath-trust { grid-template-columns: repeat(4, 1fr); } }
+.ath-trust li {
+  background: var(--mint); border: 1px solid var(--line);
+  border-radius: var(--ath-r-tile); padding: var(--s5);
+  box-shadow: var(--sh-ath); transition: box-shadow 300ms ease;
+}
+.ath-trust li:hover { box-shadow: var(--sh-ath-hover); }
+@media (prefers-reduced-motion: reduce) { .ath-trust li { transition: none; } }
+.ath-trust__h { font-size: 16px; font-weight: 700; line-height: 1.3; }
+/* On mint, --ath-muted measures 5.61:1. */
+.ath-trust__p { margin-top: var(--s1); font-size: 15px; line-height: 1.55; color: var(--ath-muted); }
+.ath-trust__link { margin-top: var(--s6); text-align: center; }
+
+/* ---- 09 final CTA ---- */
+.ath .closing .h2 { font-size: clamp(36px, 5.4vw, 52px); font-weight: 900; line-height: 1.06; letter-spacing: -.03em; }
+.ath .closing .trust-row { font-size: 15px; color: rgba(247, 250, 245, .5); }
+
+/* ---- FuelIQ section ---- */
+.fq__sub { display: block; color: var(--ath-carbs); }
+.fq { display: grid; gap: var(--s7); margin-top: 28px; list-style: none; }
 @media (min-width: 900px) { .fq { grid-template-columns: repeat(3, 1fr); gap: var(--s5); } }
 .fq__step { display: grid; gap: var(--s4); align-content: start; }
 .fq__screen { display: flex; }
 
-/* The three screens are naturally different heights — the quiz card is the
-   tallest — so each caption started wherever its own screen ended and the row
-   read as three unrelated columns. subgrid makes all three steps share the
-   parent's two rows, so every screen ends on the same line and every caption
-   starts on it.
-
-   Guarded by @supports because subgrid is the whole mechanism: without it the
-   captions simply sit where they do now, which is untidy rather than broken.
-   Do not replace this with a fixed min-height — that aligns them only until
-   the quiz copy rewraps at some width nobody tested. */
+/* The three captures have different aspect ratios, so each caption started
+   wherever its own screen ended. subgrid makes all three steps share the
+   parent's rows. Guarded by @supports: without it the captions simply sit
+   where they do now, which is untidy rather than broken. */
 @supports (grid-template-rows: subgrid) {
   @media (min-width: 900px) {
     .fq { grid-template-rows: auto auto; }
     .fq__step { grid-row: span 2; grid-template-rows: subgrid; align-content: stretch; }
-    /* NOT stretch. The three captures have different aspect ratios, and a
-       stretched .device keeps its own screen ratio while the bezel grows — so
-       the shortest one rendered as a phone with a black band under the screen.
-       Top-aligned, the extra height is just section background. The captions
-       still line up, because that is subgrid's job, not this one. */
+    /* NOT stretch on the screen itself — a stretched .device keeps its own
+       screen ratio while the bezel grows, putting a black band under the
+       shortest capture. Top-aligned, the spare height is section background. */
     .fq__screen { align-items: start; }
   }
 }
-.fq__n { font-size: 15px; font-weight: 800; color: var(--lime); letter-spacing: .1em; }
-.fq__label { margin-top: var(--s2); color: var(--on-dark-mute); }
-.fq__h { margin-top: var(--s2); font-size: 20px; line-height: 1.25; font-weight: 700; }
-.fq__p { margin-top: var(--s2); font-size: 16px; line-height: 1.55; color: var(--on-dark-soft); }
-.fq__meta { display: block; margin-top: var(--s3); font-size: 15px; color: var(--on-dark-mute); }
-/* flex + wrap, matching .par-flow. As a paragraph of inline spans these four
-   words could not break between their boxes and overflowed 320px by 122px. */
+
+.fq__n { font-size: 15px; font-weight: 900; color: var(--ath-carbs); letter-spacing: .14em; }
+.fq__label { margin-top: var(--s2); color: rgba(247, 250, 245, .6); }
+.fq__h { margin-top: var(--s2); font-size: 16px; font-weight: 700; line-height: 1.3; }
+.fq__p { margin-top: var(--s1); font-size: 15px; line-height: 1.55; color: rgba(247, 250, 245, .7); }
+.fq__meta { display: block; margin-top: var(--s3); font-size: 15px; color: rgba(247, 250, 245, .5); }
 .fq__flow {
   display: flex; flex-wrap: wrap; justify-content: center; align-items: center;
-  margin-top: var(--s7); font-size: 15px; font-weight: 700; letter-spacing: .06em;
-  text-transform: uppercase; color: var(--on-dark-mute);
+  /* 15px, matching .par-flow on /parents — the same component already exists
+     there at that size, and the spec's 12px is under the site's floor. */
+  margin-top: var(--s7); font-size: 15px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: rgba(247, 250, 245, .6);
 }
-.fq__arw { margin-inline: var(--s3); color: var(--lime); }
-
-/* The .fqs block that lived here styled three screens drawn in markup, before
-   real FuelIQ captures existed. The captures replaced them, so the CSS went
-   with the component rather than sitting here unused — roughly 60 rules for
-   markup nothing renders. `git show` has it if the drawing is ever wanted back.
-
-   .fq__screen now holds a <Shot>, which brings its own .device bezel. */
-
-/* ---- topics: rules, not cards. Five boxed cards would outweigh FuelIQ. ---- */
-.ath-topics {
-  display: grid; gap: var(--s5); list-style: none; margin-top: var(--s2);
-  grid-template-columns: 1fr;
-}
-@media (min-width: 640px) { .ath-topics { grid-template-columns: 1fr 1fr; } }
-@media (min-width: 1000px) { .ath-topics { grid-template-columns: repeat(3, 1fr); } }
-.ath-topics li { border-top: 2px solid var(--forest); padding-top: var(--s3); }
-.ath-topics__h { font-size: 21px; line-height: 1.25; font-weight: 700; }
-.ath-topics__p { margin-top: var(--s2); font-size: 16px; line-height: 1.55; color: var(--muted); max-width: 42ch; }
-
-/* ---- independence: short by design ---- */
-.ath-ind { max-width: 720px; }
-.ath-ind .h2 { margin-top: var(--s3); }
-.ath-ind .body { margin-top: var(--s4); }
-/* Same wrap fix as .fq__flow — see the note there. Colour is --forest, not
-   --numeral: on the tint surface --numeral measured 3.52:1. */
-.ath-ind__flow {
-  display: flex; flex-wrap: wrap; align-items: center;
-  margin-top: var(--s6); font-size: 15px; font-weight: 700;
-  letter-spacing: .06em; text-transform: uppercase; color: var(--forest);
-}
-.ath-ind__arw { margin-inline: var(--s2); }
-.ath-ind__close { margin-top: var(--s4); font-size: 20px; line-height: 1.4; font-weight: 700; }
-.ath-ind__link { margin-top: var(--s4); }
-
-/* ---- progress ---- */
-.ath-prog { display: grid; gap: var(--s6); align-items: start; }
-@media (min-width: 900px) { .ath-prog { grid-template-columns: 1fr 380px; gap: var(--s8); } }
-.ath-prog__strong { margin-top: var(--s5); font-size: 16px; font-weight: 700; color: var(--forest); }
-.ath-card { background: var(--forest); color: var(--on-dark); border-radius: var(--r-card); padding: var(--s5); }
-.ath-card__top { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); font-size: 15px; }
-.ath-card__top span { color: var(--on-dark-mute); font-size: 15px; }
-/* These two rules were shared with the deleted .fqs block and went out with it
-   — the progress bar rendered as a bare div until a grep caught it. Kept here,
-   next to the only thing that uses them now. */
-.ath-card__bar {
-  margin-top: var(--s2); height: 8px; border-radius: 999px;
-  background: rgba(255,255,255,.16); overflow: hidden;
-}
-.ath-card__bar span { display: block; height: 100%; background: var(--lime); border-radius: 999px; }
-.ath-week { display: flex; gap: 6px; margin-top: var(--s5); }
-.ath-week__d { flex: 1; height: 8px; border-radius: 999px; background: rgba(255,255,255,.16); }
-.ath-week__d.is-done { background: var(--lime); }
-/* Amber for "today" — the one place this page uses it, matching the badge
-   token already defined for training days. */
-.ath-week__d.is-today { background: #e99a12; }
-.ath-card__note { display: block; margin-top: var(--s3); font-size: 15px; color: var(--on-dark-mute); }
-
-/* ---- trust: short by design; /safety owns the full account ---- */
-.ath-trust {
-  display: grid; gap: var(--s5); list-style: none;
-  grid-template-columns: 1fr; max-width: 1000px; margin-inline: auto;
-}
-@media (min-width: 700px) { .ath-trust { grid-template-columns: 1fr 1fr; } }
-@media (min-width: 1000px) { .ath-trust { grid-template-columns: repeat(4, 1fr); gap: var(--s4); } }
-.ath-trust__h { font-size: 18px; line-height: 1.25; font-weight: 700; }
-.ath-trust__p { margin-top: var(--s2); font-size: 15px; line-height: 1.55; color: var(--muted); }
-.ath-trust__link { margin-top: var(--s6); text-align: center; }
+.fq__arw { margin-inline: var(--s3); color: rgba(155, 194, 74, .4); }

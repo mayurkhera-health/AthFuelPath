@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/Button";
 import { Arrow } from "@/components/ui/Icons";
 import { Reveal } from "@/components/ui/Reveal";
 import { FuelIq } from "./FuelIq";
+import { Clock, Whistle, Recover, Calendar, Drop, Spark, Flag, Plate, Check } from "./icons";
 import { athletes, cta } from "@/content/site";
 import { routeMetadata } from "@/lib/meta";
 
@@ -17,34 +18,44 @@ export const metadata = routeMetadata({
 /**
  * /athletes — the page the athlete reads.
  *
- * ROUTE NAME. /athletes, not /for-athletes, matching /parents. There is already
- * a permanent redirect from /for-parents because that prefix was a mistake once;
- * /for-athletes redirects here for the same reason rather than repeating it.
+ * BUILT TO ITS OWN DESIGN SPEC, and that spec is not the rest of the site's.
+ * It adds a fourth surface (dim #D8DBD6), two accents (carbs, sodium) and two
+ * mid greens the site does not otherwise have. Everything it introduces is
+ * scoped to the `.ath` wrapper below, so this page can take the spec without
+ * dragging 20 other pages into a palette nobody asked to change. Six of the
+ * spec's tokens were already site tokens byte for byte and are reused.
  *
- * WHAT THIS PAGE IS FOR: see the long note above `athletes` in site.ts. Short
- * version — a 13-year-old cannot join the waitlist, because the form collects a
- * parent's name and email and a parent controls the account. So the page's job
- * is advocacy, not conversion: give the athlete the words to ask a parent, and
- * give the parent reading over their shoulder a reason to say yes.
+ * The one value NOT taken from the spec is muted-foreground. See the note above
+ * the .ath block in globals.css: #707973 fails WCAG AA on all three of the
+ * spec's own surfaces, worst of all on the dim band it introduces.
  *
- * THE DUPLICATION RULE, same as /parents. No section here restates one from
- * another page. Two come close and are deliberately four lines and a link
- * rather than a retelling — independence belongs to /parents, safety belongs to
- * /safety. If either grows, cut it.
+ * ROUTE NAME. /athletes, not /for-athletes, matching /parents. /for-athletes
+ * 308s here, like the /for-parents redirect that exists because that prefix was
+ * a mistake once already.
  *
- * Backgrounds cycle light → tint → dark through the three surface tokens. The
- * spec asked for eight distinct background values; the site has three, and
- * three is what keeps every page looking like the same product.
+ * WHAT THIS PAGE IS FOR: a 13-year-old cannot join the waitlist — the form
+ * collects a parent's name and email and a parent controls the account. So the
+ * job is advocacy, not conversion: give the athlete the words to ask a parent,
+ * and give the parent reading over their shoulder a reason to say yes.
+ *
+ * THE DUPLICATION RULE, same as /parents. Two sections come close to restating
+ * another page and are deliberately short and linked — independence belongs to
+ * /parents, safety belongs to /safety. If either grows, cut it.
  */
+
+/* Icons paired to content by position. Kept beside the page rather than in
+   site.ts, because site.ts holds copy and these are not copy. */
+const NUDGE_ICONS = [Clock, Whistle, Recover, Calendar];
+const TOPIC_ICONS = [Drop, Spark, Flag, Plate, Check];
+
 export default function Athletes() {
   const { hero, reminders, topics, independence, progress, trust, close } = athletes;
 
   return (
-    <>
-      {/* 01 — hero. Text only. Every other hero on the site carries a phone
-          frame, and the honest position here is that the screen worth showing
-          is FuelIQ, which is two sections down and has three of its own. A
-          borrowed screenshot at the top would be decoration. */}
+    <div className="ath">
+      {/* 02 — hero. Centred, 880px, text only. Every other hero on the site
+          carries a phone frame; the screen worth showing here is FuelIQ, two
+          sections down, where it has three of its own. */}
       <section className="section surface-light">
         <div className="container">
           <div className="ath-hero">
@@ -59,7 +70,7 @@ export default function Athletes() {
         </div>
       </section>
 
-      {/* 02 — the reminders, from the athlete's side */}
+      {/* 03 — nudges */}
       <section className="section surface-tint" aria-labelledby="ar-h">
         <div className="container">
           <div className="section-head section-head--center">
@@ -68,51 +79,58 @@ export default function Athletes() {
             <p className="body muted-txt">{reminders.p}</p>
           </div>
           <ul className="ath-notes">
-            {reminders.cards.map((c, i) => (
-              <Reveal as="li" key={c.when} className="ath-note" i={((i % 3) + 1) as 1 | 2 | 3}>
-                <span className="eyebrow ath-note__app">AthFuelPath</span>
-                <b className="ath-note__when">{c.when}</b>
-                <p className="ath-note__body">{c.body}</p>
-              </Reveal>
-            ))}
+            {reminders.cards.map((c, i) => {
+              const Icon = NUDGE_ICONS[i];
+              return (
+                <Reveal as="li" key={c.when} className="ath-card-base ath-note" i={((i % 3) + 1) as 1 | 2 | 3}>
+                  <span className="ath-note__badge"><Icon /></span>
+                  <b className="ath-note__when">{c.when}</b>
+                  <p className="ath-note__body">{c.body}</p>
+                </Reveal>
+              );
+            })}
           </ul>
           {/* Restraint stated as a feature. This is the line a parent reads. */}
           <p className="ath-notes__note">{reminders.note}</p>
         </div>
       </section>
 
-      {/* 03 — FuelIQ, the centrepiece */}
+      {/* 04 — FuelIQ, the centrepiece */}
       <FuelIq />
 
-      {/* 04 — what you'll learn */}
+      {/* 05 — build your Fuel IQ */}
       <section className="section surface-light" aria-labelledby="at-h">
         <div className="container">
-          <div className="section-head">
+          <div className="section-head section-head--center">
             <span className="eyebrow">{topics.eyebrow}</span>
             <h2 id="at-h" className="h2 balance">{topics.h2}</h2>
             <p className="body muted-txt">{topics.p}</p>
           </div>
-          {/* Rules, not cards. Five boxed cards would outweigh the FuelIQ
-              section above them, and this is a list of subjects rather than
-              five separate claims. */}
           <ul className="ath-topics">
-            {topics.items.map((t) => (
-              <li key={t.h}>
-                <h3 className="ath-topics__h">{t.h}</h3>
-                <p className="ath-topics__p">{t.p}</p>
-              </li>
-            ))}
+            {topics.items.map((t, i) => {
+              const Icon = TOPIC_ICONS[i];
+              return (
+                <li key={t.h} className="ath-card-base">
+                  <span className="ath-topics__chip"><Icon /></span>
+                  <h3 className="ath-topics__h">{t.h}</h3>
+                  <p className="ath-topics__p">{t.p}</p>
+                </li>
+              );
+            })}
           </ul>
         </div>
       </section>
 
-      {/* 05 — independence. SHORT. /parents owns the argument. */}
+      {/* 06 — understand it. Two columns: headline left, argument right.
+          SHORT — /parents owns this argument in full. */}
       <section className="section surface-tint" aria-labelledby="ai-h">
-        <div className="container">
-          <div className="ath-ind">
+        <div className="container ath-ind">
+          <div>
             <span className="eyebrow">{independence.eyebrow}</span>
-            <h2 id="ai-h" className="h2 balance">{independence.h2}</h2>
-            <p className="body muted-txt">{independence.p}</p>
+            <h2 id="ai-h" className="h2 balance ath-ind__h">{independence.h2}</h2>
+          </div>
+          <div>
+            <p className="ath-ind__body">{independence.p}</p>
             <p className="ath-ind__flow" aria-hidden>
               {independence.steps.map((s, i) => (
                 <span key={s}>
@@ -129,23 +147,20 @@ export default function Athletes() {
         </div>
       </section>
 
-      {/* 06 — progress */}
+      {/* 07 — Fuel IQ over time */}
       <section className="section surface-light" aria-labelledby="ap-h">
         <div className="container ath-prog">
           <div>
             <span className="eyebrow">{progress.eyebrow}</span>
-            <h2 id="ap-h" className="h2 balance" style={{ marginTop: "var(--s3)" }}>{progress.h2}</h2>
-            <p className="body muted-txt" style={{ marginTop: "var(--s4)" }}>{progress.p}</p>
+            <h2 id="ap-h" className="h2 balance" style={{ marginTop: "var(--s2)" }}>{progress.h2}</h2>
+            <p className="body muted-txt" style={{ marginTop: "14px", fontSize: "15px" }}>{progress.p}</p>
             <p className="ath-prog__strong">{progress.strongest}</p>
           </div>
-          {/* Drawn, like the FuelIQ screens, and for the same reason. Inert
-              markup: nothing focusable, no progressbar role — a picture of
-              progress, not anyone's real record. */}
+          {/* Inert markup: nothing focusable and no progressbar role. This is a
+              picture of progress, not anyone's real record. */}
           <div className="ath-card">
-            <div className="ath-card__top">
-              <b>{progress.level}</b>
-              <span>{progress.toNext}</span>
-            </div>
+            <span className="eyebrow ath-card__lab">Fuel IQ</span>
+            <b className="ath-card__lvl">{progress.level}</b>
             <div className="ath-card__bar" aria-hidden>
               <span style={{ width: `${progress.fill}%` }} />
             </div>
@@ -159,7 +174,7 @@ export default function Athletes() {
         </div>
       </section>
 
-      {/* 07 — trust. SHORT. /safety owns the full account. */}
+      {/* 08 — promise cards. SHORT — /safety owns the full account. */}
       <section className="section surface-tint" aria-labelledby="asf-h">
         <div className="container">
           <div className="section-head section-head--center">
@@ -180,8 +195,9 @@ export default function Athletes() {
         </div>
       </section>
 
-      {/* 08 — close. The primary action is the one an athlete can actually
-          take; the waitlist follows for whoever is holding the phone. */}
+      {/* 09 — final CTA. The waitlist stays primary because a parent is often
+          the one holding the phone; the secondary is the action that actually
+          fits the reader. */}
       <section className="surface-dark closing">
         <div className="container">
           <h2 className="h2 balance">{close.h2}</h2>
@@ -193,6 +209,6 @@ export default function Athletes() {
           <p className="trust-row">{close.trust}</p>
         </div>
       </section>
-    </>
+    </div>
   );
 }
