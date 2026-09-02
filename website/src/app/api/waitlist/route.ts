@@ -31,6 +31,7 @@ const MAX = { pain: 1200, email: 254, club: 140, parent: 120, athlete: 80, role:
 const SOURCES = new Set([
   "home_hero", "home_steps", "home_final",   // the three CTAs left on the homepage
   "parents_hero", "parents_final",
+  "athletes_hero", "athletes_final",      // the athlete page — see note in site.ts
   "our_story", "safety_closing", "faq", "question", "sticky_bar",
   "header", "menu",                          // the nav button and the mobile sheet
   "coaches", "unknown",

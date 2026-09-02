@@ -566,8 +566,24 @@ export const nav = {
      * Consequence worth stating: do NOT neuter the homepage into
      * audience-neutral product copy to justify the split.
      */
+    /**
+     * "For Athletes" (2026-08-29) is a deliberate, documented reversal of the
+     * rule stated below.
+     *
+     * The rule says the split is by funnel stage, not audience — and adding a
+     * second audience tab is exactly what it warns against. It is being done
+     * anyway because the athlete is the person who uses the product daily and
+     * had no page at all, and because /athletes is the only page written in
+     * second person. That is a different reader, not a different stage.
+     *
+     * The rule still binds the CONTENT: /athletes may not restate /parents.
+     * Two sections there are four lines and a link for that reason. If the nav
+     * ever needs trimming, these two audience tabs are the first candidates to
+     * merge, not "How It Works".
+     */
     { label: "How It Works", href: "/#how-it-works" },
     { label: "For Parents", href: "/parents" },
+    { label: "For Athletes", href: "/athletes" },
     /* "Coaches" removed from the nav on 2026-08-29, and from the footer and the
        sitemap in the same change. HIDDEN, NOT PARKED — this is the important
        distinction:
@@ -1261,12 +1277,224 @@ export const parents = {
   },
 };
 
+/* ------------------------------------------------------------- /athletes */
+/**
+ * The only page on this site written in SECOND PERSON.
+ *
+ * Everywhere else the voice rule at the top of this file holds: third person
+ * about the athlete, because a parent is reading. Here the athlete is reading,
+ * so it is "you" and "your day". Do not let that leak back into the other
+ * pages, and do not soften this one into parent voice — a 14-year-old can tell
+ * instantly when copy is really aimed at their mother.
+ *
+ * WHAT THIS PAGE IS FOR, and it is not what the section list suggests. A
+ * 13-year-old cannot join the waitlist: the form collects a parent's name and a
+ * parent's email, and the FAQ says a parent or guardian creates and controls
+ * the account. So the athlete cannot convert, and a page that asks them to is
+ * asking for something the product will not accept.
+ *
+ * The job is ADVOCACY. Give the athlete language to ask a parent, and give the
+ * parent reading over their shoulder evidence their kid would actually use it.
+ * That is why `close.primary` sends the page to a parent rather than opening a
+ * form, and why the waitlist sits second.
+ *
+ * NO SECTION HERE MAY RESTATE ONE FROM /parents. Two sections come close and
+ * are deliberately kept short and linked instead of retold:
+ *   - `independence` — /parents owns this argument in full (`parents.independence`,
+ *     "They can start owning it"). Here it is four words and a link.
+ *   - `trust` — /safety owns the complete account and /parents has four cards.
+ *     Here it is three lines and a link.
+ * If either grows past what it is now, cut it rather than let the site say the
+ * same thing in a third place.
+ */
+export const athletes = {
+  hero: {
+    eyebrow: "For athletes",
+    h1: "Fuel for what's next.",
+    p: "Practice after school. Game tomorrow. Tournament weekend. AthFuelPath helps you know what to eat, when to eat, and why it matters.",
+    /* Scrolls rather than navigates. FuelIQ is the reason to stay on the page,
+       so the second action should not send anyone off it. */
+    secondary: { label: "Explore FuelIQ", href: "#fueliq" },
+  },
+
+  reminders: {
+    eyebrow: "Right time, simple nudge",
+    h2: "We tell you before you have to remember.",
+    p: "AthFuelPath knows your practices, games and recovery windows. You get a short reminder when it actually helps, and nothing when it doesn't.",
+    /**
+     * Four notifications, and every one of them is an invitation.
+     *
+     * The rule that matters more than the wording: none of these may scold. No
+     * "you forgot", no "you're behind", no countdown pressure, no numbers to
+     * hit. A nutrition app talking to a teenager has exactly one way to do real
+     * harm here, and it is by making food feel like a test they can fail.
+     *
+     * "missed" is on the NEVER PUBLISH list at the top of this file for the
+     * same reason. It is not a style preference.
+     */
+    cards: [
+      { when: "Practice in 90 minutes", body: "Good time for something small before you go." },
+      { when: "Game this afternoon", body: "Eat before kickoff so you're ready from the first whistle." },
+      { when: "Nice work today", body: "Start recovery when you're ready. Food and fluids both count." },
+      { when: "Big day tomorrow", body: "A little prep tonight makes tournament morning easier." },
+    ],
+    /* The strongest line in this section, and it is about restraint rather
+       than a feature. Parents read this page too. */
+    note: "Never during school hours. Never late at night. One or two a day at most.",
+  },
+
+  fueliq: {
+    eyebrow: "FuelIQ",
+    h2: "Get smarter about fueling.",
+    sub: "One quick round at a time.",
+    p: "FuelIQ turns sports nutrition into short challenges you can finish in a few minutes. Learn something useful, see whether you've got it, and build your Fuel IQ as you go.",
+    /**
+     * Three steps, in this order, and the order is the argument: learn, then
+     * understand, then progress. A page that leads with XP is selling a game
+     * with nutrition attached. This one is a learning system that happens to
+     * keep score.
+     */
+    steps: [
+      {
+        n: "01",
+        label: "Today's round",
+        h: "A real question from your week.",
+        p: "Each round opens on something that actually happens to you. Running out of energy by third period, for one.",
+        meta: "2–3 min · +10 XP",
+      },
+      {
+        n: "02",
+        label: "Quick check",
+        h: "Find out why, not just whether.",
+        p: "Answer, then get the reasoning. The explanation is the part worth having, not the score.",
+        meta: "Six questions",
+      },
+      {
+        n: "03",
+        label: "Session complete",
+        h: "It adds up.",
+        p: "XP, day streaks and levels. Energy Builder comes before whatever you unlock next.",
+        meta: "Every round counts",
+      },
+    ],
+    flow: ["Learn", "Understand", "Practice", "Progress"],
+    /**
+     * REAL CAPTURES, replacing three screens that were drawn in markup.
+     *
+     * They were drawn because none existed yet and FuelIQ had not shipped —
+     * a screenshot of a UI still in motion is a promise with a shelf life.
+     * These arrived from the build, so the drawing has served its purpose and
+     * is gone rather than left in the file "in case": the whole .fqs CSS block
+     * and the three screen components went with it.
+     *
+     * Alt text describes what the screen SAYS, not that it is a screenshot.
+     * Someone reading with a screen reader should get the same argument the
+     * picture makes to everyone else.
+     */
+    shots: [
+      {
+        src: "/screens/fueliq-round.webp",
+        w: 792,
+        h: 1724,
+        alt: "Today's round in the app: Eating Frequency, asking whether you feel wiped out by third period, worth ten XP and two to three minutes. Below it, level two, Energy Builder, with two of seven days done this week.",
+      },
+      {
+        src: "/screens/fueliq-check.webp",
+        w: 792,
+        h: 1724,
+        alt: "Question one of six: how often should an athlete eat to keep energy steady? The right answer, every two to three hours, is marked, and underneath it the app explains that consistent fuel means consistent energy in class as well as at practice.",
+      },
+      {
+        src: "/screens/fueliq-done.webp",
+        w: 792,
+        h: 1460,
+        alt: "Session complete, six out of six. Fifteen XP earned and a two day streak, with eighty-two of a hundred XP toward the next level.",
+      },
+    ],
+  },
+
+  topics: {
+    eyebrow: "Build your Fuel IQ",
+    h2: "Learn what actually comes up in your day.",
+    p: "FuelIQ sticks to the questions you hit at school, at practice, on game day and after. Nothing you'd only need for a nutrition exam.",
+    items: [
+      { h: "Hydration", p: "How much it matters, what changes on a hot day, and when electrolytes are worth it." },
+      { h: "Everyday energy", p: "How eating across the day keeps you steady through school, training and games." },
+      { h: "Game day", p: "What to think about before kickoff, for early games and for long tournament days." },
+      { h: "Recovery", p: "Why food and fluids afterwards matter, and how to make that easy." },
+      { h: "Smart choices", p: "Sports drinks, snacks, supplements and the claims on the front of the packet." },
+    ],
+  },
+
+  /* SHORT ON PURPOSE. /parents makes this argument in full. */
+  independence: {
+    eyebrow: "The real goal",
+    h2: "Don't just follow a plan. Understand it.",
+    p: "The point isn't memorising rules. It's knowing your body and your week well enough to make good calls on your own, at school, on the road, and when nobody is reminding you.",
+    steps: ["Reminder", "Understanding", "Habit", "Confidence"],
+    close: "Know what to do without waiting to be told.",
+    link: { label: "How this looks from a parent's side", href: "/parents" },
+  },
+
+  progress: {
+    eyebrow: "Keep building",
+    h2: "Your Fuel IQ, over time.",
+    p: "Every round adds to what you know. Levels, XP and streaks are there so you can see it happening.",
+    /* Numbers shown in the drawn UI. Illustrative of the mechanic, not a real
+       athlete's record — see the note in AthleteProgress.tsx. */
+    level: "Level 3",
+    toNext: "40 pts to Level 4",
+    fill: 68,
+    strongest: "Strongest at: game-day timing",
+    week: ["done", "done", "done", "today", "next", "next", "next"],
+    weekNote: "Day 4 of 7. Day 7 lands on Saturday's game.",
+  },
+
+  /* SHORT ON PURPOSE. /safety owns the full account. */
+  trust: {
+    h2: "No calorie counting. No food obsession.",
+    p: "AthFuelPath is built for young athletes. It's about timing, hydration, recovery and what to actually eat, not weight and not tracking every bite.",
+    points: [
+      { h: "Simple guidance", p: "What matters for the day in front of you, and nothing else." },
+      { h: "Built for growing athletes", p: "Guidance written around teenagers in real seasons, not around adults." },
+      { h: "Food first", p: "Everyday food does the work. Supplements aren't the starting point." },
+      /* Kept because it is the one a kid needs to hear, phrased without the
+         two words this file bans. */
+      { h: "Progress, not perfection", p: "Habits build slowly. One skipped snack or one wrong answer changes nothing." },
+    ],
+    link: { label: "Everything we never do, and what we collect", href: "/safety" },
+  },
+
+  close: {
+    h2: "Play hard. Learn how to fuel for it.",
+    sub: "Build the habits and the knowledge to make better calls, one day and one round at a time.",
+    /**
+     * The athlete cannot sign up — the form wants a parent's name and email,
+     * and a parent controls the account. So the secondary action is the one
+     * that actually fits the reader: hand the argument to a parent.
+     *
+     * It points at /parents rather than being a share button. A share button
+     * would need navigator.share, a clipboard fallback, and a copied-state —
+     * three states of interactive code to do what a link already does, on a
+     * page that should stay cheap. And the athlete's real move is not sending a
+     * URL, it is getting a parent to read the page written for them.
+     *
+     * The waitlist stays primary because a parent is often the one holding the
+     * phone. `trust` says who actually opens the account so neither reader is
+     * misled about what the button does.
+     */
+    secondary: { label: "Show this to a parent", href: "/parents" },
+    trust: "Free to look. A parent sets up the account.",
+  },
+};
+
 /* ---------------------------------------------------------------- Footer */
 export const footer = {
   blurb: "Straightforward sports nutrition for young athletes and the families behind them.",
   explore: [
     { label: "How it works", href: "/#how-it-works" },
     { label: "For parents", href: "/parents" },
+    { label: "For athletes", href: "/athletes" },
     /* Coaches removed here with the nav item — see the note in `nav.links`.
        The footer is on every page, so leaving it here would have made the nav
        removal cosmetic. */

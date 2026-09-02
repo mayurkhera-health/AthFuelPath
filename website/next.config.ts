@@ -73,6 +73,11 @@ const nextConfig: NextConfig = {
          A permanent redirect is cached by browsers and search engines, so the
          chain would have outlived the decision that created it. */
       { source: "/for-parents", destination: "/parents", permanent: true },
+      /* Same prefix mistake, caught before it shipped rather than after. The
+         athlete page's design spec called it /for-athletes; the route is
+         /athletes, matching /parents. This exists so the spec's URL, and
+         anyone who wrote it down, still land on the page. */
+      { source: "/for-athletes", destination: "/athletes", permanent: true },
       /* Pricing is hidden while the product is pre-launch and the price is not
          committed. TEMPORARY (permanent: false) on purpose — a 308 would be
          cached by browsers and search engines and would outlive the decision. */

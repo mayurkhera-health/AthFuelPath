@@ -12,7 +12,7 @@ import { chromium } from "playwright";
  * Per page: bytes by resource type, the LCP element and its timing, CLS, and
  * the largest individual responses.
  */
-const PAGES = ["/", "/parents", "/coaches", "/our-story", "/safety", "/faq", "/signup"];
+const PAGES = ["/", "/parents", "/athletes", "/coaches", "/our-story", "/safety", "/faq", "/signup"];
 
 const b = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
 
