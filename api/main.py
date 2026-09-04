@@ -100,7 +100,7 @@ async def lifespan(app: FastAPI):
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from api.routes import parents, athletes, events, nutrition, meals, recipes, analysis, reports, notifications, meal_plans, meal_plan_selections, today, water, knowledge, legal, library, auth, fuel_report, report_config, coach, shopping, support, onboarding, feedback, calendar, admin, admin_analytics, admin_health, admin_overview, admin_action_hub, plate, fueliq, fueliq_daily_challenge, instacart_feedback, instacart, teamcoach_auth, teamcoach_admin, teamcoach_dashboard
+from api.routes import parents, athletes, events, nutrition, meals, recipes, analysis, reports, notifications, meal_plans, meal_plan_selections, today, water, knowledge, legal, library, auth, fuel_report, report_config, coach, shopping, support, onboarding, feedback, calendar, admin, admin_analytics, admin_health, admin_overview, admin_action_hub, plate, fueliq, fueliq_daily_challenge, instacart_feedback, instacart, teamcoach_auth, teamcoach_admin, teamcoach_dashboard, families
 from apscheduler.schedulers.background import BackgroundScheduler
 
 app = FastAPI(
@@ -131,6 +131,7 @@ app.add_middleware(
 
 app.include_router(auth.router,      prefix="/api/auth",      tags=["0. Auth"])
 app.include_router(parents.router,   prefix="/api/parents",   tags=["1. Parental Consent"])
+app.include_router(families.router,  prefix="/api/families",  tags=["1b. Family Actions"])
 app.include_router(athletes.router,  prefix="/api/athletes",  tags=["2. Athlete Profiles"])
 app.include_router(onboarding.router, prefix="/api/onboarding", tags=["2b. Onboarding"])
 app.include_router(events.router,    prefix="/api/events",    tags=["3. Schedule"])
