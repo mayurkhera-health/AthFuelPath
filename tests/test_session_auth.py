@@ -92,6 +92,9 @@ def test_assert_owns_athlete_allows_matching_athlete_token(db):
         "INSERT INTO athletes (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in) "
         "VALUES (%s, 'A', 15, 'girl', 110, 5, 6) RETURNING id", (parent_id,)
     ).fetchone()["id"]
+    db.execute(
+        "INSERT INTO athlete_logins (email, athlete_id) VALUES ('a@x.com', %s)", (athlete_id,)
+    )
     db.commit()
     identity = sa.SessionIdentity("athlete", parent_id=None, athlete_id=athlete_id)
     sa.assert_owns_athlete(identity, athlete_id, db)  # does not raise
@@ -102,6 +105,24 @@ def test_assert_owns_athlete_rejects_other_athlete_token(db):
     with pytest.raises(HTTPException) as exc:
         sa.assert_owns_athlete(identity, 222, db)
     assert exc.value.status_code == 403
+
+
+def test_assert_owns_athlete_rejects_unlinked_athlete_token(db):
+    """A matching athlete_id alone isn't enough once athlete_logins has been
+    deleted (parent-initiated unlink) — the token must 401, not succeed just
+    because its signature and athlete_id still check out."""
+    parent_id = db.execute(
+        "INSERT INTO parents (full_name, email, consent_timestamp, consent_confirmed) VALUES ('P', 'p5@x.com', sqlite_now(), TRUE) RETURNING id"
+    ).fetchone()["id"]
+    athlete_id = db.execute(
+        "INSERT INTO athletes (parent_id, first_name, age, gender, weight_lbs, height_ft, height_in) "
+        "VALUES (%s, 'A', 15, 'girl', 110, 5, 6) RETURNING id", (parent_id,)
+    ).fetchone()["id"]
+    db.commit()  # deliberately no athlete_logins row — simulates post-unlink state
+    identity = sa.SessionIdentity("athlete", parent_id=None, athlete_id=athlete_id)
+    with pytest.raises(HTTPException) as exc:
+        sa.assert_owns_athlete(identity, athlete_id, db)
+    assert exc.value.status_code == 401
 
 
 def test_assert_owns_athlete_allows_owning_parent_token(db):

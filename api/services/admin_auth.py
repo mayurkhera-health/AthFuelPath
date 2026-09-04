@@ -137,12 +137,18 @@ ACTOR_ROLE = "super_admin"
 
 
 def write_audit(action: str, target_type: str, target_id, detail: dict | None = None,
-                conn=None) -> None:
+                conn=None, actor_id: int | None = None, actor_email: str | None = None,
+                actor_role: str | None = None) -> None:
     """Append one row to admin_audit_log. The `detail` dict (cascade counts,
     changed fields) is stored as JSON in after_state. Pass an existing `conn` to
     enlist the audit write in the caller's transaction (used by cascade delete so
     the log row is atomic with the delete); otherwise a fresh connection is opened
-    and committed here."""
+    and committed here.
+
+    actor_id/actor_email/actor_role default to the fixed super-admin actor
+    (this table originated as admin-panel-only) — pass all three to attribute
+    a row to a real, non-admin actor instead, e.g. a parent-initiated action
+    reached via a normal parent session, not the admin panel."""
     after_state = json.dumps(detail or {}, default=str)
     created_at = datetime.utcnow().isoformat()
     own = conn is None
@@ -153,7 +159,10 @@ def write_audit(action: str, target_type: str, target_id, detail: dict | None = 
             "INSERT INTO admin_audit_log "
             "(actor_id, actor_email, actor_role, action, target_type, target_id, after_state, created_at) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-            (ACTOR_ID, ACTOR_EMAIL, ACTOR_ROLE, action, target_type, target_id, after_state, created_at),
+            (actor_id if actor_id is not None else ACTOR_ID,
+             actor_email if actor_email is not None else ACTOR_EMAIL,
+             actor_role if actor_role is not None else ACTOR_ROLE,
+             action, target_type, target_id, after_state, created_at),
         )
         if own:
             conn.commit()

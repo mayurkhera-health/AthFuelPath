@@ -101,16 +101,6 @@ class LoginRequest(BaseModel):
     email: str
 
 
-class AthleteCreateLoginRequest(BaseModel):
-    email: str          # athlete's own email (becomes their login)
-    parent_email: str   # parent's email — the gate
-    code: str            # OTP sent to parent_email, proving the parent authorized this claim (auth v2.1 Phase 4)
-
-
-class AthleteClaimLookupRequest(BaseModel):
-    parent_email: str
-
-
 class EmailAuthRequest(BaseModel):
     email: str
 
@@ -334,114 +324,16 @@ def get_session(identity=Depends(require_session)):
         conn.close()
 
 
-@router.post("/athlete-claim-lookup")
-def athlete_claim_lookup(data: AthleteClaimLookupRequest):
-    """
-    Phase 0 mitigation — auth v2.1 spec Part 2.1 (SEVERE), tightened per
-    2026-08-20 security review. Returns only {athletes: [{id, first_name}]}
-    for the athlete-claim screen's profile picker — never a session_token,
-    never the parent's name, never athlete age, never a full parent/athlete
-    row. An unknown parent email returns the same 200 {athletes: []} shape
-    as a real parent with zero athletes, so the response never discloses
-    whether a given email has an AthFuelPath account. It only ever looks at
-    the parents table, so an athlete's own login email will not resolve
-    here either — same {athletes: []} shape.
-    """
-    email = data.parent_email.strip().lower()
-    conn = get_conn()
-    try:
-        parent = conn.execute(
-            "SELECT id FROM parents WHERE lower(email) = %s", (email,)
-        ).fetchone()
-        if not parent:
-            return {"athletes": []}
-        parent_id = dict(parent)["id"]
-        athletes = [dict(a) for a in conn.execute(
-            "SELECT id, first_name FROM athletes WHERE parent_id = %s", (parent_id,)
-        ).fetchall()]
-        return {
-            "athletes": [{"id": a["id"], "first_name": a["first_name"]} for a in athletes]
-        }
-    finally:
-        conn.close()
-
-
-@router.post("/athlete-create-login/{athlete_id}")
-def create_athlete_login(athlete_id: int, data: AthleteCreateLoginRequest):
-    """
-    No athlete login without proof the parent authorized it. Corrected auth
-    v2.1 Phase 4 design (2026-08-23 review): the OTP is sent to and verified
-    against the PARENT's email, not the athlete's new login email, and
-    verification happens here directly via verify_otp_code — never via
-    POST /api/auth/email/verify, which would resolve the parent identity and
-    mint a PARENT session. The athlete must never receive a parent session
-    as a side effect of claiming their own profile.
-
-    Order (each gate checked only after the previous one passes):
-    1. Verify the submitted code against parent_email — no account lookup
-       needed for this, so it happens first.
-    2. Only after OTP success, recheck parent ownership: parent must exist,
-       and this athlete must belong to that parent.
-    3. Athlete must not already have a login.
-    4. Create the login row.
-    5. Mint an athlete session — never a parent one.
-    """
-    email = data.email.strip().lower()
-    parent_email = data.parent_email.strip().lower()
-
-    # Gate 1: a real, server-verified OTP proving control of parent_email.
-    # Single-use (verify_otp_code marks it consumed on success) and checked
-    # BEFORE any parent/athlete lookup — an invalid code learns nothing
-    # about whether parent_email or athlete_id are even real.
-    if not verify_otp_code(parent_email, data.code.strip()):
-        raise HTTPException(401, "Invalid or expired code. Please request a new one.")
-
-    conn = get_conn()
-    try:
-        # Gate 2 (recheck, only reached after OTP success): parent must exist.
-        parent = conn.execute(
-            "SELECT id FROM parents WHERE lower(email) = %s", (parent_email,)
-        ).fetchone()
-        if not parent:
-            raise HTTPException(
-                403,
-                "Ask your parent to set up AthFuelPath first — no parent account was found for that email.",
-            )
-        parent_id = dict(parent)["id"]
-
-        # Gate 3: athlete must belong to this parent.
-        athlete = conn.execute(
-            "SELECT * FROM athletes WHERE id = %s AND parent_id = %s",
-            (athlete_id, parent_id),
-        ).fetchone()
-        if not athlete:
-            raise HTTPException(
-                403, "This athlete profile is not linked to that parent account."
-            )
-
-        # Gate 4: athlete must not already have a login.
-        if conn.execute(
-            "SELECT 1 FROM athlete_logins WHERE athlete_id = %s", (athlete_id,)
-        ).fetchone():
-            raise HTTPException(409, "This athlete already has a login.")
-
-        # Create login credentials
-        try:
-            conn.execute(
-                "INSERT INTO athlete_logins (email, athlete_id) VALUES (%s, %s)",
-                (email, athlete_id),
-            )
-            conn.commit()
-        except Exception as e:
-            conn.rollback()
-            if "unique" in str(e).lower():
-                raise HTTPException(409, "An account with that email already exists.")
-            raise HTTPException(500, str(e))
-
-        token = mint_session_token(role="athlete", athlete_id=athlete_id, parent_id=parent_id)
-        return {"role": "athlete", "athlete": dict(athlete), "session_token": token}
-    finally:
-        conn.close()
+# athlete-claim-lookup and athlete-create-login/{athlete_id} were removed
+# here (family-account-onboarding spec addendum, item 2, 2026-09-04): both
+# were the old email-based athlete-claim flow — a parent's email alone was
+# enough to discover their athletes and drive account creation. Replaced by
+# the code-first family-linking flow (spec §3b) plus
+# DELETE /api/families/{parent_id}/athletes/{athlete_id}/link
+# (api/routes/families.py) for the one legitimate recovery case: an already
+# -claimed athlete whose provider identity becomes unusable. Recovery is now
+# initiated only by an authenticated parent in a live session — never by
+# supplying an email address, in any form.
 
 
 # ============================================================================

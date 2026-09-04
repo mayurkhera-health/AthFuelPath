@@ -118,11 +118,28 @@ def assert_owns_athlete(identity: SessionIdentity, athlete_id: int, conn) -> Non
     """403 unless the caller's session is linked to this athlete: either the
     caller IS this athlete, or the caller is the parent who owns this athlete.
     404 if the athlete_id doesn't exist at all (don't leak existence via a 403
-    vs 404 distinction beyond what the route already does)."""
+    vs 404 distinction beyond what the route already does).
+
+    An athlete token also requires a live athlete_logins row for that
+    athlete_id — but ONLY when the athlete record itself still exists.
+    Session tokens are stateless (30-day rolling TTL, no server-side
+    revocation list) — this is the one DB-backed check that lets a
+    parent-initiated unlink invalidate a previously-issued athlete token
+    immediately, by deleting that row, instead of waiting out the full TTL.
+    A nonexistent athlete_id is intentionally left to whatever 404 the
+    calling route already produces (pre-existing contract, see
+    tests/test_confirmations_bola.py's "404s even with a matching self
+    token" — this function never did an existence check for the athlete
+    branch, only the parent branch below; adding one here would turn that
+    404 into a 401 for a case that has nothing to do with being unlinked)."""
     if identity.role == "athlete":
-        if identity.athlete_id == athlete_id:
-            return
-        raise HTTPException(403, "Not authorized for this athlete.")
+        if identity.athlete_id != athlete_id:
+            raise HTTPException(403, "Not authorized for this athlete.")
+        if conn.execute("SELECT 1 FROM athletes WHERE id = %s", (athlete_id,)).fetchone() and not conn.execute(
+            "SELECT 1 FROM athlete_logins WHERE athlete_id = %s", (athlete_id,)
+        ).fetchone():
+            raise HTTPException(401, "Session no longer valid — please sign in again.")
+        return
     row = conn.execute("SELECT parent_id FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
     if not row:
         raise HTTPException(404, "Athlete not found.")
