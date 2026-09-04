@@ -146,7 +146,29 @@ def _fresh_db():
 def auth_headers(role, parent_id=None, athlete_id=None):
     """Shared helper: mint a valid session token for a test caller and return
     it as a ready-to-use requests/TestClient headers dict. role is 'parent' or
-    'athlete'. Import as `from tests.conftest import auth_headers`."""
+    'athlete'. Import as `from tests.conftest import auth_headers`.
+
+    For role='athlete', also guarantees an athlete_logins row exists for
+    athlete_id (idempotent — ON CONFLICT DO NOTHING). A real athlete token
+    can never be minted without one (see api/routes/auth.py's
+    athlete-create-login), and assert_owns_athlete now re-checks this row
+    is still live on every self-access call (docs/planning/
+    parent-initiated-athlete-unlink.md) — so a test minting a bare token
+    without it was testing a state production can't produce. Skipped
+    silently if athlete_id doesn't exist at all (some tests intentionally
+    use a fabricated id to exercise a 404 path)."""
     from api.services.session_auth import mint_session_token
+    if role == "athlete" and athlete_id is not None:
+        conn = _dbmod.get_conn()
+        try:
+            conn.execute(
+                "INSERT INTO athlete_logins (email, athlete_id) "
+                "SELECT %s, %s WHERE EXISTS (SELECT 1 FROM athletes WHERE id = %s) "
+                "ON CONFLICT (athlete_id) DO NOTHING",
+                (f"test-auth-headers-athlete-{athlete_id}@example.com", athlete_id, athlete_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
     token = mint_session_token(role=role, parent_id=parent_id, athlete_id=athlete_id)
     return {"Authorization": f"Bearer {token}"}

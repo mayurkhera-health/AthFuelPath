@@ -118,11 +118,29 @@ def assert_owns_athlete(identity: SessionIdentity, athlete_id: int, conn) -> Non
     """403 unless the caller's session is linked to this athlete: either the
     caller IS this athlete, or the caller is the parent who owns this athlete.
     404 if the athlete_id doesn't exist at all (don't leak existence via a 403
-    vs 404 distinction beyond what the route already does)."""
+    vs 404 distinction beyond what the route already does).
+
+    The athlete branch also re-checks that an athlete_logins row still
+    exists for this athlete_id (distinct from the athlete existing at
+    all, which stays a 404 -- same distinction the route-level checks
+    already make). Session tokens are stateless with no revocation
+    mechanism otherwise (30-day TTL, no denylist, no session table) -- a
+    parent-initiated unlink (docs/planning/
+    parent-initiated-athlete-unlink.md) hard-deletes the athlete_logins
+    row specifically so an already-issued athlete token stops working on
+    its very next request, without needing a new column or a
+    token-format change."""
     if identity.role == "athlete":
-        if identity.athlete_id == athlete_id:
-            return
-        raise HTTPException(403, "Not authorized for this athlete.")
+        if identity.athlete_id != athlete_id:
+            raise HTTPException(403, "Not authorized for this athlete.")
+        if not conn.execute("SELECT 1 FROM athletes WHERE id = %s", (athlete_id,)).fetchone():
+            raise HTTPException(404, "Athlete not found.")
+        row = conn.execute(
+            "SELECT 1 FROM athlete_logins WHERE athlete_id = %s", (athlete_id,)
+        ).fetchone()
+        if not row:
+            raise HTTPException(401, "Session no longer valid. Please sign in again.")
+        return
     row = conn.execute("SELECT parent_id FROM athletes WHERE id = %s", (athlete_id,)).fetchone()
     if not row:
         raise HTTPException(404, "Athlete not found.")

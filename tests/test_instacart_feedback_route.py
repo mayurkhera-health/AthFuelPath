@@ -18,6 +18,15 @@ def client():
     keepalive = get_conn()  # keep the shared in-memory DB alive across requests
     init_db()
     run_all()
+    # This route's own assert_owns_athlete check now re-verifies the athlete
+    # actually exists (docs/planning/parent-initiated-athlete-unlink.md) —
+    # a real athlete_id must exist for a self-token to pass.
+    keepalive.execute(
+        """INSERT INTO athletes (id, first_name, age, gender, weight_lbs, height_ft, height_in)
+           VALUES (1, 'Test Athlete', 15, 'boy', 120.0, 5, 6.0)
+           ON CONFLICT (id) DO NOTHING"""
+    )
+    keepalive.commit()
     with TestClient(app) as c:
         yield c
     keepalive.close()

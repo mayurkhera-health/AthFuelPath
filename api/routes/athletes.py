@@ -312,3 +312,44 @@ def dismiss_schedule_reminder_athlete(athlete_id: int, identity=Depends(require_
         return {"schedule_reminder_dismissed": True}
     finally:
         conn.close()
+
+
+@router.delete("/{athlete_id}/unlink")
+def unlink_athlete(athlete_id: int, identity=Depends(require_session)):
+    """Parent-initiated recovery for an athlete whose provider identity
+    became unusable (docs/planning/parent-initiated-athlete-unlink.md).
+    Replaces the removed athlete-claim.tsx flow -- recovery is initiated by
+    an authenticated parent in a live session, never by supplying an email
+    address.
+
+    Parent-only: an athlete session may not unlink itself, even though
+    assert_owns_athlete's athlete branch would otherwise consider it the
+    same athlete. Hard-deletes auth_identities + athlete_logins for this
+    athlete (no soft-delete/tombstone -- apple_provider_credentials
+    cascades via its existing FK on auth_identities). The athlete returns
+    to unclaimed state; the normal claim-lookup -> OTP -> create-login flow
+    (api/routes/auth.py) applies unchanged. Every unlink is durably logged
+    (actor parent, athlete, timestamp) in athlete_unlink_log before the
+    identity rows are removed. Because assert_owns_athlete's athlete
+    branch now requires a live athlete_logins row, any session token the
+    athlete already holds stops working on its very next request."""
+    if identity.role != "parent":
+        raise HTTPException(403, "Only a parent session can unlink an athlete.")
+    conn = get_conn()
+    try:
+        assert_owns_athlete(identity, athlete_id, conn)
+        conn.execute(
+            "INSERT INTO athlete_unlink_log (athlete_id, actor_parent_id) VALUES (%s, %s)",
+            (athlete_id, identity.parent_id),
+        )
+        conn.execute("DELETE FROM auth_identities WHERE athlete_id = %s", (athlete_id,))
+        conn.execute("DELETE FROM athlete_logins WHERE athlete_id = %s", (athlete_id,))
+        conn.commit()
+    except HTTPException:
+        raise
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return {"unlinked": True, "athlete_id": athlete_id}

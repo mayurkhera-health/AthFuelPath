@@ -76,7 +76,19 @@ VALID_PAYLOAD = {
     "title": "Weekly groceries",
     "items": [{"name": "whole milk", "quantity": 1, "unit": "gallon"}],
 }
-HEADERS = auth_headers("athlete", athlete_id=1)
+# NOT computed at import time: auth_headers() now guarantees an
+# athlete_logins row exists for athlete_id (docs/planning/
+# parent-initiated-athlete-unlink.md), which requires athlete 1 to already
+# be in `athletes` -- that row is only inserted inside the `client` fixture
+# below, which hasn't run yet at module import time. Recomputed by the
+# autouse fixture right after `client` runs, once per test.
+HEADERS = None
+
+
+@pytest.fixture(autouse=True)
+def _refresh_headers(client):
+    global HEADERS
+    HEADERS = auth_headers("athlete", athlete_id=1)
 
 
 def test_happy_path_returns_shopping_list_url(client, monkeypatch):
