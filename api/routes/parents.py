@@ -1,4 +1,5 @@
 import logging
+import os
 import psycopg
 from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
@@ -9,7 +10,7 @@ from api.services.email import send_otp_email
 from api.services.email_service import send_email
 from api.services.session_auth import mint_session_token, require_session, assert_owns_parent, assert_owns_athlete
 
-_DELETION_RECIPIENT = "purvihshah@gmail.com"
+_DELETION_RECIPIENT = os.getenv("DELETION_NOTIFICATION_RECIPIENT", "purvihshah@gmail.com")
 
 log = logging.getLogger(__name__)
 
@@ -146,7 +147,7 @@ def delete_parent_account(parent_id: int, identity=Depends(require_session)):
     try:
         email_sent = send_email(subject, body, [_DELETION_RECIPIENT])
     except Exception:
-        logger.exception("account-deletion notification email failed (non-blocking)")
+        log.exception("account-deletion notification email failed (non-blocking)")
         email_sent = False
 
     return {"received": True, "id": request_id, "email_sent": email_sent}
