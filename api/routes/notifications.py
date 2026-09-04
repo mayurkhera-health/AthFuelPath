@@ -176,9 +176,10 @@ def get_vapid_public_key():
 
 
 @router.post("/subscribe")
-def subscribe(data: PushSubscription):
+def subscribe(data: PushSubscription, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, data.athlete_id, conn)
         conn.execute(
             """INSERT INTO push_subscriptions (athlete_id, endpoint, p256dh, auth)
                VALUES (%s, %s, %s, %s)
@@ -193,9 +194,10 @@ def subscribe(data: PushSubscription):
 
 
 @router.get("/{athlete_id}/prefs")
-def get_prefs(athlete_id: int):
+def get_prefs(athlete_id: int, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         row = conn.execute(
             "SELECT * FROM push_subscriptions WHERE athlete_id = %s ORDER BY id DESC LIMIT 1",
             (athlete_id,),
@@ -213,9 +215,10 @@ def get_prefs(athlete_id: int):
 
 
 @router.put("/{athlete_id}/prefs")
-def update_prefs(athlete_id: int, prefs: NotificationPrefs):
+def update_prefs(athlete_id: int, prefs: NotificationPrefs, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         conn.execute(
             """UPDATE push_subscriptions SET
                remind_pregame_meal=%s, remind_pregame_snack=%s,
@@ -231,9 +234,10 @@ def update_prefs(athlete_id: int, prefs: NotificationPrefs):
 
 
 @router.delete("/{athlete_id}/unsubscribe")
-def unsubscribe(athlete_id: int):
+def unsubscribe(athlete_id: int, identity=Depends(require_session)):
     conn = get_conn()
     try:
+        assert_owns_athlete(identity, athlete_id, conn)
         conn.execute("DELETE FROM push_subscriptions WHERE athlete_id = %s", (athlete_id,))
         conn.commit()
         return {"message": "Unsubscribed from push notifications."}
