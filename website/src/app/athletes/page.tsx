@@ -10,7 +10,7 @@ import { routeMetadata } from "@/lib/meta";
 export const metadata = routeMetadata({
   title: "For athletes: know how to fuel your day",
   description:
-    "AthFuelPath tells you what to eat and when, around your own practices and games. FuelIQ turns sports nutrition into short challenges so you learn why it works. For athletes 13–17.",
+    "AthFuelPath tells you what to eat and when, around your own practices and games. Fuel IQ turns nutrition into short challenges. For athletes 13–17.",
   path: "/athletes",
   imageAlt: "AthFuelPath for athletes — fuel for what's next.",
 });

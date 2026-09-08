@@ -10,7 +10,7 @@ import { routeMetadata } from "@/lib/meta";
 export const metadata = routeMetadata({
   title: "For coaches",
   description:
-    "See whether your squad is fueling for the week you planned. AthFuelPath gives coaches and athletic directors a team-level view, with nothing to set up and no individual athlete data.",
+    "See whether your squad is fueling for the week you planned. A team-level view for coaches and athletic directors, with no individual athlete data.",
   path: "/coaches",
   image: "/og/coaches.jpg",
   imageAlt: "AthFuelPath for coaches — a team-level view of how the squad is fueling.",

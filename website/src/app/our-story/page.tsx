@@ -8,7 +8,7 @@ import { routeMetadata } from "@/lib/meta";
 export const metadata = routeMetadata({
   title: "Our story",
   description:
-    "AthFuelPath was built by a Registered Dietitian whose own daughter plays competitive soccer. Knowing the nutrition was one thing; making it work around school, practices and tournament weekends was another.",
+    "Built by a Registered Dietitian whose own daughter plays competitive soccer. Knowing the nutrition was one thing. Making it fit her week was another.",
   path: "/our-story",
   image: "/og/our-story.jpg",
   imageAlt: "Purvi Shah, MS, RDN — the dietitian and soccer mom who built AthFuelPath.",

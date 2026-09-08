@@ -8,9 +8,11 @@ import { Safety } from "@/components/sections/Safety";
 import { LegacyHash } from "@/components/LegacyHash";
 
 export const metadata = routeMetadata({
-  title: "AthFuelPath — sports nutrition built around your soccer player's schedule",
+  /* 54 chars. Was 73, which Google truncates. Keeps "soccer" — the findable
+     niche — and drops the words that were doing no work. */
+  title: "AthFuelPath: sports nutrition for young soccer players",
   description:
-    "AthFuelPath turns your player's practices, games and tournaments into personalised fueling guidance — so they know what to eat, when to eat, and why it matters. For soccer players 13–17.",
+    "AthFuelPath turns your player's practices and games into personalized fueling guidance: what to eat, when, and why it matters. For soccer players 13–17.",
   path: "/",
   imageAlt: "AthFuelPath — fuel smarter, play stronger.",
   bareTitle: true,

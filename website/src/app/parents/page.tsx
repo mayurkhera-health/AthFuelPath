@@ -9,9 +9,9 @@ import { parents, cta } from "@/content/site";
 import { routeMetadata } from "@/lib/meta";
 
 export const metadata = routeMetadata({
-  title: "Youth sports nutrition for parents: how AthFuelPath works",
+  title: "How AthFuelPath works for parents",
   description:
-    "How AthFuelPath fits a soccer family's week: one schedule to add, guidance your athlete can follow themselves, recipes that respect their allergies, and a registered dietitian when you need one.",
+    "How AthFuelPath fits a soccer family's week: one schedule to add, guidance your athlete can follow, allergy-aware recipes, a dietitian when needed.",
   path: "/parents",
   image: "/og/home.jpg",
   imageAlt: "AthFuelPath for parents — fueling built around your athlete's schedule.",
@@ -61,9 +61,9 @@ export default function Parents() {
               soccer photography anywhere on it. */}
           <div className="par-hero__shot">
             <Shot
-              src="/screens/today.png"
+              src="/screens/today.webp"
               w={792}
-              h={1600}
+              h={1614}
               alt="The Today screen: the day's eating windows laid out around a 5:30 practice"
             />
           </div>
@@ -170,7 +170,7 @@ export default function Parents() {
           </div>
           <div className="par-shots">
             <Shot
-              src="/screens/mealplan-choose.png"
+              src="/screens/mealplan-choose.webp"
               w={792}
               h={1600}
               alt="Filling one lunch window: a covered option, a box to describe your own dish, then the recipes to pick from"

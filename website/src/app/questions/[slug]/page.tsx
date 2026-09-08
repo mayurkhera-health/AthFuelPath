@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Button, TextLink } from "@/components/ui/Button";
 import { questionPages, bySlug } from "@/content/questions";
 import { cta } from "@/content/site";
+import { routeMetadata } from "@/lib/meta";
 
 export function generateStaticParams() {
   return questionPages.map((q) => ({ slug: q.slug }));
@@ -12,11 +13,27 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params;
   const q = bySlug(slug);
   if (!q) return {};
-  return {
+  /**
+   * routeMetadata, like every other route. This used to hand back a bare
+   * object with title, description and a canonical, which meant Next fell
+   * through to the LAYOUT's openGraph for everything else — so all four
+   * question pages advertised the homepage's og:title, the homepage's
+   * og:description, and an og:url of the site root. Paste one into Slack and
+   * you got a card for the homepage instead of the page you shared.
+   *
+   * The canonical here was also relative while every other route emits an
+   * absolute one. routeMetadata makes both absolute from SITE_URL, which is
+   * the same switch the domain cutover flips.
+   *
+   * The share image stays the default card; these pages have no bespoke one.
+   */
+  return routeMetadata({
     title: q.title,
-    description: q.intro.slice(0, 155),
-    alternates: { canonical: `/questions/${q.slug}` },
-  };
+    /* Written, not sliced. See the note on `meta` in content/questions.ts. */
+    description: q.meta,
+    path: `/questions/${q.slug}`,
+    imageAlt: "AthFuelPath — fuel smarter, play stronger.",
+  });
 }
 
 export default async function QuestionPage({ params }: { params: Promise<{ slug: string }> }) {

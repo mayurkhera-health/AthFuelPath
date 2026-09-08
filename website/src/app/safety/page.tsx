@@ -11,7 +11,7 @@ export const metadata = routeMetadata({
 });
 
 const never = [
-  { h: "We never put a calorie count in front of your athlete", p: "Not in their day, not on a recipe, not in the weekly report. The day is food and timing: what to eat, and when. They do see a carb and protein target for the day, shown as a fuel gauge, because that is the guidance itself. It reads as fuel to add, and there is no way to fall short of it. The one exception is when your athlete asks the coach what was in a meal they already ate. Then it answers the question they asked, with no target and no judgement attached." },
+  { h: "We never put a calorie count in front of your athlete", p: "Not in their day, not on a recipe, not in the weekly report. The day is food and timing: what to eat, and when. They do see a carb and protein target for the day, shown as a fuel gauge, because that is the guidance itself. It reads as fuel to add, and there is no way to fall short of it. The one exception is when your athlete asks the coach what was in a meal they already ate. Then it answers the question they asked, with no target and no judgment attached." },
   { h: "We never track weight or body composition", p: "Weight and BMI are not collected for tracking, never shown back to your athlete, and never scored or trended." },
   { h: "We never treat a window as a failure", p: "An unfilled window reads as coming up, not as something lost. The wording in the app is built to add fuel, not to grade anyone." },
   { h: "We never recommend supplements to a minor", p: "AthFuelPath is food first. Any supplement question goes to a registered dietitian rather than being answered by the app." },

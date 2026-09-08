@@ -87,7 +87,7 @@ export const cta = {
  * Rule: this line goes where someone is about to type their address, not
  * wherever there is a button.
  */
-export const trialLine = "No card. No spam. One email when it opens.";
+export const trialLine = "No credit card. No spam. One email when it opens.";
 
 /* --------------------------------------------------------------- Waitlist
  * The /signup route in waitlist mode.
@@ -158,7 +158,7 @@ export const waitlist = {
      */
     oneToOne: {
       label: "I'd like Purvi to look at my athlete's week",
-      hint: "Purvi Shah, MS, RDN does a few of these each week while we build. Tick this and she'll be in touch.",
+      hint: "Purvi Shah, MS, RDN does a few of these each week while we build. Check this box and she'll be in touch.",
     },
   },
   submit: "Join the waitlist",
@@ -419,7 +419,7 @@ export const coaches = {
     research: {
       h: "One quick question",
       p: "What's the biggest fueling challenge you see with your athletes?",
-      placeholder: "They come to Saturday games straight from a 7am wake-up with nothing in them…",
+      placeholder: "They come to Saturday games straight from a 7 AM wake-up with nothing in them…",
       submit: "Send",
       skip: "Skip",
       thanks: "Thank you — that goes straight to Purvi.",
@@ -581,9 +581,9 @@ export const nav = {
      * ever needs trimming, these two audience tabs are the first candidates to
      * merge, not "How It Works".
      */
-    { label: "How It Works", href: "/#how-it-works" },
-    { label: "For Parents", href: "/parents" },
-    { label: "For Athletes", href: "/athletes" },
+    { label: "How it works", href: "/#how-it-works" },
+    { label: "For parents", href: "/parents" },
+    { label: "For athletes", href: "/athletes" },
     /* "Coaches" removed from the nav on 2026-08-29, and from the footer and the
        sitemap in the same change. HIDDEN, NOT PARKED — this is the important
        distinction:
@@ -646,7 +646,7 @@ export const questions = {
    * shape is allowed to live, and it only reads as a signature while it is the
    * only one on the page.
    */
-  h2: "The questions you Google at 4pm.",
+  h2: "The questions you Google at 4 PM.",
   listNote: "Every answer is built from the schedule you already keep.",
   /**
    * The homepage shows the first THREE. All four stay in this array because
@@ -771,7 +771,7 @@ export const cook = {
   h2b: "And can someone just make the grocery list?",
   /**
    * body opens on the problem, body2 answers it. Do not merge them: a parent
-   * recognises the 6pm scramble before they recognise "weekly meal planning",
+   * recognises the 6 PM scramble before they recognise "weekly meal planning",
    * and the frames below have to be earned before they are shown.
    */
   body: "You get in late, your player has practice in an hour, and nothing in the fridge goes together. Sunday you had time. Wednesday you don't.",
@@ -1006,9 +1006,9 @@ export const safety = {
 export const dietitian = {
   eyebrow: "Beyond the app",
   h2: "A real dietitian, when the app isn't enough.",
-  body: "Most weeks the plan handles it. Some weeks it doesn't. A growth spurt. A rough tournament. A kid who won't eat before a 7am kickoff. When that happens you can book time with a registered sports dietitian, who reads your athlete's profile before the call and answers your questions.",
+  body: "Most weeks the plan handles it. Some weeks it doesn't. A growth spurt. A rough tournament. A kid who won't eat before a 7 AM kickoff. When that happens you can book time with a registered sports dietitian, who reads your athlete's profile before the call and answers your questions.",
   points: [
-    { h: "They know your athlete before you talk", p: "Age, position, level, training load, allergies. It all goes over with the request, so you're not spending the first ten minutes explaining." },
+    { h: "They know your athlete before you talk", p: "Age, position, level, training load, allergies. Those details go with the request, so you're not spending the first ten minutes explaining." },
     { h: "Three ways to book", p: "Thirty minutes for one question. An hour to go through the whole week. Or a three-session pack that runs with a season." },
     { h: "Some questions need a person", p: "Supplements, medical needs, anything about your child's body. Those go to a human instead of software. That's on purpose." },
   ],
@@ -1086,7 +1086,7 @@ export const faqs: Faq[] = [
   {
     group: "Setup",
     q: "Do I have to build the grocery list myself?",
-    a: "No. Pick the recipes you want for the week and AthFuelPath gathers the ingredients into one list, grouped the way you shop. You can also tick off what you already have at home.",
+    a: "No. Pick the recipes you want for the week and AthFuelPath gathers the ingredients into one list, grouped the way you shop. You can also check off what you already have at home.",
     event: "grocery_faq_open",
   },
   /**
@@ -1215,7 +1215,7 @@ export const parents = {
          must not be softened. It is a safety line, not marketing. */
       { n: "02", h: "Their food limits are already there", p: "Allergies and food preferences saved on the profile are applied automatically. Always read the labels yourself." },
       { n: "03", h: "Your own food counts", p: "Add the meals your family already makes instead of changing everything." },
-      { n: "04", h: "Turn it into a grocery list", p: "Take the week's plan from screen to shopping list — and tick off what's already in the kitchen." },
+      { n: "04", h: "Turn it into a grocery list", p: "Take the week's plan from screen to shopping list — and check off what's already in the kitchen." },
     ],
   },
 
@@ -1228,7 +1228,7 @@ export const parents = {
   person: {
     eyebrow: "When the app isn't enough",
     h2: "Sometimes you need a person, not another app.",
-    p: "Most weeks the plan handles it. Sometimes it doesn't — a growth spurt, a rough tournament, a kid who won't eat before a 7am kickoff.",
+    p: "Most weeks the plan handles it. Sometimes it doesn't — a growth spurt, a rough tournament, a kid who won't eat before a 7 AM kickoff.",
   },
 
   /** The fuller version of the homepage trust strip. /safety is fuller still. */
@@ -1434,7 +1434,7 @@ export const athletes = {
   independence: {
     eyebrow: "The real goal",
     h2: "Don't just follow a plan. Understand it.",
-    p: "The point isn't memorising rules. It's knowing your body and your week well enough to make good calls on your own, at school, on the road, and when nobody is reminding you.",
+    p: "The point isn't memorizing rules. It's knowing your body and your week well enough to make good calls on your own, at school, on the road, and when nobody is reminding you.",
     steps: [
       { n: "01", t: "Reminder", p: "At first the app tells you what's coming." },
       { n: "02", t: "Understanding", p: "Then you find out why it works that way." },

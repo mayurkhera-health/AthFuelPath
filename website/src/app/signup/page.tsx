@@ -21,7 +21,12 @@ export default function SignupPage() {
     <div className="form-page">
       <aside className="form-page__aside surface-dark">
         <span className="eyebrow">{waitlist.eyebrow}</span>
-        <h2 className="h3">Their schedule is already set. We are still building the fueling around it.</h2>
+        {/* A <p>, not a heading. The aside comes before the form in the DOM, so
+            as an <h2> this put a level-2 heading above the page's only <h1> —
+            an out-of-order outline for a screen reader and a confused hierarchy
+            for a crawler. It was never a section heading; it is a line of copy
+            set large. The .h3 class keeps it looking identical. */}
+        <p className="h3">Their schedule is already set. We&rsquo;re still building the fueling around it.</p>
         <ol className="mini-steps">
           <li><span className="n">1</span><span>Tell us what is hardest right now.</span></li>
           <li><span className="n">2</span><span>Purvi reads every answer herself.</span></li>
