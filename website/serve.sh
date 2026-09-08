@@ -26,10 +26,27 @@ for _ in $(seq 1 30); do
   curl -sf -o /dev/null http://localhost:3210/ && break
 done
 
-served=$(curl -s http://localhost:3210/coaches | grep -o '_next/static/css/[^"\\]*' | head -1 | xargs basename)
-disk=$(ls .next/static/css/ | head -1)
-if [ "$served" != "$disk" ]; then
-  echo "STALE: server is serving $served but disk has $disk" >&2
+# Compare the SET of stylesheets the page asks for against the SET on disk.
+#
+# This used to compare `head -1` of each, which worked only while the build
+# emitted exactly one CSS file. The moment it emitted two — a small route chunk
+# alongside the main sheet — the first <link> in the HTML and the alphabetically
+# first file on disk stopped being the same file, and this reported STALE on a
+# perfectly fresh server. A staleness guard that cries wolf is worse than none,
+# because the next real warning gets waved through.
+#
+# What actually proves freshness: every hash the page references exists on disk.
+# A genuinely stale server references a hash the new build deleted, which this
+# still catches.
+served=$(curl -s http://localhost:3210/coaches | grep -o '_next/static/css/[^"\\]*' | xargs -n1 basename | sort -u)
+[ -n "$served" ] || { echo "STALE: page referenced no stylesheet at all" >&2; exit 1; }
+missing=""
+for f in $served; do
+  [ -f ".next/static/css/$f" ] || missing="$missing $f"
+done
+if [ -n "$missing" ]; then
+  echo "STALE: server references$missing which is not in .next/static/css/" >&2
+  echo "       disk has: $(ls .next/static/css/ | tr '\n' ' ')" >&2
   exit 1
 fi
-echo "fresh: $disk"
+echo "fresh: $(echo "$served" | tr '\n' ' ')"

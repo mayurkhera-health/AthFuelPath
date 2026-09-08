@@ -1426,12 +1426,21 @@ export const athletes = {
     ],
   },
 
-  /* SHORT ON PURPOSE. /parents makes this argument in full. */
+  /* SHORT ON PURPOSE. /parents makes this argument in full.
+     The four steps carry a line each now. They were bare words in a small
+     uppercase strip, which made the section's whole argument the least visible
+     thing in it — the point of this section is that independence is a sequence,
+     and a sequence needs to look like one. Eight words each, no more. */
   independence: {
     eyebrow: "The real goal",
     h2: "Don't just follow a plan. Understand it.",
     p: "The point isn't memorising rules. It's knowing your body and your week well enough to make good calls on your own, at school, on the road, and when nobody is reminding you.",
-    steps: ["Reminder", "Understanding", "Habit", "Confidence"],
+    steps: [
+      { n: "01", t: "Reminder", p: "At first the app tells you what's coming." },
+      { n: "02", t: "Understanding", p: "Then you find out why it works that way." },
+      { n: "03", t: "Habit", p: "Soon you're doing it without the nudge." },
+      { n: "04", t: "Confidence", p: "Then a day goes sideways and you handle it." },
+    ],
     close: "Know what to do without waiting to be told.",
     link: { label: "How this looks from a parent's side", href: "/parents" },
   },

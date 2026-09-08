@@ -1682,25 +1682,73 @@ img.photo--portrait { width: 100%; height: auto; }
 .ath-topics__h { margin-top: 14px; font-size: 16px; font-weight: 700; line-height: 1.3; }
 .ath-topics__p { margin-top: var(--s1); font-size: 15px; line-height: 1.55; color: var(--ath-muted); }
 
-/* ---- 06 understand it: two columns ---- */
-.ath-ind { display: grid; gap: var(--s5); }
-@media (min-width: 900px) { .ath-ind { grid-template-columns: 1fr 1fr; gap: var(--s7); align-items: start; } }
-.ath-ind__h { margin-top: var(--s2); }
-.ath-ind__body { font-size: 15px; line-height: 1.65; color: var(--ath-muted); }
-.ath-ind__flow {
-  display: flex; flex-wrap: wrap; align-items: center; margin-top: var(--s5);
-  font-size: 15px; font-weight: 700; letter-spacing: .1em;
-  /* The spec puts the label strip in --ath-tertiary. On the dim band that
-     measures 2.74:1 — it is a mid green on a mid grey. --ath-secondary is the
-     next colour along the same ramp and clears at 4.57:1, so the strip keeps
-     the spec's intent (a lighter green than the headline) while staying
-     legible. --ath-tertiary is still used for the chip fill, where it carries
-     white text rather than sitting on dim. */
-  text-transform: uppercase; color: var(--ath-secondary);
+/* ---- 06 understand it ----
+   Was a two-column split, headline left and everything else right. The left
+   column held only an eyebrow and a two-line headline, so it ran out 119px
+   before the right one and left a 119x552px void beneath it. Centred header
+   over a full-width progression instead: no short column, no hole.
+
+   The colour ramp is the argument, not decoration. The numbered chips run
+   mint -> carbs -> tertiary -> forest, light to dark, because the section is
+   about growing from "someone tells you" to "you already know". Every ink
+   colour is chosen against its own chip rather than inherited. */
+.ath-ind__head { max-width: 760px; }
+.ath-steps {
+  display: grid; gap: var(--s5); list-style: none;
+  grid-template-columns: 1fr; counter-reset: none;
 }
-.ath-ind__arw { margin-inline: var(--s2); color: var(--ath-muted); }
-.ath-ind__close { margin-top: var(--s4); font-size: 16px; font-weight: 700; line-height: 1.45; }
-.ath-ind__link { margin-top: var(--s4); }
+@media (min-width: 640px) { .ath-steps { grid-template-columns: 1fr 1fr; gap: var(--s6) var(--s5); } }
+@media (min-width: 1000px) { .ath-steps { grid-template-columns: repeat(4, 1fr); gap: var(--s4); } }
+
+.ath-steps__i { position: relative; padding-top: var(--s6); }
+/* The connecting rule, drawn behind the chips. Four columns only — stacked or
+   two-up it would point at nothing. Stops short of the last item so the line
+   ends on Confidence rather than running off the edge. */
+@media (min-width: 1000px) {
+  .ath-steps__i::before {
+    /* The chip is 36px tall and starts below the item's padding-top, so its
+       centre is padding + half the chip. Expressed against the same variable
+       the padding uses, because a hardcoded 50px silently detaches the moment
+       either value moves — which is how this line ended up floating 32px above
+       the chips the first time. */
+    content: ""; position: absolute; top: calc(var(--s6) + 18px);
+    left: 44px; right: calc(-1 * var(--s4));
+    height: 2px; background: var(--line);
+  }
+  .ath-steps__i:last-child::before { display: none; }
+}
+.ath-steps__n {
+  position: relative; z-index: 1;
+  width: 36px; height: 36px; border-radius: 999px;
+  display: grid; place-items: center;
+  font-size: 15px; font-weight: 800; letter-spacing: .02em;
+}
+.ath-steps__i:nth-child(1) .ath-steps__n { background: var(--mint); color: var(--forest); }
+.ath-steps__i:nth-child(2) .ath-steps__n { background: var(--ath-carbs); color: #1f2e08; }
+/* --ath-secondary, not --ath-tertiary. Tertiary #40916C is a mid-tone that
+   carries neither white (3.64:1) nor near-black (4.49:1 at pure black) to
+   4.5:1 — it sits equidistant from both ends, which is the classic mid-tone
+   trap. Secondary is the next step down the same ramp, holds white at 6.07:1,
+   and keeps the four chips monotonically light-to-dark by luminance
+   (.876 / .460 / .114 / .045). Tertiary still fills a topic chip, where it
+   carries white at a larger size. */
+.ath-steps__i:nth-child(3) .ath-steps__n { background: var(--ath-secondary); color: #f7faf5; }
+.ath-steps__i:nth-child(4) .ath-steps__n { background: var(--forest); color: var(--ath-carbs); }
+.ath-steps__t {
+  margin-top: 14px; font-size: 16px; font-weight: 700; line-height: 1.25;
+  letter-spacing: .02em;
+}
+/* The last step is the payoff the section is arguing toward, so it is the one
+   that reads as a conclusion rather than another item. */
+.ath-steps__i:last-child .ath-steps__t { color: var(--forest); }
+.ath-steps__p { margin-top: var(--s1); font-size: 15px; line-height: 1.5; color: var(--ath-muted); max-width: 30ch; }
+
+.ath-ind__close {
+  margin-top: var(--s7); text-align: center;
+  font-size: clamp(20px, 2.4vw, 24px); font-weight: 800; line-height: 1.35;
+  letter-spacing: -.01em; text-wrap: balance;
+}
+.ath-ind__link { margin-top: var(--s4); text-align: center; }
 
 /* ---- 07 progress ---- */
 .ath-prog { display: grid; gap: var(--s6); align-items: start; }

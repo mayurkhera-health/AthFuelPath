@@ -121,29 +121,41 @@ export default function Athletes() {
         </div>
       </section>
 
-      {/* 06 — understand it. Two columns: headline left, argument right.
-          SHORT — /parents owns this argument in full. */}
+      {/* 06 — understand it. SHORT — /parents owns this argument in full.
+          This was two columns: headline left, everything else right. The left
+          column ran out after the headline and left 119x552px of nothing under
+          it — the same mismatched-column void that had to be fixed on the Our
+          Story hero and the /parents hero. Centred header over a full-width
+          progression, so there is no short column to leave a hole.
+
+          The four steps are the section's actual argument and used to be its
+          least visible element: four words in a small uppercase strip. A
+          sequence should look like a sequence. */}
       <section className="section surface-tint" aria-labelledby="ai-h">
-        <div className="container ath-ind">
-          <div>
+        <div className="container">
+          <div className="section-head section-head--center ath-ind__head">
             <span className="eyebrow">{independence.eyebrow}</span>
-            <h2 id="ai-h" className="h2 balance ath-ind__h">{independence.h2}</h2>
+            <h2 id="ai-h" className="h2 balance">{independence.h2}</h2>
+            <p className="body muted-txt">{independence.p}</p>
           </div>
-          <div>
-            <p className="ath-ind__body">{independence.p}</p>
-            <p className="ath-ind__flow" aria-hidden>
-              {independence.steps.map((s, i) => (
-                <span key={s}>
-                  {s}
-                  {i < independence.steps.length - 1 && <span className="ath-ind__arw">→</span>}
-                </span>
-              ))}
-            </p>
-            <p className="ath-ind__close">{independence.close}</p>
-            <p className="ath-ind__link">
-              <Link href={independence.link.href} className="tlink">{independence.link.label} <Arrow /></Link>
-            </p>
-          </div>
+
+          {/* An ordered list, because it is one. The connecting rule is drawn
+              with a pseudo-element and hidden from assistive tech — the <ol>
+              already says these are ordered. */}
+          <ol className="ath-steps">
+            {independence.steps.map((s, i) => (
+              <Reveal as="li" key={s.t} className="ath-steps__i" i={((i % 3) + 1) as 1 | 2 | 3}>
+                <span className="ath-steps__n" aria-hidden>{s.n}</span>
+                <h3 className="ath-steps__t">{s.t}</h3>
+                <p className="ath-steps__p">{s.p}</p>
+              </Reveal>
+            ))}
+          </ol>
+
+          <p className="ath-ind__close">{independence.close}</p>
+          <p className="ath-ind__link">
+            <Link href={independence.link.href} className="tlink">{independence.link.label} <Arrow /></Link>
+          </p>
         </div>
       </section>
 
