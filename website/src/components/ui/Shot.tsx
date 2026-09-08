@@ -9,6 +9,10 @@ import Image from "next/image";
  * otherwise the image is cropped or letterboxed inside the bezel.
  *
  * `priority` only on the hero's front device; everything else lazy-loads.
+ *
+ * `unoptimized` bypasses /_next/image and serves the source file as it is.
+ * Sparingly, and only where the source is already the right format at roughly
+ * the right size — see the note at its one call site in Hero.tsx.
  */
 export function Shot({
   src,
@@ -18,6 +22,7 @@ export function Shot({
   className = "",
   width,
   priority = false,
+  unoptimized = false,
 }: {
   src: string;
   alt: string;
@@ -26,6 +31,7 @@ export function Shot({
   className?: string;
   width?: number;
   priority?: boolean;
+  unoptimized?: boolean;
 }) {
   return (
     <div
@@ -36,7 +42,15 @@ export function Shot({
       }}
     >
       <div className="device__screen">
-        <Image src={src} alt={alt} width={w} height={h} priority={priority} sizes="(max-width: 1023px) 300px, 320px" />
+        <Image
+          src={src}
+          alt={alt}
+          width={w}
+          height={h}
+          priority={priority}
+          unoptimized={unoptimized}
+          sizes="(max-width: 1023px) 300px, 320px"
+        />
       </div>
     </div>
   );
