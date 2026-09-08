@@ -10,7 +10,7 @@ import { routeMetadata } from "@/lib/meta";
 export const metadata = routeMetadata({
   title: "For athletes: know how to fuel your day",
   description:
-    "AthFuelPath tells you what to eat and when, around your own practices and games. Fuel IQ turns nutrition into short challenges. For athletes 13–17.",
+    "AthFuelPath tells you what to eat and when, around your own practices and games. FuelIQ turns nutrition into short challenges. For athletes 13–17.",
   path: "/athletes",
   imageAlt: "AthFuelPath for athletes — fuel for what's next.",
 });
@@ -98,7 +98,7 @@ export default function Athletes() {
       {/* 04 — FuelIQ, the centrepiece */}
       <FuelIq />
 
-      {/* 05 — build your Fuel IQ */}
+      {/* 05 — build your FuelIQ */}
       <section className="section surface-light" aria-labelledby="at-h">
         <div className="container">
           <div className="section-head section-head--center">
@@ -159,7 +159,7 @@ export default function Athletes() {
         </div>
       </section>
 
-      {/* 07 — Fuel IQ over time */}
+      {/* 07 — FuelIQ over time */}
       <section className="section surface-light" aria-labelledby="ap-h">
         <div className="container ath-prog">
           <div>
@@ -171,7 +171,7 @@ export default function Athletes() {
           {/* Inert markup: nothing focusable and no progressbar role. This is a
               picture of progress, not anyone's real record. */}
           <div className="ath-card">
-            <span className="eyebrow ath-card__lab">Fuel IQ</span>
+            <span className="eyebrow ath-card__lab">FuelIQ</span>
             <b className="ath-card__lvl">{progress.level}</b>
             <div className="ath-card__bar" aria-hidden>
               <span style={{ width: `${progress.fill}%` }} />

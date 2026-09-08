@@ -45,6 +45,14 @@ import type { EventName } from "@/lib/analytics";
  * The ceiling on all of this is the screenshots: every product shot on the site
  * shows a soccer schedule. Copy cannot get more sport-neutral than the images
  * without the gap showing.
+ *
+ * BRAND FORM: "FuelIQ", one word, everywhere. Settled 2026-09-08 on Mayur's
+ * call after an audit flagged the site using both forms. Note the one place it
+ * still reads two ways and cannot be fixed from here: the app screens on
+ * /athletes say "Fuel IQ" in their own chrome — the nav tab, the screen header,
+ * "Fuel IQ points banked". Closing that needs a change in the app and a
+ * recapture, not a copy edit. Until then the page says FuelIQ and the phones
+ * in it say Fuel IQ.
  */
 
 export const site = {
@@ -1347,7 +1355,7 @@ export const athletes = {
     eyebrow: "FuelIQ",
     h2: "Get smarter about fueling.",
     sub: "One quick round at a time.",
-    p: "FuelIQ turns sports nutrition into short challenges you can finish in a few minutes. Learn something useful, see whether you've got it, and build your Fuel IQ as you go.",
+    p: "FuelIQ turns sports nutrition into short challenges you can finish in a few minutes. Learn something useful, see whether you've got it, and build your FuelIQ as you go.",
     /**
      * Three steps, in this order, and the order is the argument: learn, then
      * understand, then progress. A page that leads with XP is selling a game
@@ -1414,7 +1422,7 @@ export const athletes = {
   },
 
   topics: {
-    eyebrow: "Build your Fuel IQ",
+    eyebrow: "Build your FuelIQ",
     h2: "Learn what actually comes up in your day.",
     p: "FuelIQ sticks to the questions you hit at school, at practice, on game day and after. Nothing you'd only need for a nutrition exam.",
     items: [
@@ -1447,7 +1455,7 @@ export const athletes = {
 
   progress: {
     eyebrow: "Keep building",
-    h2: "Your Fuel IQ, over time.",
+    h2: "Your FuelIQ, over time.",
     p: "Every round adds to what you know. Levels, XP and streaks are there so you can see it happening.",
     /* Numbers shown in the drawn UI. Illustrative of the mechanic, not a real
        athlete's record — see the note in AthleteProgress.tsx. */
